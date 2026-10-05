@@ -5,6 +5,7 @@
 [![NuGet](https://img.shields.io/nuget/vpre/Kkdev92.Tisilia.AspNetCore)](https://www.nuget.org/packages/Kkdev92.Tisilia.AspNetCore)
 [![npm](https://img.shields.io/npm/v/@kkdev92/tisilia-runtime/next)](https://www.npmjs.com/package/@kkdev92/tisilia-runtime)
 [![CI](https://github.com/kkdev92/tisilia/actions/workflows/ci.yml/badge.svg)](https://github.com/kkdev92/tisilia/actions)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15238/badge)](https://www.bestpractices.dev/projects/15238)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![.NET](https://img.shields.io/badge/.NET-10.0-blue.svg)](https://dotnet.microsoft.com/)
 
