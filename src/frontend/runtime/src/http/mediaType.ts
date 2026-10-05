@@ -28,7 +28,17 @@ function isQdtext(code: number): boolean {
  * Undefined for anything else; the first occurrence of a parameter name wins.
  */
 export function parseMediaType(value: string): MediaType | undefined {
-  const text = value.replace(/^[ \t]+|[ \t]+$/g, "");
+  // Trimmed by index: a trailing-anchored `[ \t]+$` is retried from every blank of a run that does not end the value, which
+  // takes time quadratic in the length of a header the server chooses.
+  let start = 0;
+  let end = value.length;
+  while (start < end && (value[start] === " " || value[start] === "\t")) {
+    start++;
+  }
+  while (end > start && (value[end - 1] === " " || value[end - 1] === "\t")) {
+    end--;
+  }
+  const text = value.slice(start, end);
   let i = 0;
   const token = (): string => {
     const begin = i;
