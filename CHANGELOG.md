@@ -8,7 +8,9 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
-Initial release: **0.1.0-alpha** (not yet published).
+## [0.1.0-alpha] - 2026-10-05
+
+The first preview.
 
 ### Added
 
@@ -49,4 +51,5 @@ Initial release: **0.1.0-alpha** (not yet published).
 - Custom fetch adapters must expose a Web `ReadableStream` or a native `null` body.
 - The .NET packages and `@kkdev92/tisilia-runtime` have no third-party runtime dependencies.
 
-[Unreleased]: https://github.com/kkdev92/tisilia/commits/main
+[Unreleased]: https://github.com/kkdev92/tisilia/compare/v0.1.0-alpha...HEAD
+[0.1.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.1.0-alpha
