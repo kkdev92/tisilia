@@ -1,0 +1,21 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+
+[*.{json,yml,yaml,ts,js,vue,mjs,cjs}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+dotnet_diagnostic.CA1305.severity = warning
+csharp_style_namespace_declarations = file_scoped:warning
+# a case's block sits at the case label's indentation: `case X:` then `{` on the same column
+csharp_indent_case_contents_when_block = false

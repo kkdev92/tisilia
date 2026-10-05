@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tisilia.invalid/0.3/generation-manifest.schema.json",
+  "title": "Tisilia Generation Ownership and Coverage Manifest 0.3",
+  "$comment": "Draft 0.3. Structure only: semantic validation (SV01–SV54) runs after it.",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "tisilia.generation-manifest"
+    },
+    "version": {
+      "const": "0.3"
+    },
+    "apiId": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "semanticHash": {
+      "$ref": "common.schema.json#/$defs/digest"
+    },
+    "contractArtifactDigest": {
+      "$ref": "common.schema.json#/$defs/digest"
+    },
+    "generatorVersion": {
+      "$ref": "common.schema.json#/$defs/version"
+    },
+    "abi": {
+      "const": "0.3"
+    },
+    "targetMode": {
+      "enum": [
+        "bundler",
+        "nodenext"
+      ]
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "$ref": "common.schema.json#/$defs/safePath"
+          },
+          "digest": {
+            "$ref": "common.schema.json#/$defs/digest"
+          }
+        },
+        "required": [
+          "path",
+          "digest"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "nameMappings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "enum": [
+              "type",
+              "operation",
+              "codec",
+              "projection"
+            ]
+          },
+          "id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "generatedName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "$ref": "common.schema.json#/$defs/safePath"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "generatedName",
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    },
+    "moduleArtifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/identifiedArtifact"
+      },
+      "minItems": 0
+    },
+    "coverage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "operationId": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "status": {
+            "enum": [
+              "unqualified",
+              "qualified"
+            ]
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "$ref": "common.schema.json#/$defs/id"
+            },
+            "minItems": 0
+          },
+          "reasonCodes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 0
+          }
+        },
+        "required": [
+          "operationId",
+          "status",
+          "evidenceIds",
+          "reasonCodes"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "apiId",
+    "semanticHash",
+    "contractArtifactDigest",
+    "generatorVersion",
+    "abi",
+    "targetMode",
+    "files",
+    "nameMappings",
+    "moduleArtifacts",
+    "coverage"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,9 @@
+[
+  {
+    "name": "Feather Icons",
+    "source": "https://github.com/feathericons/feather",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2013-2023 Cole Bemis",
+    "usage": "Portions of the inline icon set in src/components/Icon.vue"
+  }
+]

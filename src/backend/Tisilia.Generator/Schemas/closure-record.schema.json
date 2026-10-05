@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tisilia.invalid/0.3/closure-record.schema.json",
+  "title": "Tisilia Qualification Closure Hash Input 0.3",
+  "$comment": "Draft 0.3. Structure only: semantic validation (SV01–SV54) runs after it.",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "tisilia.closure-record"
+    },
+    "version": {
+      "const": "0.3"
+    },
+    "semanticHash": {
+      "$ref": "common.schema.json#/$defs/digest"
+    },
+    "operationIds": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/id"
+      },
+      "minItems": 1
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "request",
+          "response",
+          "requestKey",
+          "responseKey",
+          "requestInput",
+          "binder",
+          "result",
+          "hydration",
+          "round-trip"
+        ]
+      },
+      "minItems": 1
+    },
+    "equivalenceIds": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/id"
+      },
+      "minItems": 0
+    },
+    "registryRefs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "registry": {
+            "enum": [
+              "types",
+              "wires",
+              "codecs",
+              "bindings",
+              "equivalences",
+              "projections",
+              "comparers",
+              "binders",
+              "resultAdapters",
+              "profiles",
+              "modules",
+              "operations"
+            ]
+          },
+          "id": {
+            "$ref": "common.schema.json#/$defs/id"
+          }
+        },
+        "required": [
+          "registry",
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    },
+    "profileFingerprints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "fingerprint": {
+            "$ref": "common.schema.json#/$defs/digest"
+          }
+        },
+        "required": [
+          "id",
+          "fingerprint"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    },
+    "bindingSettings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "settingsDigest": {
+            "$ref": "common.schema.json#/$defs/digest"
+          }
+        },
+        "required": [
+          "id",
+          "settingsDigest"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    },
+    "moduleArtifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/identifiedArtifact"
+      },
+      "minItems": 0
+    },
+    "applicationArtifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/artifact"
+      },
+      "minItems": 1
+    },
+    "abi": {
+      "const": "0.3"
+    },
+    "matrix": {
+      "$ref": "common.schema.json#/$defs/runtimeMatrix"
+    },
+    "context": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": "string",
+            "minLength": 0
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    },
+    "limits": {
+      "$ref": "common.schema.json#/$defs/limits"
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "semanticHash",
+    "operationIds",
+    "capabilities",
+    "equivalenceIds",
+    "registryRefs",
+    "profileFingerprints",
+    "bindingSettings",
+    "moduleArtifacts",
+    "applicationArtifacts",
+    "abi",
+    "matrix",
+    "context",
+    "limits"
+  ],
+  "additionalProperties": false
+}

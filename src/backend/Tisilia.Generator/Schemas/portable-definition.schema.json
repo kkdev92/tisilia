@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tisilia.invalid/0.3/portable-definition.schema.json",
+  "title": "Tisilia Portable Codec Definition 0.3",
+  "$comment": "Draft 0.3. Structure only: semantic validation (SV01–SV54) runs after it.",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "tisilia.portable-definition"
+    },
+    "version": {
+      "const": "0.3"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "definitionVersion": {
+      "$ref": "common.schema.json#/$defs/version"
+    },
+    "clrType": {
+      "type": "string",
+      "minLength": 1
+    },
+    "request": {
+      "$ref": "common.schema.json#/$defs/portableDirection"
+    },
+    "response": {
+      "$ref": "common.schema.json#/$defs/portableDirection"
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "id",
+    "definitionVersion",
+    "clrType"
+  ],
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "required": [
+        "request"
+      ]
+    },
+    {
+      "required": [
+        "response"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>Tisilia.Contract.Tests</RootNamespace>
+    <!-- DocumentationTests read the ids the compiler writes into this file -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\backend\Tisilia.Explorer\Tisilia.Explorer.csproj" />
+    <ProjectReference Include="..\..\src\backend\Tisilia.Generator\Tisilia.Generator.csproj" />
+    <!-- the additional codecs: registrations and the converters Tisilia ships (AdditionalCodecTests) -->
+    <ProjectReference Include="..\..\src\backend\Tisilia.AspNetCore\Tisilia.AspNetCore.csproj" />
+    <!-- the CLI commands (init) -->
+    <ProjectReference Include="..\..\src\backend\Tisilia.Tool\Tisilia.Tool.csproj" />
+  </ItemGroup>
+
+</Project>

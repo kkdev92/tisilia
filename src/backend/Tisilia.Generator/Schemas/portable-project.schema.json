@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tisilia.invalid/0.3/portable-project.schema.json",
+  "title": "Tisilia Portable Project Manifest 0.3",
+  "$comment": "Draft 0.3. Structure only: semantic validation (SV01–SV54) runs after it.",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "tisilia.portable-project"
+    },
+    "version": {
+      "const": "0.3"
+    },
+    "projectId": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "builtinSet": {
+      "const": "tisilia.builtins@0.3"
+    },
+    "definitions": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/safePath"
+      },
+      "minItems": 1
+    },
+    "imports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "$ref": "common.schema.json#/$defs/safePath"
+          },
+          "digest": {
+            "$ref": "common.schema.json#/$defs/digest"
+          }
+        },
+        "required": [
+          "path",
+          "digest"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    },
+    "models": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/model"
+      },
+      "minItems": 0
+    },
+    "projections": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/projection"
+      },
+      "minItems": 0
+    },
+    "equivalences": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/equivalence"
+      },
+      "minItems": 0
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/binding"
+      },
+      "minItems": 0
+    },
+    "modules": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/module"
+      },
+      "minItems": 0
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "csharp": {
+          "$ref": "common.schema.json#/$defs/safePath"
+        },
+        "typescript": {
+          "$ref": "common.schema.json#/$defs/safePath"
+        }
+      },
+      "required": [
+        "csharp",
+        "typescript"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "projectId",
+    "builtinSet",
+    "definitions",
+    "imports",
+    "models",
+    "projections",
+    "equivalences",
+    "bindings",
+    "modules",
+    "output"
+  ],
+  "additionalProperties": false
+}

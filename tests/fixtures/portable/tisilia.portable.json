@@ -1,0 +1,318 @@
+{
+  "format": "tisilia.portable-project",
+  "version": "0.3",
+  "projectId": "demo.portable",
+  "builtinSet": "tisilia.builtins@0.3",
+  "definitions": [
+    "portable/pmoney.definition.json",
+    "portable/shape.definition.json",
+    "portable/invoice.definition.json",
+    "portable/tree.definition.json"
+  ],
+  "imports": [],
+  "models": [
+    {
+      "id": "demo.portable.PMoney",
+      "tsName": "PMoney",
+      "clrIdentity": "Demo.Portable.PMoney",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          { "name": "amount", "use": { "typeId": "std.decimal", "codecId": "std.decimal.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "currency", "use": { "typeId": "std.string", "codecId": "std.string.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "note", "use": { "typeId": "std.string", "codecId": "std.string.codec.nullable", "semanticNullable": true }, "presence": "optional" }
+        ],
+        "extension": { "kind": "none" }
+      }
+    },
+    {
+      "id": "demo.portable.Shape",
+      "tsName": "Shape",
+      "clrIdentity": "Demo.Portable.Shape",
+      "shape": {
+        "kind": "union",
+        "variants": [
+          { "tag": "circle", "use": { "typeId": "demo.portable.Circle", "codecId": "demo.portable.Circle.codec", "semanticNullable": false } },
+          { "tag": "rect", "use": { "typeId": "demo.portable.Rect", "codecId": "demo.portable.Rect.codec", "semanticNullable": false } }
+        ]
+      }
+    },
+    {
+      "id": "demo.portable.Circle",
+      "tsName": "Circle",
+      "clrIdentity": "Demo.Portable.Circle",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          { "name": "kind", "use": { "typeId": "std.string", "codecId": "std.string.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "radius", "use": { "typeId": "std.decimal", "codecId": "std.decimal.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "label", "use": { "typeId": "std.string", "codecId": "std.string.codec.nullable", "semanticNullable": true }, "presence": "optional" }
+        ],
+        "extension": { "kind": "none" }
+      }
+    },
+    {
+      "id": "demo.portable.Rect",
+      "tsName": "Rect",
+      "clrIdentity": "Demo.Portable.Rect",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          { "name": "kind", "use": { "typeId": "std.string", "codecId": "std.string.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "width", "use": { "typeId": "std.int32", "codecId": "std.int32.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "height", "use": { "typeId": "std.int32", "codecId": "std.int32.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "tags", "use": { "typeId": "demo.portable.StringList", "codecId": "demo.portable.StringList.codec", "semanticNullable": false }, "presence": "required" }
+        ],
+        "extension": { "kind": "none" }
+      }
+    },
+    {
+      "id": "demo.portable.StringList",
+      "tsName": "StringList",
+      "clrIdentity": "System.Collections.Generic.IReadOnlyList<System.String>",
+      "shape": {
+        "kind": "array",
+        "element": { "typeId": "std.string", "codecId": "std.string.codec", "semanticNullable": false }
+      }
+    },
+    {
+      "id": "demo.portable.Invoice",
+      "tsName": "Invoice",
+      "clrIdentity": "Demo.Portable.Invoice",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          { "name": "id", "use": { "typeId": "std.guid", "codecId": "std.guid.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "customer", "use": { "typeId": "demo.portable.Customer", "codecId": "demo.portable.Customer.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "total", "use": { "typeId": "demo.portable.PMoney", "codecId": "demo.portable.PMoney.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "discount", "use": { "typeId": "demo.portable.PMoney", "codecId": "demo.portable.PMoney.codec.nullable", "semanticNullable": true }, "presence": "optional" },
+          { "name": "issued", "use": { "typeId": "std.datetime-offset", "codecId": "std.datetime-offset.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "due", "use": { "typeId": "std.date-only", "codecId": "std.date-only.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "at", "use": { "typeId": "std.time-only", "codecId": "std.time-only.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "stamp", "use": { "typeId": "std.datetime-utc", "codecId": "std.datetime-utc.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "local", "use": { "typeId": "std.datetime-unspecified", "codecId": "std.datetime-unspecified.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "localWire", "use": { "typeId": "std.datetime-local-wire", "codecId": "std.datetime-local-wire.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "period", "use": { "typeId": "std.duration", "codecId": "std.duration.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "ratio", "use": { "typeId": "std.float64", "codecId": "std.float64.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "weight", "use": { "typeId": "std.float32", "codecId": "std.float32.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "payload", "use": { "typeId": "std.bytes", "codecId": "std.bytes.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "initial", "use": { "typeId": "std.char", "codecId": "std.char.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "shape", "use": { "typeId": "demo.portable.Shape", "codecId": "demo.portable.Shape.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "payment", "use": { "typeId": "demo.portable.Payment", "codecId": "demo.portable.Payment.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "lines", "use": { "typeId": "demo.portable.LineList", "codecId": "demo.portable.LineList.codec", "semanticNullable": false }, "presence": "required" }
+        ],
+        "extension": { "kind": "none" }
+      }
+    },
+    {
+      "id": "demo.portable.Customer",
+      "tsName": "Customer",
+      "clrIdentity": "Demo.Portable.Customer",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          { "name": "name", "use": { "typeId": "std.string", "codecId": "std.string.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "email", "use": { "typeId": "std.string", "codecId": "std.string.codec.nullable", "semanticNullable": true }, "presence": "required" },
+          { "name": "since", "use": { "typeId": "std.date-only", "codecId": "std.date-only.codec", "semanticNullable": false }, "presence": "required" }
+        ],
+        "extension": { "kind": "none" }
+      }
+    },
+    {
+      "id": "demo.portable.Payment",
+      "tsName": "Payment",
+      "clrIdentity": "Demo.Portable.Payment",
+      "shape": {
+        "kind": "union",
+        "variants": [
+          { "tag": "card", "use": { "typeId": "demo.portable.Card", "codecId": "demo.portable.Card.codec", "semanticNullable": false } },
+          { "tag": "cash", "use": { "typeId": "demo.portable.Cash", "codecId": "demo.portable.Cash.codec", "semanticNullable": false } }
+        ]
+      }
+    },
+    {
+      "id": "demo.portable.Card",
+      "tsName": "Card",
+      "clrIdentity": "Demo.Portable.Card",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          { "name": "method", "use": { "typeId": "std.string", "codecId": "std.string.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "last4", "use": { "typeId": "std.string", "codecId": "std.string.codec", "semanticNullable": false }, "presence": "required" }
+        ],
+        "extension": { "kind": "none" }
+      }
+    },
+    {
+      "id": "demo.portable.Cash",
+      "tsName": "Cash",
+      "clrIdentity": "Demo.Portable.Cash",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          { "name": "method", "use": { "typeId": "std.string", "codecId": "std.string.codec", "semanticNullable": false }, "presence": "required" }
+        ],
+        "extension": { "kind": "none" }
+      }
+    },
+    {
+      "id": "demo.portable.Line",
+      "tsName": "Line",
+      "clrIdentity": "Demo.Portable.Line",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          { "name": "sku", "use": { "typeId": "std.string", "codecId": "std.string.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "qty", "use": { "typeId": "std.int64", "codecId": "std.int64.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "price", "use": { "typeId": "std.decimal", "codecId": "std.decimal.codec", "semanticNullable": false }, "presence": "required" }
+        ],
+        "extension": { "kind": "none" }
+      }
+    },
+    {
+      "id": "demo.portable.LineList",
+      "tsName": "LineList",
+      "clrIdentity": "System.Collections.Generic.IReadOnlyList<Demo.Portable.Line>",
+      "shape": {
+        "kind": "array",
+        "element": { "typeId": "demo.portable.Line", "codecId": "demo.portable.Line.codec", "semanticNullable": false }
+      }
+    },
+    {
+      "id": "demo.portable.Tree",
+      "tsName": "Tree",
+      "clrIdentity": "Demo.Portable.Tree",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          { "name": "value", "use": { "typeId": "std.int32", "codecId": "std.int32.codec", "semanticNullable": false }, "presence": "required" },
+          { "name": "left", "use": { "typeId": "demo.portable.Tree", "codecId": "demo.portable.Tree.codec.nullable", "semanticNullable": true }, "presence": "required" },
+          { "name": "children", "use": { "typeId": "demo.portable.TreeList", "codecId": "demo.portable.TreeList.codec", "semanticNullable": false }, "presence": "required" }
+        ],
+        "extension": { "kind": "none" }
+      }
+    },
+    {
+      "id": "demo.portable.TreeList",
+      "tsName": "TreeList",
+      "clrIdentity": "System.Collections.Generic.IReadOnlyList<Demo.Portable.Tree>",
+      "shape": {
+        "kind": "array",
+        "element": { "typeId": "demo.portable.Tree", "codecId": "demo.portable.Tree.codec", "semanticNullable": false }
+      }
+    }
+  ],
+  "projections": [],
+  "equivalences": [
+    {
+      "id": "demo.portable.PMoney.request",
+      "version": "1.0.0",
+      "domainTypeId": "demo.portable.PMoney",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.object@0.3",
+      "dotnetOracle": { "kind": "builtin", "id": "tisilia.oracle.structural@0.3" },
+      "typescriptOracle": { "kind": "builtin", "id": "tisilia.oracle.structural@0.3" },
+      "normalizationId": "tisilia.normalize.identity@0.3",
+      "preserved": ["amount", "currency", "note"],
+      "notPreserved": ["amount-representation"]
+    },
+    {
+      "id": "demo.portable.PMoney.response",
+      "version": "1.0.0",
+      "domainTypeId": "demo.portable.PMoney",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.object@0.3",
+      "dotnetOracle": { "kind": "builtin", "id": "tisilia.oracle.structural@0.3" },
+      "typescriptOracle": { "kind": "builtin", "id": "tisilia.oracle.structural@0.3" },
+      "normalizationId": "tisilia.normalize.identity@0.3",
+      "preserved": ["amount", "currency", "note"],
+      "notPreserved": []
+    },
+    {
+      "id": "demo.portable.Shape.request",
+      "version": "1.0.0",
+      "domainTypeId": "demo.portable.Shape",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.union@0.3",
+      "dotnetOracle": { "kind": "builtin", "id": "tisilia.oracle.structural@0.3" },
+      "typescriptOracle": { "kind": "builtin", "id": "tisilia.oracle.structural@0.3" },
+      "normalizationId": "tisilia.normalize.identity@0.3",
+      "preserved": ["variant", "member-values"],
+      "notPreserved": ["radius-representation"]
+    },
+    {
+      "id": "demo.portable.Shape.response",
+      "version": "1.0.0",
+      "domainTypeId": "demo.portable.Shape",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.union@0.3",
+      "dotnetOracle": { "kind": "builtin", "id": "tisilia.oracle.structural@0.3" },
+      "typescriptOracle": { "kind": "builtin", "id": "tisilia.oracle.structural@0.3" },
+      "normalizationId": "tisilia.normalize.identity@0.3",
+      "preserved": ["variant", "member-values"],
+      "notPreserved": []
+    },
+    {
+      "id": "demo.portable.Invoice.request",
+      "version": "1.0.0",
+      "domainTypeId": "demo.portable.Invoice",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.object@0.3",
+      "dotnetOracle": { "kind": "builtin", "id": "tisilia.oracle.structural@0.3" },
+      "typescriptOracle": { "kind": "builtin", "id": "tisilia.oracle.structural@0.3" },
+      "normalizationId": "tisilia.normalize.identity@0.3",
+      "preserved": ["members", "nested-objects", "union-variant", "scalars"],
+      "notPreserved": ["ratio-representation"]
+    },
+    {
+      "id": "demo.portable.Invoice.response",
+      "version": "1.0.0",
+      "domainTypeId": "demo.portable.Invoice",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.object@0.3",
+      "dotnetOracle": { "kind": "builtin", "id": "tisilia.oracle.structural@0.3" },
+      "typescriptOracle": { "kind": "builtin", "id": "tisilia.oracle.structural@0.3" },
+      "normalizationId": "tisilia.normalize.identity@0.3",
+      "preserved": ["members", "nested-objects", "union-variant", "scalars"],
+      "notPreserved": []
+    },
+    {
+      "id": "demo.portable.Tree.request",
+      "version": "1.0.0",
+      "domainTypeId": "demo.portable.Tree",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.object@0.3",
+      "dotnetOracle": { "kind": "builtin", "id": "tisilia.oracle.structural@0.3" },
+      "typescriptOracle": { "kind": "builtin", "id": "tisilia.oracle.structural@0.3" },
+      "normalizationId": "tisilia.normalize.identity@0.3",
+      "preserved": ["value", "left", "children"],
+      "notPreserved": []
+    },
+    {
+      "id": "demo.portable.Tree.response",
+      "version": "1.0.0",
+      "domainTypeId": "demo.portable.Tree",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.object@0.3",
+      "dotnetOracle": { "kind": "builtin", "id": "tisilia.oracle.structural@0.3" },
+      "typescriptOracle": { "kind": "builtin", "id": "tisilia.oracle.structural@0.3" },
+      "normalizationId": "tisilia.normalize.identity@0.3",
+      "preserved": ["value", "left", "children"],
+      "notPreserved": []
+    }
+  ],
+  "bindings": [],
+  "modules": [],
+  "output": {
+    "csharp": "portable/generated",
+    "typescript": "modules/demo.portable"
+  }
+}

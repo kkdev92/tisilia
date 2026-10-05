@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Kkdev92.Tisilia.AspNetCore</PackageId>
+    <Description>Tisilia for ASP.NET Core: register the operations a TypeScript client should see, and export a contract of the endpoints and the System.Text.Json options in effect for each, from which Tisilia generates an exact client.</Description>
+    <RootNamespace>Tisilia.AspNetCore</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tisilia.Abstractions\Tisilia.Abstractions.csproj" />
+    <ProjectReference Include="..\Tisilia.Generator\Tisilia.Generator.csproj" />
+  </ItemGroup>
+
+  <!-- the documentation readers (XML comment ids, Markdown) are tested directly -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tisilia.Contract.Tests" />
+  </ItemGroup>
+
+  <!-- for the projects that reference the package: implicit usings (build/<PackageId>.props is imported by NuGet) and the XML
+       documentation file (the props file hands Documentation.props to the .NET SDK, which imports it after the project file) -->
+  <ItemGroup>
+    <None Include="build\Kkdev92.Tisilia.AspNetCore.props" Pack="true" PackagePath="build\" />
+    <None Include="build\Kkdev92.Tisilia.AspNetCore.Documentation.props" Pack="true" PackagePath="build\" />
+  </ItemGroup>
+
+</Project>

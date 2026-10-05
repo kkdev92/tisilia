@@ -1,0 +1,6 @@
+<Project>
+  <!-- With implicit usings on, MapTisiliaExplorer (Tisilia.Explorer) is imported like the SDK's namespaces; TisiliaImplicitUsings=false opts out. -->
+  <ItemGroup Condition="('$(ImplicitUsings)' == 'enable' or '$(ImplicitUsings)' == 'true') and '$(TisiliaImplicitUsings)' != 'false'">
+    <Using Include="Tisilia.Explorer" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,91 @@
+{
+  "format": "tisilia.portable-definition",
+  "version": "0.3",
+  "id": "demo.portable.invoice",
+  "definitionVersion": "1.0.0",
+  "clrType": "Demo.Portable.Invoice",
+  "request": {
+    "domainTypeId": "demo.portable.Invoice",
+    "projectionId": "tisilia.projection.identity@0.3",
+    "equivalenceId": "demo.portable.Invoice.request",
+    "program": {
+      "op": "object",
+      "unknownMembers": "reject",
+      "members": [
+        { "name": "id", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.guid@0.3", "representation": "native" } },
+        { "name": "customer", "presence": "required", "node": { "op": "object", "unknownMembers": "ignore", "members": [
+          { "name": "name", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.string@0.3", "representation": "native" } },
+          { "name": "email", "presence": "required", "node": { "op": "nullable", "value": { "op": "scalar", "scalarId": "tisilia.string@0.3", "representation": "native" } } },
+          { "name": "since", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.date-only@0.3", "representation": "native" } }
+        ] } },
+        { "name": "total", "presence": "required", "node": { "op": "ref", "definitionId": "demo.portable.pmoney" } },
+        { "name": "discount", "presence": "optional", "node": { "op": "nullable", "value": { "op": "ref", "definitionId": "demo.portable.pmoney" } } },
+        { "name": "issued", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.datetime-offset@0.3", "representation": "native" } },
+        { "name": "due", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.date-only@0.3", "representation": "native" } },
+        { "name": "at", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.time-only@0.3", "representation": "native" } },
+        { "name": "stamp", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.datetime-utc@0.3", "representation": "native" } },
+        { "name": "local", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.datetime-unspecified@0.3", "representation": "native" } },
+        { "name": "localWire", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.datetime-local-wire@0.3", "representation": "native" } },
+        { "name": "period", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.duration@0.3", "representation": "native" } },
+        { "name": "ratio", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.float64@0.3", "representation": "string" } },
+        { "name": "weight", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.float32@0.3", "representation": "native" } },
+        { "name": "payload", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.bytes@0.3", "representation": "native" } },
+        { "name": "initial", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.char@0.3", "representation": "native" } },
+        { "name": "shape", "presence": "required", "node": { "op": "ref", "definitionId": "demo.portable.shape" } },
+        { "name": "payment", "presence": "required", "node": { "op": "tagged-union", "discriminator": "method", "branches": [
+          { "tag": "card", "node": { "op": "object", "unknownMembers": "reject", "members": [
+            { "name": "last4", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.string@0.3", "representation": "native" } }
+          ] } },
+          { "tag": "cash", "node": { "op": "object", "unknownMembers": "reject", "members": [] } }
+        ] } },
+        { "name": "lines", "presence": "required", "node": { "op": "array", "element": { "op": "object", "unknownMembers": "reject", "members": [
+          { "name": "sku", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.string@0.3", "representation": "native" } },
+          { "name": "qty", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.int64@0.3", "representation": "native" } },
+          { "name": "price", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.decimal@0.3", "representation": "native" } }
+        ] } } }
+      ]
+    }
+  },
+  "response": {
+    "domainTypeId": "demo.portable.Invoice",
+    "projectionId": "tisilia.projection.identity@0.3",
+    "equivalenceId": "demo.portable.Invoice.response",
+    "program": {
+      "op": "object",
+      "unknownMembers": "reject",
+      "members": [
+        { "name": "id", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.guid@0.3", "representation": "native" } },
+        { "name": "customer", "presence": "required", "node": { "op": "object", "unknownMembers": "ignore", "members": [
+          { "name": "name", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.string@0.3", "representation": "native" } },
+          { "name": "email", "presence": "required", "node": { "op": "nullable", "value": { "op": "scalar", "scalarId": "tisilia.string@0.3", "representation": "native" } } },
+          { "name": "since", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.date-only@0.3", "representation": "native" } }
+        ] } },
+        { "name": "total", "presence": "required", "node": { "op": "ref", "definitionId": "demo.portable.pmoney" } },
+        { "name": "discount", "presence": "optional", "node": { "op": "nullable", "value": { "op": "ref", "definitionId": "demo.portable.pmoney" } } },
+        { "name": "issued", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.datetime-offset@0.3", "representation": "native" } },
+        { "name": "due", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.date-only@0.3", "representation": "native" } },
+        { "name": "at", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.time-only@0.3", "representation": "native" } },
+        { "name": "stamp", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.datetime-utc@0.3", "representation": "native" } },
+        { "name": "local", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.datetime-unspecified@0.3", "representation": "native" } },
+        { "name": "localWire", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.datetime-local-wire@0.3", "representation": "native" } },
+        { "name": "period", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.duration@0.3", "representation": "native" } },
+        { "name": "ratio", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.float64@0.3", "representation": "string" } },
+        { "name": "weight", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.float32@0.3", "representation": "native" } },
+        { "name": "payload", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.bytes@0.3", "representation": "native" } },
+        { "name": "initial", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.char@0.3", "representation": "native" } },
+        { "name": "shape", "presence": "required", "node": { "op": "ref", "definitionId": "demo.portable.shape" } },
+        { "name": "payment", "presence": "required", "node": { "op": "tagged-union", "discriminator": "method", "branches": [
+          { "tag": "card", "node": { "op": "object", "unknownMembers": "reject", "members": [
+            { "name": "last4", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.string@0.3", "representation": "native" } }
+          ] } },
+          { "tag": "cash", "node": { "op": "object", "unknownMembers": "reject", "members": [] } }
+        ] } },
+        { "name": "lines", "presence": "required", "node": { "op": "array", "element": { "op": "object", "unknownMembers": "reject", "members": [
+          { "name": "sku", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.string@0.3", "representation": "native" } },
+          { "name": "qty", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.int64@0.3", "representation": "native" } },
+          { "name": "price", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.decimal@0.3", "representation": "native" } }
+        ] } } }
+      ]
+    }
+  }
+}

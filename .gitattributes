@@ -1,0 +1,18 @@
+# Every text file is LF, in the repository and in every checkout, whatever core.autocrlf says (Git for Windows and the
+# Windows runners default it to true). Generated output is compared byte for byte and module artifacts are hashed.
+* text=auto eol=lf
+
+# Codec module artifacts are hashed into contracts byte for byte (SV44): their line endings must not depend on the checkout.
+# tisilia-additional is embedded in Tisilia.Generator and compared with the copy an application installs.
+src/backend/Tisilia.Generator/Additional/*.js text eol=lf
+src/backend/Tisilia.Generator/Additional/*.ts text eol=lf
+tests/fixtures/modules/** text eol=lf
+
+# Binary
+*.png binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.nupkg binary
+*.snupkg binary
+*.tgz binary

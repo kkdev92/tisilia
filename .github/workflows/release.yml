@@ -1,0 +1,454 @@
+name: release
+
+# Publishes to nuget.org and npm from a tag. Everything that gates a pull request runs again here against a clean checkout,
+# because a release is the one build nobody gets to re-run after the fact.
+#
+# Jobs, split by what each one is trusted with:
+#
+#   verify          contents: read,  no secrets         build, test, pack, install the packages into fresh projects
+#   publish-github  contents: write, no registry key    create the draft release, attach the artefacts
+#   publish-nuget   no repo write,   NuGet key          push to nuget.org
+#   publish-npm     no repo write,   npm OIDC           publish to npm
+#   finalize        contents: write, no secrets         take the release out of draft
+#
+# None of the build — targets, analysers, npm install scripts — needs write access or a registry credential, so none of it
+# runs where they are. A compromised dependency in the build cannot publish.
+
+on:
+  push:
+    tags:
+      - "v*"
+  # A manual run is always a dry run: it builds, verifies and packs, and every publishing job is gated on the event being a
+  # tag push. There is deliberately no input to override that.
+  workflow_dispatch:
+
+# Deny by default; each job adds only what it needs.
+permissions: {}
+
+# Queued, never cancelled. A release writes to three systems that cannot be rolled back, and cancelling one part-way would
+# leave a tag published as a release with some of its packages missing.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  CI: true
+
+jobs:
+  verify:
+    name: build, test and pack
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # For build provenance. Signed here rather than in a publishing job because the claim being made is about where these
+      # bytes were built, and this is the job that built them.
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Source Link needs real commit history to point at, and the tag-ancestry check below needs the default branch.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      # No dependency cache in a release build: what is published is built from what the lockfile names, fetched now.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Verify brand asset copies
+        run: npm run brand:check
+
+      - name: Build the npm packages
+        run: npm run build
+
+      - name: Restore
+        run: dotnet restore src/backend/Tisilia.slnx
+
+      - name: Build
+        run: dotnet build src/backend/Tisilia.slnx -c Release --no-restore
+
+      - name: Test (.NET)
+        run: dotnet test src/backend/Tisilia.slnx -c Release --no-build
+
+      - name: Typecheck and test (npm)
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Install test browsers
+        run: npm exec -- playwright install --with-deps chromium firefox webkit
+
+      - name: Adoption HTTP and browser matrix
+        shell: pwsh
+        run: ./scripts/verify-adoption.ps1
+
+      # A tag says one version and the build files say another, and only one of them ends up on nuget.org and npm —
+      # permanently, because a published version cannot be replaced. So they are required to agree before packing.
+      - name: Check the tag against the package versions
+        if: github.event_name == 'push'
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+
+          # The regular expression from semver.org, not an approximation of it.
+          semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)'
+          semver="${semver}"'(-((0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?'
+          semver="${semver}"'$'
+          if ! printf '%s' "$tag" | grep -Eq "$semver"; then
+            echo "::error::Tag '${GITHUB_REF_NAME}' is not a semantic version. Expected vMAJOR.MINOR.PATCH[-prerelease]." >&2
+            exit 1
+          fi
+
+          # No +build.metadata, even though SemVer allows it: NuGet strips it when normalising, so the package file would not
+          # carry the tag's version.
+          case "$tag" in
+            *+*) echo "::error::Tag '${GITHUB_REF_NAME}' carries build metadata, which NuGet discards." >&2; exit 1 ;;
+          esac
+
+          for project in src/backend/*/*.csproj; do
+            version=$(dotnet msbuild "$project" -getProperty:PackageVersion -v:quiet | tr -d '[:space:]')
+            if [ "$version" != "$tag" ]; then
+              echo "::error::${project} would publish ${version}, but the tag says ${tag}." >&2
+              exit 1
+            fi
+          done
+
+          for manifest in package.json src/frontend/*/package.json; do
+            version=$(node -p "require('./${manifest}').version")
+            if [ "$version" != "$tag" ]; then
+              echo "::error::${manifest} is ${version}, but the tag says ${tag}." >&2
+              exit 1
+            fi
+          done
+
+          echo "Every package publishes ${tag}."
+          echo "PACKAGE_VERSION=${tag}" >> "$GITHUB_ENV"
+
+      # A tag on a branch that was never merged still builds, packs and publishes — and the readmes inside those packages
+      # link to blob/main, so their documentation links would 404 for a version that cannot be replaced.
+      - name: Check the tag is on the default branch
+        if: github.event_name == 'push'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch --no-tags origin "+refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" "origin/${DEFAULT_BRANCH}"; then
+            echo "::error::${GITHUB_SHA} is not reachable from origin/${DEFAULT_BRANCH}. Merge it before tagging." >&2
+            exit 1
+          fi
+          echo "The tagged commit is on ${DEFAULT_BRANCH}."
+
+      # The same agreement, for a run that has no tag: every package must agree with the others, or a dry run would say
+      # nothing useful about what a real release would produce.
+      - name: Check the package versions agree
+        if: github.event_name != 'push'
+        run: |
+          expected=""
+          for project in src/backend/*/*.csproj; do
+            version=$(dotnet msbuild "$project" -getProperty:PackageVersion -v:quiet | tr -d '[:space:]')
+            expected="${expected:-$version}"
+            if [ "$version" != "$expected" ]; then
+              echo "::error::${project} is ${version}, but the others are ${expected}." >&2
+              exit 1
+            fi
+          done
+          for manifest in package.json src/frontend/*/package.json; do
+            version=$(node -p "require('./${manifest}').version")
+            if [ "$version" != "$expected" ]; then
+              echo "::error::${manifest} is ${version}, but the .NET packages are ${expected}." >&2
+              exit 1
+            fi
+          done
+          echo "Every package is ${expected}."
+          echo "PACKAGE_VERSION=${expected}" >> "$GITHUB_ENV"
+
+      # The release notes are the changelog's section for this version, not a second text to keep in step.
+      - name: Release notes from the changelog
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p notes
+          awk -v head="## [${PACKAGE_VERSION}]" '
+            index($0, head) == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found && /^\[[^]]*\]: / { next }
+            found { print }
+          ' CHANGELOG.md > notes/release-notes.md
+          if ! grep -q '[^[:space:]]' notes/release-notes.md; then
+            echo "::error::CHANGELOG.md has no section for ${PACKAGE_VERSION}." >&2
+            exit 1
+          fi
+
+      # Package validation runs as part of pack, for the libraries. The tool package has no symbols: nothing debugs into it.
+      - name: Pack
+        run: |
+          dotnet pack src/backend/Tisilia.slnx -c Release --no-build -o artifacts
+          npm pack --workspaces --pack-destination artifacts
+
+      # Five NuGet packages, four symbol packages and three npm tarballs, named for the version. A missing or extra one means
+      # something changed about what ships, which is not a thing to notice afterwards.
+      - name: Check the artefact set
+        run: |
+          nupkgs=$(ls artifacts/*.nupkg 2>/dev/null | wc -l)
+          snupkgs=$(ls artifacts/*.snupkg 2>/dev/null | wc -l)
+          tgzs=$(ls artifacts/*.tgz 2>/dev/null | wc -l)
+          if [ "$nupkgs" -ne 5 ] || [ "$snupkgs" -ne 4 ] || [ "$tgzs" -ne 3 ]; then
+            echo "::error::Expected 5 nupkg, 4 snupkg and 3 tgz, found ${nupkgs}, ${snupkgs} and ${tgzs}." >&2
+            ls -l artifacts/ >&2
+            exit 1
+          fi
+          for package in artifacts/*.nupkg; do
+            case "$package" in
+              *".${PACKAGE_VERSION}.nupkg") ;;
+              *) echo "::error::${package} is not version ${PACKAGE_VERSION}." >&2; exit 1 ;;
+            esac
+          done
+          for tarball in artifacts/*.tgz; do
+            case "$tarball" in
+              *"-${PACKAGE_VERSION}.tgz") ;;
+              *) echo "::error::${tarball} is not version ${PACKAGE_VERSION}." >&2; exit 1 ;;
+            esac
+          done
+
+      # The last chance to catch something that should not ship: these exact files, installed into a fresh ASP.NET Core
+      # application and a fresh TypeScript project, exported, generated, compiled and called.
+      - name: Clean install of these packages
+        shell: pwsh
+        run: ./scripts/install-check.ps1 -PackagesFrom artifacts
+
+      # A signed statement that these exact bytes came out of this workflow, at this commit, in this repository —
+      # verifiable with `gh attestation verify`. Only on a tag: an attestation for a dry run would claim provenance for
+      # something that was never released.
+      - name: Attest the packages
+        if: github.event_name == 'push'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            artifacts/*.nupkg
+            artifacts/*.snupkg
+            artifacts/*.tgz
+
+      # Everything downstream consumes this rather than rebuilding. The packages that were tested are the packages that
+      # get published.
+      - name: Upload packages
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: packages
+          path: |
+            artifacts/*.nupkg
+            artifacts/*.snupkg
+            artifacts/*.tgz
+          if-no-files-found: error
+
+      - name: Upload release notes
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-notes
+          path: notes/release-notes.md
+          if-no-files-found: error
+
+  # The download half of the pipeline, exercised where nothing is published. download-artifact otherwise appears only in
+  # the publishing jobs, so a problem with a new version of it would first show up part-way through a release.
+  dry-run-download:
+    name: check the artefacts survive a download
+    needs: verify
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: packages
+          path: artifacts
+
+      - name: Check what came back
+        run: |
+          count=$(ls artifacts/ | wc -l)
+          if [ "$count" -ne 12 ]; then
+            echo "::error::Downloaded ${count} files, expected 12." >&2
+            ls -l artifacts/ >&2
+            exit 1
+          fi
+          for package in artifacts/*.nupkg artifacts/*.snupkg; do
+            unzip -tqq "$package" || { echo "::error::${package} is not a readable archive." >&2; exit 1; }
+          done
+          for tarball in artifacts/*.tgz; do
+            tar -tzf "$tarball" > /dev/null || { echo "::error::${tarball} is not a readable tarball." >&2; exit 1; }
+          done
+          echo "12 artefacts downloaded and readable."
+
+  # Before the registries, because this is the half that can be undone.
+  publish-github:
+    name: attach to a draft GitHub release
+    needs: verify
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # No checkout. This job needs the packages and the notes, not the source, and code it does not check out is code that
+      # cannot run while `contents: write` is live.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: packages
+          path: artifacts
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-notes
+          path: notes
+
+      - name: Prepare the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            if [ "$(gh release view "${GITHUB_REF_NAME}" --json isDraft -q .isDraft)" != "true" ]; then
+              echo "::error::Release ${GITHUB_REF_NAME} is already published. Refusing to overwrite it." >&2
+              exit 1
+            fi
+          else
+            # A tag with a SemVer pre-release suffix is a pre-release on GitHub too, as it is on the registries.
+            case "${GITHUB_REF_NAME#v}" in
+              *-*) prerelease=--prerelease ;;
+              *)   prerelease= ;;
+            esac
+            gh release create "${GITHUB_REF_NAME}" --draft ${prerelease} --title "${GITHUB_REF_NAME}" --notes-file notes/release-notes.md
+          fi
+
+          # No --clobber: a collision means this tag has been released before, and replacing the assets of an earlier
+          # attempt would destroy the only copy of them.
+          gh release upload "${GITHUB_REF_NAME}" artifacts/*
+
+  publish-nuget:
+    name: push to nuget.org
+    needs: publish-github
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      # For the OIDC token, and nothing else.
+      id-token: write
+    #
+    # Trusted Publishing rather than a stored API key. nuget.org validates a GitHub-signed OIDC token against a policy naming
+    # this owner, this repository, this workflow file and the `release` environment, then issues an API key that lasts an
+    # hour. The policy has to exist on the nuget.org account first, and its fields must match exactly.
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: packages
+          path: artifacts
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "10.0.x"
+
+      # Immediately before the push: the key expires in an hour.
+      - name: Exchange the OIDC token for a short-lived NuGet key
+        id: nuget-login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          # The nuget.org profile name, in the clear on purpose: nuget.org prints it on every package page as the owner.
+          user: kkdev92
+
+      - name: Publish to NuGet
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+        run: |
+          if [ -z "$NUGET_API_KEY" ]; then
+            echo "::error::No API key came back from nuget.org. Check that a Trusted Publishing policy exists for this" \
+                 "owner, repository, release.yml and the release environment." >&2
+            exit 1
+          fi
+
+          # No --skip-duplicate. A version already on nuget.org means this tag was published before, and continuing would
+          # attach today's build to yesterday's version while reporting success. The symbol packages beside each package are
+          # pushed with it.
+          dotnet nuget push "artifacts/*.nupkg" \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json
+
+  publish-npm:
+    name: publish to npm
+    needs: publish-github
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      # For the OIDC token npm exchanges for a publish token, and for the provenance it signs.
+      id-token: write
+    #
+    # Trusted Publishing: npm accepts the publish from this workflow and the `release` environment because each package names
+    # them as its trusted publisher (npm 11.5.1 or later). Nothing is installed here, so no install script runs while the
+    # token can be requested: the tarballs are the ones verify built and tested.
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: packages
+          path: artifacts
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish to npm
+        run: |
+          required=11.5.1
+          actual=$(npm --version)
+          if [ "$(printf '%s\n%s\n' "$required" "$actual" | sort -V | head -n 1)" != "$required" ]; then
+            echo "::error::npm ${actual} cannot publish through trusted publishing; ${required} or later is needed." >&2
+            exit 1
+          fi
+
+          version="${GITHUB_REF_NAME#v}"
+          # A pre-release goes to `next`, never to `latest`: npm refuses to publish a pre-release without a tag, and an
+          # install without a version should not pick one up.
+          case "$version" in
+            *-*) tag=next ;;
+            *)   tag=latest ;;
+          esac
+
+          # The runtime first: the Nuxt module and the Explorer depend on it at exactly this version.
+          for name in runtime nuxt explorer; do
+            package="@kkdev92/tisilia-${name}"
+            tarball="artifacts/kkdev92-tisilia-${name}-${version}.tgz"
+            local_shasum=$(sha1sum "$tarball" | cut -d ' ' -f 1)
+            published_shasum=$(npm view "${package}@${version}" dist.shasum 2>/dev/null || true)
+            if [ -n "$published_shasum" ]; then
+              # A package's first version cannot come through trusted publishing (the publisher is configured on a package
+              # that exists), so it is published by hand from this release's draft. The same bytes are then not an error;
+              # other bytes under this version are.
+              if [ "$published_shasum" = "$local_shasum" ]; then
+                echo "${package}@${version} is already on npm with exactly these bytes."
+                continue
+              fi
+              echo "::error::${package}@${version} is already on npm with other bytes (${published_shasum}, not ${local_shasum})." >&2
+              exit 1
+            fi
+            npm publish "$tarball" --access public --tag "$tag"
+          done
+
+  finalize:
+    name: publish the GitHub release
+    needs: [publish-nuget, publish-npm]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # Last, so the release stops being a draft only once the packages are on both registries.
+      - name: Take the release out of draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release edit "${GITHUB_REF_NAME}" --draft=false

@@ -1,0 +1,538 @@
+{
+  "schemaVersion": 1,
+  "assetPack": "Tisilia-chan repository brand assets",
+  "version": "1.0.0",
+  "preparedAt": "2026-10-05",
+  "canonicalDirectory": "assets/brand/tisilia",
+  "imageFormat": "JPEG",
+  "embeddedTextLanguage": "en",
+  "palette": {
+    "yellow": "#F4C542",
+    "ivory": "#FFF9E9",
+    "ink": "#302D36",
+    "dark": "#1B1C27",
+    "blue": "#48A4E8",
+    "purple": "#A87ADF"
+  },
+  "notes": [
+    "All supplied image files are real opaque RGB JPEGs in sRGB. There is no alpha channel.",
+    "Light and dark illustrations use fixed matte backgrounds; changing the UI color cannot change the matte.",
+    "All banner text was separately typeset in English; previous posters with Japanese lettering are not included.",
+    "Existing user-approved AI-generated mascot artwork was cropped, resized and composited. No new character pose was generated for this pack.",
+    "The connection mark is a new simple geometric supporting mark based on the approved motif, not a copied icon-library asset.",
+    "No source PNGs, font files, copyrighted third-party icon sets, build outputs or repository code snapshots are bundled.",
+    "File checks validate the shipped bytes, not character identity, legal ownership, or text detected by OCR."
+  ],
+  "sourceArtwork": [
+    {
+      "id": "full",
+      "description": "Previously supplied full-body pose",
+      "sha256": "d9b58cee0f8c080b31541e4700fe811fa675f4d37f547503fc9b73a37d33eb38",
+      "dimensions": [
+        1024,
+        1536
+      ],
+      "method": "User-approved AI-generated artwork from this conversation; original not included"
+    },
+    {
+      "id": "portrait",
+      "description": "Previously supplied square portrait",
+      "sha256": "66b43de31668e5e5eede5c81374d6a7a43bfb667bcf27951717e62d1f55c1ca8",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "method": "User-approved AI-generated artwork from this conversation; original not included"
+    },
+    {
+      "id": "docs",
+      "description": "Previously supplied contract-panel pose",
+      "sha256": "637905731ed5541a427dc267be8cdb699f764200606f6d5f6912bdc2d9d8ad02",
+      "dimensions": [
+        1122,
+        1402
+      ],
+      "method": "User-approved AI-generated artwork from this conversation; original not included"
+    },
+    {
+      "id": "chibi",
+      "description": "Previously supplied chibi pose",
+      "sha256": "97438aa0f3b7024fd6818d5bb7f87bdb66b51f61507166948d8014e131339a23",
+      "dimensions": [
+        1254,
+        1254
+      ],
+      "method": "User-approved AI-generated artwork from this conversation; original not included"
+    },
+    {
+      "id": "geometric-link",
+      "description": "Programmatically drawn blue/purple rings with a gold connector",
+      "method": "New supporting motif rasterized directly; no external icon path"
+    }
+  ],
+  "assets": [
+    {
+      "path": "icons/nuget-icon.jpg",
+      "width": 128,
+      "height": 128,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "warm yellow and ivory",
+      "bytes": 20226,
+      "sha256": "db87f5e289a6b9099afd361845e1a4af3ac6aeb79251789dd596a2150f16ae1a",
+      "purpose": "Embedded icon shared by all Tisilia NuGet packages",
+      "alt": "Tisilia-chan smiling, with golden hair and a blue-and-purple link hair accessory.",
+      "embeddedText": [],
+      "sourceIds": [
+        "portrait"
+      ],
+      "maxBytesExclusive": 1000000,
+      "jpegQuality": 94
+    },
+    {
+      "path": "icons/avatar-256.jpg",
+      "width": 256,
+      "height": 256,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "warm yellow and ivory",
+      "bytes": 65195,
+      "sha256": "d2f9bc69d321cc881099903e622d6c9ec38339bc4e91db7547adc08b39a9ca38",
+      "purpose": "Compact avatar or documentation portrait",
+      "alt": "Tisilia-chan smiling, with golden hair and a blue-and-purple link hair accessory.",
+      "embeddedText": [],
+      "sourceIds": [
+        "portrait"
+      ],
+      "maxBytesExclusive": null,
+      "jpegQuality": 94
+    },
+    {
+      "path": "icons/avatar-512.jpg",
+      "width": 512,
+      "height": 512,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "warm yellow and ivory",
+      "bytes": 175022,
+      "sha256": "86b80cc0e1b0c36768b1863d468abda9e44941e5d291b863efc29ed226f77ca9",
+      "purpose": "GitHub or social profile avatar",
+      "alt": "Tisilia-chan smiling, with golden hair and a blue-and-purple link hair accessory.",
+      "embeddedText": [],
+      "sourceIds": [
+        "portrait"
+      ],
+      "maxBytesExclusive": null,
+      "jpegQuality": 94
+    },
+    {
+      "path": "icons/avatar-1024.jpg",
+      "width": 1024,
+      "height": 1024,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "warm yellow and ivory",
+      "bytes": 476338,
+      "sha256": "b03524eb24eceb1126dc8e9418d1a308152565d3f46e8cee52e9620b72835179",
+      "purpose": "High-resolution avatar for future non-upscaled exports",
+      "alt": "Tisilia-chan smiling, with golden hair and a blue-and-purple link hair accessory.",
+      "embeddedText": [],
+      "sourceIds": [
+        "portrait"
+      ],
+      "maxBytesExclusive": null,
+      "jpegQuality": 94
+    },
+    {
+      "path": "icons/link-mark-light.jpg",
+      "width": 256,
+      "height": 256,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "#FFF9E9",
+      "bytes": 11567,
+      "sha256": "2806236662b0ae06c4727a7c3f673d428d5b2022242495de2cdd780f010cac1c",
+      "purpose": "Supporting connection mark; not a replacement for the mascot icon",
+      "alt": "Blue and purple rings joined by a golden connector.",
+      "embeddedText": [],
+      "sourceIds": [
+        "geometric-link"
+      ],
+      "maxBytesExclusive": null,
+      "jpegQuality": 94
+    },
+    {
+      "path": "icons/link-mark-dark.jpg",
+      "width": 256,
+      "height": 256,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "#1B1C27",
+      "bytes": 11878,
+      "sha256": "10996c051b903a7d3e334dd9589ab279915f3460b6486017d40fae11ad1b6c75",
+      "purpose": "Supporting connection mark; not a replacement for the mascot icon",
+      "alt": "Blue and purple rings joined by a golden connector.",
+      "embeddedText": [],
+      "sourceIds": [
+        "geometric-link"
+      ],
+      "maxBytesExclusive": null,
+      "jpegQuality": 94
+    },
+    {
+      "path": "banners/readme-banner-light.jpg",
+      "width": 1600,
+      "height": 480,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "ivory",
+      "bytes": 192096,
+      "sha256": "d13f05450ed924fedc78d2a8e9e2b8b9a4b0121c2d565f1a40271b674b5bc76b",
+      "purpose": "Root GitHub README hero; display at up to 100% width",
+      "alt": "Tisilia: .NET and TypeScript, connected down to what the types mean.",
+      "embeddedText": [
+        "EXACT TYPES. BRIGHTER IDEAS.",
+        "Tisilia",
+        ".NET + TypeScript",
+        "Connected down to what the types mean.",
+        "Exact values. Clear contracts. Never guessed."
+      ],
+      "sourceIds": [
+        "full",
+        "geometric-link"
+      ],
+      "maxBytesExclusive": 1000000,
+      "jpegQuality": 94
+    },
+    {
+      "path": "banners/readme-banner-dark.jpg",
+      "width": 1600,
+      "height": 480,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "dark charcoal",
+      "bytes": 195721,
+      "sha256": "39c181dc5b778a35b4744b4f82f45c945ff7fdd2ff79acbcb55860ca61307a1f",
+      "purpose": "Root GitHub README hero; display at up to 100% width",
+      "alt": "Tisilia: .NET and TypeScript, connected down to what the types mean.",
+      "embeddedText": [
+        "EXACT TYPES. BRIGHTER IDEAS.",
+        "Tisilia",
+        ".NET + TypeScript",
+        "Connected down to what the types mean.",
+        "Exact values. Clear contracts. Never guessed."
+      ],
+      "sourceIds": [
+        "full",
+        "geometric-link"
+      ],
+      "maxBytesExclusive": 1000000,
+      "jpegQuality": 94
+    },
+    {
+      "path": "banners/package-banner.jpg",
+      "width": 960,
+      "height": 240,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "ivory",
+      "bytes": 64674,
+      "sha256": "e7dc2a863579ed6b24f050c5444ee633a83fc2e2b2df59346266d1c91d4c4d1b",
+      "purpose": "Compact NuGet and npm README header, after public URL verification",
+      "alt": "Tisilia: .NET and TypeScript. Exact values. Clear contracts.",
+      "embeddedText": [
+        "Tisilia",
+        ".NET + TypeScript",
+        "Exact values. Clear contracts."
+      ],
+      "sourceIds": [
+        "full",
+        "geometric-link"
+      ],
+      "maxBytesExclusive": 350000,
+      "jpegQuality": 94
+    },
+    {
+      "path": "social/github-social-preview.jpg",
+      "width": 1280,
+      "height": 640,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "ivory",
+      "bytes": 214781,
+      "sha256": "bc32e6a37ff813af366e6cbc3c006f2925e12126eed190246932dac4b4f09e1f",
+      "purpose": "GitHub Settings > Social preview upload",
+      "alt": "Tisilia with its mascot, connecting .NET and TypeScript through exact values and clear contracts.",
+      "embeddedText": [
+        "BUILD WITH CONFIDENCE",
+        "Tisilia",
+        ".NET + TypeScript",
+        "Connected down to",
+        "what the types mean.",
+        "Exact values. Clear contracts."
+      ],
+      "sourceIds": [
+        "full",
+        "geometric-link"
+      ],
+      "maxBytesExclusive": 1000000,
+      "jpegQuality": 94
+    },
+    {
+      "path": "social/social-card.jpg",
+      "width": 1200,
+      "height": 630,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "ivory",
+      "bytes": 205967,
+      "sha256": "be9929bf40580b55f3775dc30324f33c15d62d3f640b33d57bd22e4120b75993",
+      "purpose": "Website Open Graph image or general link card",
+      "alt": "Tisilia with its mascot, connecting .NET and TypeScript through exact values and clear contracts.",
+      "embeddedText": [
+        "BUILD WITH CONFIDENCE",
+        "Tisilia",
+        ".NET + TypeScript",
+        "Connected down to",
+        "what the types mean.",
+        "Exact values. Clear contracts."
+      ],
+      "sourceIds": [
+        "full",
+        "geometric-link"
+      ],
+      "maxBytesExclusive": 1000000,
+      "jpegQuality": 94
+    },
+    {
+      "path": "social/release-card.jpg",
+      "width": 1600,
+      "height": 900,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "ivory",
+      "bytes": 251874,
+      "sha256": "3fc3d7253108250172149d96ded0e03556f7cbc0747931e5e13f33214e9bd106",
+      "purpose": "Release announcement artwork with a full-body mascot",
+      "alt": "Tisilia with its mascot, connecting .NET and TypeScript through exact values and clear contracts.",
+      "embeddedText": [
+        "BUILD WITH CONFIDENCE",
+        "Tisilia",
+        ".NET + TypeScript",
+        "Connected down to",
+        "what the types mean.",
+        "Exact values. Clear contracts."
+      ],
+      "sourceIds": [
+        "full",
+        "geometric-link"
+      ],
+      "maxBytesExclusive": 1000000,
+      "jpegQuality": 94
+    },
+    {
+      "path": "illustrations/mascot-full-light.jpg",
+      "width": 1024,
+      "height": 1536,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "#FFF9E9",
+      "bytes": 344354,
+      "sha256": "edaf22a45826d2dee0fb0f578516b053f004596437cd3b441d441ec191df95d3",
+      "purpose": "Full-body illustration for the product site, docs or release compositions",
+      "alt": "Tisilia-chan, the cheerful golden-haired Tisilia mascot with a blue-and-purple link accessory.",
+      "embeddedText": [],
+      "sourceIds": [
+        "full"
+      ],
+      "maxBytesExclusive": null,
+      "jpegQuality": 94
+    },
+    {
+      "path": "illustrations/mascot-docs-light.jpg",
+      "width": 640,
+      "height": 800,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "#FFF9E9",
+      "bytes": 233756,
+      "sha256": "cfaeed37452c6e2c9a146568d882cb3a63105f717cb36f9cc639cdadd392894f",
+      "purpose": "Documentation guide illustration; use at 220-320 CSS px width",
+      "alt": "Tisilia-chan, the cheerful golden-haired Tisilia mascot with a blue-and-purple link accessory.",
+      "embeddedText": [],
+      "sourceIds": [
+        "docs"
+      ],
+      "maxBytesExclusive": null,
+      "jpegQuality": 94
+    },
+    {
+      "path": "illustrations/mascot-chibi-light.jpg",
+      "width": 512,
+      "height": 512,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "#FFF9E9",
+      "bytes": 100866,
+      "sha256": "7a082b901b630573cbd4d5fb704028a843c323315cc45f69cfb5a9e79ff2e2bf",
+      "purpose": "Explorer welcome or empty-state illustration",
+      "alt": "Tisilia-chan, the cheerful golden-haired Tisilia mascot with a blue-and-purple link accessory.",
+      "embeddedText": [],
+      "sourceIds": [
+        "chibi"
+      ],
+      "maxBytesExclusive": null,
+      "jpegQuality": 94
+    },
+    {
+      "path": "illustrations/mascot-chibi-small-light.jpg",
+      "width": 160,
+      "height": 160,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "#FFF9E9",
+      "bytes": 15468,
+      "sha256": "ecdf6d88a4964b1e32464a11926a61570288285bd7bdbdabdab8ece0c18ab8ad",
+      "purpose": "Small UI decoration, no text or status meaning",
+      "alt": "Tisilia-chan, the cheerful golden-haired Tisilia mascot with a blue-and-purple link accessory.",
+      "embeddedText": [],
+      "sourceIds": [
+        "chibi"
+      ],
+      "maxBytesExclusive": null,
+      "jpegQuality": 94
+    },
+    {
+      "path": "illustrations/mascot-full-dark.jpg",
+      "width": 1024,
+      "height": 1536,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "#1B1C27",
+      "bytes": 346818,
+      "sha256": "c986862a39db5948341af9721bf9b98f160d0125be19d2e5458ada27cf4d04fd",
+      "purpose": "Full-body illustration for the product site, docs or release compositions",
+      "alt": "Tisilia-chan, the cheerful golden-haired Tisilia mascot with a blue-and-purple link accessory.",
+      "embeddedText": [],
+      "sourceIds": [
+        "full"
+      ],
+      "maxBytesExclusive": null,
+      "jpegQuality": 94
+    },
+    {
+      "path": "illustrations/mascot-docs-dark.jpg",
+      "width": 640,
+      "height": 800,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "#1B1C27",
+      "bytes": 239717,
+      "sha256": "e588be4f1d2d24b2512d6b0d9d067082d4e9c0b00c0af1485b70c56c983d1275",
+      "purpose": "Documentation guide illustration; use at 220-320 CSS px width",
+      "alt": "Tisilia-chan, the cheerful golden-haired Tisilia mascot with a blue-and-purple link accessory.",
+      "embeddedText": [],
+      "sourceIds": [
+        "docs"
+      ],
+      "maxBytesExclusive": null,
+      "jpegQuality": 94
+    },
+    {
+      "path": "illustrations/mascot-chibi-dark.jpg",
+      "width": 512,
+      "height": 512,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "#1B1C27",
+      "bytes": 103904,
+      "sha256": "b80f334c59a63a7c4b13480970caead776fa73365e27be6ab6607ebfe4414392",
+      "purpose": "Explorer welcome or empty-state illustration",
+      "alt": "Tisilia-chan, the cheerful golden-haired Tisilia mascot with a blue-and-purple link accessory.",
+      "embeddedText": [],
+      "sourceIds": [
+        "chibi"
+      ],
+      "maxBytesExclusive": null,
+      "jpegQuality": 94
+    },
+    {
+      "path": "illustrations/mascot-chibi-small-dark.jpg",
+      "width": 160,
+      "height": 160,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "#1B1C27",
+      "bytes": 16881,
+      "sha256": "d2e8db3d39617a733ede51027d8cea15d5c03ee154238d7d3e84d0c27922352c",
+      "purpose": "Small UI decoration, no text or status meaning",
+      "alt": "Tisilia-chan, the cheerful golden-haired Tisilia mascot with a blue-and-purple link accessory.",
+      "embeddedText": [],
+      "sourceIds": [
+        "chibi"
+      ],
+      "maxBytesExclusive": null,
+      "jpegQuality": 94
+    },
+    {
+      "path": "illustrations/mascot-docs-small.jpg",
+      "width": 176,
+      "height": 220,
+      "format": "JPEG",
+      "colorSpace": "sRGB",
+      "colorMode": "RGB",
+      "hasAlpha": false,
+      "background": "#FFF9E9",
+      "bytes": 28508,
+      "sha256": "8fa86b66927a0bb58059490b91f52f26a50ef642ae8721ee034d0e1a1d03d2e2",
+      "purpose": "Optional small standalone illustration for a package README instead of its banner",
+      "alt": "Tisilia-chan presenting a glowing contract panel.",
+      "embeddedText": [],
+      "sourceIds": [
+        "docs"
+      ],
+      "maxBytesExclusive": null,
+      "jpegQuality": 94
+    }
+  ]
+}

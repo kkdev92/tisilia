@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="../../../src/backend/Tisilia.AspNetCore/Tisilia.AspNetCore.csproj" />
+    <ProjectReference Include="../../../src/backend/Tisilia.Explorer/Tisilia.Explorer.csproj" />
+  </ItemGroup>
+</Project>

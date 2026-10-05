@@ -1,0 +1,60 @@
+{
+  "name": "@kkdev92/tisilia-runtime",
+  "version": "0.2.0-alpha",
+  "description": "The runtime of the TypeScript clients Tisilia generates from an ASP.NET Core API: a lossless JSON parser, exact codecs for the .NET values a JavaScript number cannot hold, and an HTTP pipeline that names every failure instead of throwing.",
+  "license": "MIT",
+  "author": {
+    "name": "kkdev92",
+    "url": "https://kkdev92.dev/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kkdev92/tisilia.git",
+    "directory": "src/frontend/runtime"
+  },
+  "homepage": "https://kkdev92.dev/",
+  "bugs": {
+    "url": "https://github.com/kkdev92/tisilia/issues"
+  },
+  "keywords": [
+    "tisilia",
+    "aspnetcore",
+    "typescript",
+    "client",
+    "json",
+    "lossless-json",
+    "decimal",
+    "int64",
+    "codec"
+  ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./conformance/runner": {
+      "types": "./dist/conformance/runner.d.ts",
+      "import": "./dist/conformance/runner.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
+  }
+}

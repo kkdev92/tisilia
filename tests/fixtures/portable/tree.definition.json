@@ -1,0 +1,35 @@
+{
+  "format": "tisilia.portable-definition",
+  "version": "0.3",
+  "id": "demo.portable.tree",
+  "definitionVersion": "1.0.0",
+  "clrType": "Demo.Portable.Tree",
+  "request": {
+    "domainTypeId": "demo.portable.Tree",
+    "projectionId": "tisilia.projection.identity@0.3",
+    "equivalenceId": "demo.portable.Tree.request",
+    "program": {
+      "op": "object",
+      "unknownMembers": "reject",
+      "members": [
+        { "name": "value", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.int32@0.3", "representation": "native" } },
+        { "name": "left", "presence": "required", "node": { "op": "nullable", "value": { "op": "ref", "definitionId": "demo.portable.tree" } } },
+        { "name": "children", "presence": "required", "node": { "op": "array", "element": { "op": "ref", "definitionId": "demo.portable.tree" } } }
+      ]
+    }
+  },
+  "response": {
+    "domainTypeId": "demo.portable.Tree",
+    "projectionId": "tisilia.projection.identity@0.3",
+    "equivalenceId": "demo.portable.Tree.response",
+    "program": {
+      "op": "object",
+      "unknownMembers": "reject",
+      "members": [
+        { "name": "value", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.int32@0.3", "representation": "native" } },
+        { "name": "left", "presence": "required", "node": { "op": "nullable", "value": { "op": "ref", "definitionId": "demo.portable.tree" } } },
+        { "name": "children", "presence": "required", "node": { "op": "array", "element": { "op": "ref", "definitionId": "demo.portable.tree" } } }
+      ]
+    }
+  }
+}

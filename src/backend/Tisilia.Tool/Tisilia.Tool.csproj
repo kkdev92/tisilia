@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PackageId>Kkdev92.Tisilia.Tool</PackageId>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>tisilia</ToolCommandName>
+    <Description>The Tisilia CLI: export an ASP.NET Core API's contract, generate and check its TypeScript client, compare contracts, and run the conformance suite.</Description>
+    <RootNamespace>Tisilia.Tool</RootNamespace>
+    <IsPackable>true</IsPackable>
+    <RollForward>LatestMajor</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tisilia.Generator\Tisilia.Generator.csproj" />
+  </ItemGroup>
+
+</Project>

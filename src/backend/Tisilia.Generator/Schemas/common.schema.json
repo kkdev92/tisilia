@@ -1,0 +1,2581 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tisilia.invalid/0.3/common.schema.json",
+  "title": "Tisilia 0.3 common normative definitions",
+  "$comment": "Reserved non-resolving identifier. Load the bundled schemas locally. Structural validation must be followed by semantic validation (SV01–SV54).",
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.:@/\\-]{0,159}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "requestIdentity": {
+      "type": "string",
+      "pattern": "^rid:(?:sha256|hmac-sha256):[a-f0-9]{64}$"
+    },
+    "safePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+    },
+    "impl": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "builtin"
+            },
+            "id": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "module"
+            },
+            "moduleId": {
+              "$ref": "#/$defs/id"
+            },
+            "exportName": {
+              "type": "string",
+              "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$"
+            }
+          },
+          "required": [
+            "kind",
+            "moduleId",
+            "exportName"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "jsonValue": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "null"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "boolean"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "string"
+            },
+            "value": {
+              "type": "string",
+              "minLength": 0
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "number"
+            },
+            "text": {
+              "type": "string",
+              "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+\\-]?[0-9]+)?$",
+              "maxLength": 4096
+            }
+          },
+          "required": [
+            "kind",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "array"
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/jsonValue"
+              },
+              "minItems": 0
+            }
+          },
+          "required": [
+            "kind",
+            "items"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "object"
+            },
+            "entries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 0
+                  },
+                  "value": {
+                    "$ref": "#/$defs/jsonValue"
+                  }
+                },
+                "required": [
+                  "name",
+                  "value"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 0
+            }
+          },
+          "required": [
+            "kind",
+            "entries"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "typeUse": {
+      "type": "object",
+      "properties": {
+        "typeId": {
+          "$ref": "#/$defs/id"
+        },
+        "codecId": {
+          "$ref": "#/$defs/id"
+        },
+        "semanticNullable": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "typeId",
+        "codecId",
+        "semanticNullable"
+      ],
+      "additionalProperties": false
+    },
+    "wireRef": {
+      "type": "object",
+      "properties": {
+        "wireId": {
+          "$ref": "#/$defs/id"
+        },
+        "direction": {
+          "enum": [
+            "server-read",
+            "server-write"
+          ]
+        }
+      },
+      "required": [
+        "wireId",
+        "direction"
+      ],
+      "additionalProperties": false
+    },
+    "presence": {
+      "enum": [
+        "required",
+        "optional"
+      ]
+    },
+    "domainProperty": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 0
+        },
+        "use": {
+          "$ref": "#/$defs/typeUse"
+        },
+        "presence": {
+          "$ref": "#/$defs/presence"
+        }
+      },
+      "required": [
+        "name",
+        "use",
+        "presence"
+      ],
+      "additionalProperties": false
+    },
+    "extension": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "none"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "capture"
+            },
+            "value": {
+              "$ref": "#/$defs/typeUse"
+            },
+            "collision": {
+              "const": "reject"
+            }
+          },
+          "required": [
+            "kind",
+            "value",
+            "collision"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "domainShape": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "primitive"
+            },
+            "primitiveId": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": [
+            "kind",
+            "primitiveId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "enum"
+            },
+            "underlyingPrimitiveId": {
+              "$ref": "#/$defs/id"
+            },
+            "flags": {
+              "type": "boolean"
+            },
+            "allowUndefinedInteger": {
+              "type": "boolean"
+            },
+            "members": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "value": {
+                    "type": "string",
+                    "pattern": "^-?(?:0|[1-9][0-9]*)$"
+                  },
+                  "serializedName": {
+                    "type": "string",
+                    "minLength": 0
+                  }
+                },
+                "required": [
+                  "name",
+                  "value"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "kind",
+            "underlyingPrimitiveId",
+            "flags",
+            "allowUndefinedInteger",
+            "members"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "object"
+            },
+            "properties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/domainProperty"
+              },
+              "minItems": 0
+            },
+            "extension": {
+              "$ref": "#/$defs/extension"
+            }
+          },
+          "required": [
+            "kind",
+            "properties",
+            "extension"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "array"
+            },
+            "element": {
+              "$ref": "#/$defs/typeUse"
+            }
+          },
+          "required": [
+            "kind",
+            "element"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "map"
+            },
+            "key": {
+              "$ref": "#/$defs/typeUse"
+            },
+            "value": {
+              "$ref": "#/$defs/typeUse"
+            },
+            "comparerId": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": [
+            "kind",
+            "key",
+            "value",
+            "comparerId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "brand"
+            },
+            "brandId": {
+              "$ref": "#/$defs/id"
+            },
+            "base": {
+              "$ref": "#/$defs/typeUse"
+            }
+          },
+          "required": [
+            "kind",
+            "brandId",
+            "base"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "union"
+            },
+            "variants": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "tag": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "use": {
+                    "$ref": "#/$defs/typeUse"
+                  }
+                },
+                "required": [
+                  "tag",
+                  "use"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "kind",
+            "variants"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "model": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "tsName": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$"
+        },
+        "clrIdentity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "shape": {
+          "$ref": "#/$defs/domainShape"
+        }
+      },
+      "required": [
+        "id",
+        "tsName",
+        "clrIdentity",
+        "shape"
+      ],
+      "additionalProperties": false
+    },
+    "wireShape": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "literal"
+            },
+            "value": {
+              "$ref": "#/$defs/jsonValue"
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "null"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "boolean"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "string"
+            },
+            "grammarId": {
+              "$ref": "#/$defs/id"
+            },
+            "minUtf16Length": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxUtf16Length": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "kind",
+            "grammarId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "number"
+            },
+            "grammarId": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": [
+            "kind",
+            "grammarId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "array"
+            },
+            "element": {
+              "$ref": "#/$defs/wireRef"
+            }
+          },
+          "required": [
+            "kind",
+            "element"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "object"
+            },
+            "properties": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 0
+                  },
+                  "wire": {
+                    "$ref": "#/$defs/wireRef"
+                  },
+                  "presence": {
+                    "$ref": "#/$defs/presence"
+                  }
+                },
+                "required": [
+                  "name",
+                  "wire",
+                  "presence"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 0
+            },
+            "additional": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "reject"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "ignore"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "const": "capture"
+                    },
+                    "wire": {
+                      "$ref": "#/$defs/wireRef"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "wire"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "duplicatePolicyId": {
+              "$ref": "#/$defs/id"
+            },
+            "nameMatchingId": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": [
+            "kind",
+            "properties",
+            "additional",
+            "duplicatePolicyId",
+            "nameMatchingId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "token-union"
+            },
+            "branches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "enum": [
+                      "null",
+                      "boolean",
+                      "number",
+                      "string",
+                      "array",
+                      "object"
+                    ]
+                  },
+                  "wire": {
+                    "$ref": "#/$defs/wireRef"
+                  }
+                },
+                "required": [
+                  "token",
+                  "wire"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 2
+            }
+          },
+          "required": [
+            "kind",
+            "branches"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "tagged-union"
+            },
+            "discriminator": {
+              "type": "string",
+              "minLength": 1
+            },
+            "variants": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "tag": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "string"
+                          },
+                          "value": {
+                            "type": "string",
+                            "minLength": 0
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "value"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "const": "number"
+                          },
+                          "text": {
+                            "type": "string",
+                            "pattern": "^-?(0|[1-9][0-9]*)$"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "text"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "wire": {
+                    "$ref": "#/$defs/wireRef"
+                  }
+                },
+                "required": [
+                  "tag",
+                  "wire"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "kind",
+            "discriminator",
+            "variants"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "lossless-json"
+            },
+            "grammarId": {
+              "const": "tisilia.json-rfc8259@0.3"
+            }
+          },
+          "required": [
+            "kind",
+            "grammarId"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "wire": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "direction": {
+          "enum": [
+            "server-read",
+            "server-write"
+          ]
+        },
+        "shape": {
+          "$ref": "#/$defs/wireShape"
+        }
+      },
+      "required": [
+        "id",
+        "direction",
+        "shape"
+      ],
+      "additionalProperties": false
+    },
+    "nullBehavior": {
+      "enum": [
+        "reject",
+        "bypass",
+        "converter"
+      ]
+    },
+    "valueCapability": {
+      "type": "object",
+      "properties": {
+        "wire": {
+          "$ref": "#/$defs/wireRef"
+        },
+        "implementation": {
+          "$ref": "#/$defs/impl"
+        },
+        "nullBehavior": {
+          "$ref": "#/$defs/nullBehavior"
+        },
+        "equivalenceId": {
+          "$ref": "#/$defs/id"
+        },
+        "domainRuleId": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "wire",
+        "implementation",
+        "nullBehavior",
+        "equivalenceId",
+        "domainRuleId"
+      ],
+      "additionalProperties": false
+    },
+    "keyCapability": {
+      "type": "object",
+      "properties": {
+        "implementation": {
+          "$ref": "#/$defs/impl"
+        },
+        "grammarId": {
+          "$ref": "#/$defs/id"
+        },
+        "equivalenceId": {
+          "$ref": "#/$defs/id"
+        },
+        "collision": {
+          "const": "reject"
+        }
+      },
+      "required": [
+        "implementation",
+        "grammarId",
+        "equivalenceId",
+        "collision"
+      ],
+      "additionalProperties": false
+    },
+    "inputCapability": {
+      "type": "object",
+      "properties": {
+        "implementation": {
+          "$ref": "#/$defs/impl"
+        },
+        "inputKind": {
+          "enum": [
+            "text",
+            "json-value"
+          ]
+        },
+        "editorId": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "implementation",
+        "inputKind",
+        "editorId"
+      ],
+      "additionalProperties": false
+    },
+    "capabilities": {
+      "type": "object",
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/valueCapability"
+        },
+        "response": {
+          "$ref": "#/$defs/valueCapability"
+        },
+        "requestKey": {
+          "$ref": "#/$defs/keyCapability"
+        },
+        "responseKey": {
+          "$ref": "#/$defs/keyCapability"
+        },
+        "requestInput": {
+          "$ref": "#/$defs/inputCapability"
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "codec": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "typeId": {
+          "$ref": "#/$defs/id"
+        },
+        "origin": {
+          "enum": [
+            "builtin",
+            "portable",
+            "paired"
+          ]
+        },
+        "bindingId": {
+          "$ref": "#/$defs/id"
+        },
+        "validateDomain": {
+          "$ref": "#/$defs/impl"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0
+        },
+        "profileIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "typeId",
+        "origin",
+        "bindingId",
+        "validateDomain",
+        "capabilities",
+        "dependencies",
+        "profileIds"
+      ],
+      "additionalProperties": false
+    },
+    "behavior": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "constructor",
+            "initializer",
+            "setter",
+            "getter",
+            "callback",
+            "should-serialize",
+            "populate",
+            "nested-options",
+            "sourcegen-handler",
+            "other"
+          ]
+        },
+        "effect": {
+          "enum": [
+            "identity",
+            "normalized",
+            "opaque"
+          ]
+        },
+        "implementation": {
+          "$ref": "#/$defs/impl"
+        },
+        "projectionId": {
+          "$ref": "#/$defs/id"
+        },
+        "settingsDigest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "effect",
+        "implementation",
+        "settingsDigest"
+      ],
+      "additionalProperties": false
+    },
+    "stjOptions": {
+      "type": "object",
+      "properties": {
+        "propertyNameCaseInsensitive": {
+          "type": "boolean"
+        },
+        "propertyNamingPolicyId": {
+          "$ref": "#/$defs/id"
+        },
+        "dictionaryKeyPolicyId": {
+          "$ref": "#/$defs/id"
+        },
+        "encoderId": {
+          "$ref": "#/$defs/id"
+        },
+        "numberHandling": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "AllowReadingFromString",
+              "WriteAsString",
+              "AllowNamedFloatingPointLiterals"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "defaultIgnoreCondition": {
+          "enum": [
+            "Never",
+            "WhenWritingDefault",
+            "WhenWritingNull",
+            "WhenWriting",
+            "WhenReading"
+          ]
+        },
+        "ignoreNullValues": {
+          "type": "boolean"
+        },
+        "ignoreReadOnlyProperties": {
+          "type": "boolean"
+        },
+        "ignoreReadOnlyFields": {
+          "type": "boolean"
+        },
+        "includeFields": {
+          "type": "boolean"
+        },
+        "respectNullableAnnotations": {
+          "type": "boolean"
+        },
+        "respectRequiredConstructorParameters": {
+          "type": "boolean"
+        },
+        "allowDuplicateProperties": {
+          "type": "boolean"
+        },
+        "allowOutOfOrderMetadataProperties": {
+          "type": "boolean"
+        },
+        "allowTrailingCommas": {
+          "type": "boolean"
+        },
+        "readCommentHandling": {
+          "enum": [
+            "Disallow",
+            "Skip"
+          ]
+        },
+        "maxDepthRaw": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "maxDepthEffective": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "preferredObjectCreationHandling": {
+          "enum": [
+            "Replace",
+            "Populate"
+          ]
+        },
+        "unmappedMemberHandling": {
+          "enum": [
+            "Skip",
+            "Disallow"
+          ]
+        },
+        "referenceHandling": {
+          "enum": [
+            "None",
+            "IgnoreCycles",
+            "Preserve"
+          ]
+        },
+        "resolverIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0
+        },
+        "converterBindingIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "propertyNameCaseInsensitive",
+        "propertyNamingPolicyId",
+        "dictionaryKeyPolicyId",
+        "encoderId",
+        "numberHandling",
+        "defaultIgnoreCondition",
+        "ignoreNullValues",
+        "ignoreReadOnlyProperties",
+        "ignoreReadOnlyFields",
+        "includeFields",
+        "respectNullableAnnotations",
+        "respectRequiredConstructorParameters",
+        "allowDuplicateProperties",
+        "allowOutOfOrderMetadataProperties",
+        "allowTrailingCommas",
+        "readCommentHandling",
+        "maxDepthRaw",
+        "maxDepthEffective",
+        "preferredObjectCreationHandling",
+        "unmappedMemberHandling",
+        "referenceHandling",
+        "resolverIds",
+        "converterBindingIds"
+      ],
+      "additionalProperties": false
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "type",
+            "member",
+            "constructor-parameter"
+          ]
+        },
+        "clrPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "readCodecId": {
+          "$ref": "#/$defs/id"
+        },
+        "writeCodecId": {
+          "$ref": "#/$defs/id"
+        },
+        "readRequired": {
+          "type": "boolean"
+        },
+        "getterNullable": {
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ]
+        },
+        "setterNullable": {
+          "enum": [
+            "yes",
+            "no",
+            "unknown"
+          ]
+        },
+        "effectiveObjectCreationHandling": {
+          "enum": [
+            "Replace",
+            "Populate"
+          ]
+        },
+        "effectiveIgnoreCondition": {
+          "enum": [
+            "Never",
+            "Always",
+            "WhenWritingDefault",
+            "WhenWritingNull",
+            "WhenWriting",
+            "WhenReading"
+          ]
+        },
+        "behaviorIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "clrPath",
+        "readRequired",
+        "getterNullable",
+        "setterNullable",
+        "effectiveObjectCreationHandling",
+        "effectiveIgnoreCondition",
+        "behaviorIds"
+      ],
+      "additionalProperties": false
+    },
+    "profile": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "dotnetVersion": {
+          "$ref": "#/$defs/version"
+        },
+        "stjVersion": {
+          "$ref": "#/$defs/version"
+        },
+        "mode": {
+          "enum": [
+            "reflection",
+            "sourcegen-metadata",
+            "sourcegen-fast-path"
+          ]
+        },
+        "options": {
+          "$ref": "#/$defs/stjOptions"
+        },
+        "scopes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scope"
+          },
+          "minItems": 0
+        },
+        "behaviors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/behavior"
+          },
+          "minItems": 0
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "id",
+        "dotnetVersion",
+        "stjVersion",
+        "mode",
+        "options",
+        "scopes",
+        "behaviors",
+        "fingerprint"
+      ],
+      "additionalProperties": false
+    },
+    "projection": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "sourceTypeId": {
+          "$ref": "#/$defs/id"
+        },
+        "targetTypeId": {
+          "$ref": "#/$defs/id"
+        },
+        "dotnetImplementation": {
+          "$ref": "#/$defs/impl"
+        },
+        "typescriptImplementation": {
+          "$ref": "#/$defs/impl"
+        },
+        "preserved": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "notPreserved": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "sourceTypeId",
+        "targetTypeId",
+        "dotnetImplementation",
+        "typescriptImplementation",
+        "preserved",
+        "notPreserved"
+      ],
+      "additionalProperties": false
+    },
+    "equivalence": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "domainTypeId": {
+          "$ref": "#/$defs/id"
+        },
+        "scope": {
+          "enum": [
+            "request",
+            "response",
+            "key",
+            "round-trip"
+          ]
+        },
+        "grade": {
+          "enum": [
+            "G1",
+            "G2",
+            "G3"
+          ]
+        },
+        "domainRuleId": {
+          "$ref": "#/$defs/id"
+        },
+        "projectionId": {
+          "$ref": "#/$defs/id"
+        },
+        "dotnetOracle": {
+          "$ref": "#/$defs/impl"
+        },
+        "typescriptOracle": {
+          "$ref": "#/$defs/impl"
+        },
+        "normalizationId": {
+          "$ref": "#/$defs/id"
+        },
+        "preserved": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        },
+        "notPreserved": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "domainTypeId",
+        "scope",
+        "grade",
+        "domainRuleId",
+        "dotnetOracle",
+        "typescriptOracle",
+        "normalizationId",
+        "preserved",
+        "notPreserved"
+      ],
+      "additionalProperties": false
+    },
+    "binding": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "converter",
+            "factory",
+            "binder",
+            "result",
+            "behavior",
+            "domain-rule",
+            "normalization",
+            "pipeline",
+            "comparer",
+            "auth-policy",
+            "csrf-policy",
+            "grammar",
+            "name-matching",
+            "duplicate-policy",
+            "editor",
+            "naming-policy",
+            "encoder",
+            "resolver",
+            "server-acceptance"
+          ]
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "implementation": {
+          "$ref": "#/$defs/impl"
+        },
+        "settingsDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "dependencyIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0
+        },
+        "context": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value": {
+                "type": "string",
+                "minLength": 0
+              },
+              "confidential": {
+                "const": false
+              }
+            },
+            "required": [
+              "name",
+              "value",
+              "confidential"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "version",
+        "implementation",
+        "settingsDigest",
+        "dependencyIds",
+        "context"
+      ],
+      "additionalProperties": false
+    },
+    "comparer": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "bindingId": {
+          "$ref": "#/$defs/id"
+        },
+        "equivalenceId": {
+          "$ref": "#/$defs/id"
+        },
+        "collision": {
+          "const": "reject"
+        }
+      },
+      "required": [
+        "id",
+        "bindingId",
+        "equivalenceId",
+        "collision"
+      ],
+      "additionalProperties": false
+    },
+    "binder": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "bindingId": {
+          "$ref": "#/$defs/id"
+        },
+        "location": {
+          "enum": [
+            "path",
+            "query",
+            "header"
+          ]
+        },
+        "typeId": {
+          "$ref": "#/$defs/id"
+        },
+        "implementation": {
+          "$ref": "#/$defs/impl"
+        },
+        "cardinality": {
+          "enum": [
+            "single",
+            "repeated"
+          ]
+        },
+        "nullPolicy": {
+          "enum": [
+            "reject",
+            "omit",
+            "literal"
+          ]
+        },
+        "nullLiteral": {
+          "type": "string",
+          "minLength": 0
+        },
+        "emptyPolicy": {
+          "enum": [
+            "reject",
+            "allow"
+          ]
+        },
+        "encoding": {
+          "enum": [
+            "path-segment",
+            "query-component",
+            "header-text"
+          ]
+        },
+        "grammarId": {
+          "$ref": "#/$defs/id"
+        },
+        "normalizationId": {
+          "$ref": "#/$defs/id"
+        },
+        "serverAcceptanceId": {
+          "$ref": "#/$defs/id"
+        },
+        "orderSensitive": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "bindingId",
+        "location",
+        "typeId",
+        "implementation",
+        "cardinality",
+        "nullPolicy",
+        "emptyPolicy",
+        "encoding",
+        "grammarId",
+        "normalizationId",
+        "serverAcceptanceId",
+        "orderSensitive"
+      ],
+      "additionalProperties": false
+    },
+    "resultAdapter": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "bindingId": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "minimal-json",
+            "minimal-result",
+            "mvc-object",
+            "mvc-json",
+            "bodyless",
+            "text",
+            "custom"
+          ]
+        },
+        "implementation": {
+          "$ref": "#/$defs/impl"
+        },
+        "profileIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0
+        },
+        "behaviorIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "bindingId",
+        "kind",
+        "implementation",
+        "profileIds",
+        "behaviorIds"
+      ],
+      "additionalProperties": false
+    },
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "location": {
+          "enum": [
+            "path",
+            "query",
+            "header"
+          ]
+        },
+        "binderId": {
+          "$ref": "#/$defs/id"
+        },
+        "use": {
+          "$ref": "#/$defs/typeUse"
+        },
+        "presence": {
+          "$ref": "#/$defs/presence"
+        },
+        "serverDefault": {
+          "$ref": "#/$defs/jsonValue"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "location",
+        "binderId",
+        "use",
+        "presence"
+      ],
+      "additionalProperties": false
+    },
+    "jsonBody": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "json"
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "profileId": {
+          "$ref": "#/$defs/id"
+        },
+        "use": {
+          "$ref": "#/$defs/typeUse"
+        }
+      },
+      "required": [
+        "kind",
+        "mediaType",
+        "profileId",
+        "use"
+      ],
+      "additionalProperties": false
+    },
+    "responseBody": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "none"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/jsonBody"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "text"
+            },
+            "mediaType": {
+              "type": "string",
+              "minLength": 1
+            },
+            "use": {
+              "$ref": "#/$defs/typeUse"
+            }
+          },
+          "required": [
+            "kind",
+            "mediaType",
+            "use"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "requestBody": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "none"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "json"
+            },
+            "mediaType": {
+              "type": "string",
+              "minLength": 1
+            },
+            "profileId": {
+              "$ref": "#/$defs/id"
+            },
+            "use": {
+              "$ref": "#/$defs/typeUse"
+            },
+            "presence": {
+              "$ref": "#/$defs/presence"
+            }
+          },
+          "required": [
+            "kind",
+            "mediaType",
+            "profileId",
+            "use",
+            "presence"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "response": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 200,
+          "maximum": 599
+        },
+        "body": {
+          "$ref": "#/$defs/responseBody"
+        },
+        "resultAdapterId": {
+          "$ref": "#/$defs/id"
+        },
+        "hydration": {
+          "enum": [
+            "server-only",
+            "browser-safe"
+          ]
+        },
+        "exposedHeaders": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "body",
+        "resultAdapterId",
+        "hydration",
+        "exposedHeaders"
+      ],
+      "additionalProperties": false
+    },
+    "selectorSegment": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "property": {
+              "type": "string",
+              "minLength": 0
+            }
+          },
+          "required": [
+            "property"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "index": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "index"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "each": {
+              "const": true
+            }
+          },
+          "required": [
+            "each"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "selector": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "enum": [
+                "header",
+                "query",
+                "path"
+              ]
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "kind",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "body-path"
+            },
+            "segments": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/selectorSegment"
+              },
+              "minItems": 0
+            }
+          },
+          "required": [
+            "kind",
+            "segments"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "redaction": {
+      "type": "object",
+      "properties": {
+        "default": {
+          "const": "mask"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "direction": {
+                "enum": [
+                  "request",
+                  "response"
+                ]
+              },
+              "selector": {
+                "$ref": "#/$defs/selector"
+              },
+              "action": {
+                "enum": [
+                  "mask",
+                  "omit",
+                  "show"
+                ]
+              }
+            },
+            "required": [
+              "direction",
+              "selector",
+              "action"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "default",
+        "rules"
+      ],
+      "additionalProperties": false
+    },
+    "security": {
+      "type": "object",
+      "properties": {
+        "authPolicyId": {
+          "$ref": "#/$defs/id"
+        },
+        "requestExecution": {
+          "enum": [
+            "browser-allowed",
+            "server-only"
+          ]
+        },
+        "redaction": {
+          "$ref": "#/$defs/redaction"
+        },
+        "requestHeaderAllowlist": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0
+        },
+        "csrfPolicyId": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "authPolicyId",
+        "requestExecution",
+        "redaction",
+        "requestHeaderAllowlist",
+        "csrfPolicyId"
+      ],
+      "additionalProperties": false
+    },
+    "operation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "method": {
+          "enum": [
+            "GET",
+            "HEAD",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+            "OPTIONS"
+          ]
+        },
+        "route": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/parameter"
+          },
+          "minItems": 0
+        },
+        "requestBody": {
+          "$ref": "#/$defs/requestBody"
+        },
+        "responses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/response"
+          },
+          "minItems": 1
+        },
+        "pipelineBindingIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0
+        },
+        "security": {
+          "$ref": "#/$defs/security"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "route",
+        "tags",
+        "parameters",
+        "requestBody",
+        "responses",
+        "pipelineBindingIds",
+        "security"
+      ],
+      "additionalProperties": false
+    },
+    "identifiedArtifact": {
+      "type": "object",
+      "properties": {
+        "moduleId": {
+          "$ref": "#/$defs/id"
+        },
+        "artifact": {
+          "$ref": "#/$defs/artifact"
+        }
+      },
+      "required": [
+        "moduleId",
+        "artifact"
+      ],
+      "additionalProperties": false
+    },
+    "moduleExport": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$"
+        },
+        "role": {
+          "enum": [
+            "codec",
+            "key-codec",
+            "request-input",
+            "validator",
+            "oracle",
+            "projection",
+            "binder",
+            "result",
+            "behavior",
+            "domain-rule",
+            "normalization",
+            "comparer",
+            "grammar",
+            "name-matching",
+            "duplicate-policy",
+            "editor",
+            "naming-policy",
+            "encoder",
+            "resolver",
+            "server-acceptance",
+            "pipeline",
+            "auth-policy",
+            "csrf-policy"
+          ]
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "dotnet",
+              "node",
+              "browser"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "name",
+        "role",
+        "targets"
+      ],
+      "additionalProperties": false
+    },
+    "artifact": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "enum": [
+            "dotnet",
+            "node",
+            "browser"
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/safePath"
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        }
+      },
+      "required": [
+        "target",
+        "path",
+        "digest"
+      ],
+      "additionalProperties": false
+    },
+    "module": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "abi": {
+          "const": "0.3"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/artifact"
+          },
+          "minItems": 1
+        },
+        "exports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/moduleExport"
+          },
+          "minItems": 1
+        },
+        "dependencyIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1
+        },
+        "noticeFiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/safePath"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "abi",
+        "artifacts",
+        "exports",
+        "dependencyIds",
+        "license",
+        "noticeFiles"
+      ],
+      "additionalProperties": false
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "maxBodyBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maxDepth": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "maxTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "maxNumberCharacters": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "maxDiagnosticBytes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "maxBodyBytes",
+        "maxDepth",
+        "maxTokens",
+        "maxNumberCharacters",
+        "timeoutMs",
+        "maxDiagnosticBytes"
+      ],
+      "additionalProperties": false
+    },
+    "runtimeMatrix": {
+      "type": "object",
+      "properties": {
+        "dotnet": {
+          "$ref": "#/$defs/version"
+        },
+        "aspnetcore": {
+          "$ref": "#/$defs/version"
+        },
+        "stj": {
+          "$ref": "#/$defs/version"
+        },
+        "typescript": {
+          "$ref": "#/$defs/version"
+        },
+        "node": {
+          "$ref": "#/$defs/version"
+        },
+        "nuxt": {
+          "$ref": "#/$defs/version"
+        },
+        "os": {
+          "type": "string",
+          "minLength": 1
+        },
+        "architecture": {
+          "type": "string",
+          "minLength": 1
+        },
+        "browserName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "browserVersion": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "dotnet",
+        "aspnetcore",
+        "stj",
+        "typescript",
+        "os",
+        "architecture"
+      ],
+      "additionalProperties": false
+    },
+    "program": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "scalar"
+            },
+            "scalarId": {
+              "$ref": "#/$defs/id"
+            },
+            "representation": {
+              "enum": [
+                "native",
+                "string"
+              ]
+            }
+          },
+          "required": [
+            "op",
+            "scalarId",
+            "representation"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "ref"
+            },
+            "definitionId": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": [
+            "op",
+            "definitionId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "nullable"
+            },
+            "value": {
+              "$ref": "#/$defs/program"
+            }
+          },
+          "required": [
+            "op",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "array"
+            },
+            "element": {
+              "$ref": "#/$defs/program"
+            }
+          },
+          "required": [
+            "op",
+            "element"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "object"
+            },
+            "members": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "presence": {
+                    "$ref": "#/$defs/presence"
+                  },
+                  "node": {
+                    "$ref": "#/$defs/program"
+                  }
+                },
+                "required": [
+                  "name",
+                  "presence",
+                  "node"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 0
+            },
+            "unknownMembers": {
+              "enum": [
+                "reject",
+                "ignore"
+              ]
+            }
+          },
+          "required": [
+            "op",
+            "members",
+            "unknownMembers"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "token-union"
+            },
+            "branches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "enum": [
+                      "null",
+                      "boolean",
+                      "number",
+                      "string",
+                      "array",
+                      "object"
+                    ]
+                  },
+                  "node": {
+                    "$ref": "#/$defs/program"
+                  }
+                },
+                "required": [
+                  "token",
+                  "node"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 2
+            }
+          },
+          "required": [
+            "op",
+            "branches"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "op": {
+              "const": "tagged-union"
+            },
+            "discriminator": {
+              "type": "string",
+              "minLength": 1
+            },
+            "branches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "tag": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "node": {
+                    "$ref": "#/$defs/program"
+                  }
+                },
+                "required": [
+                  "tag",
+                  "node"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "op",
+            "discriminator",
+            "branches"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "portableDirection": {
+      "type": "object",
+      "properties": {
+        "domainTypeId": {
+          "$ref": "#/$defs/id"
+        },
+        "program": {
+          "$ref": "#/$defs/program"
+        },
+        "projectionId": {
+          "$ref": "#/$defs/id"
+        },
+        "equivalenceId": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "domainTypeId",
+        "program",
+        "projectionId",
+        "equivalenceId"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

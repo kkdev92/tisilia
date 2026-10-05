@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tisilia.invalid/0.3/request-identity-record.schema.json",
+  "title": "Tisilia Nuxt Request Identity Hash Input 0.3",
+  "$comment": "Draft 0.3. Structure only: semantic validation (SV01–SV54) runs after it.",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "tisilia.request-identity-record"
+    },
+    "version": {
+      "const": "0.3"
+    },
+    "operationId": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "method": {
+      "enum": [
+        "GET",
+        "HEAD",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "OPTIONS"
+      ]
+    },
+    "encodedPath": {
+      "type": "string",
+      "pattern": "^/"
+    },
+    "queryEntries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 0
+          },
+          "value": {
+            "type": "string",
+            "minLength": 0
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    },
+    "selectedHeaderEntries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": "string",
+            "minLength": 0
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    },
+    "bodyKind": {
+      "enum": [
+        "none",
+        "json"
+      ]
+    },
+    "bodyText": {
+      "type": "string",
+      "minLength": 0
+    },
+    "semanticHash": {
+      "$ref": "common.schema.json#/$defs/digest"
+    },
+    "scopeNonce": {
+      "type": "string",
+      "minLength": 16
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "operationId",
+    "method",
+    "encodedPath",
+    "queryEntries",
+    "selectedHeaderEntries",
+    "bodyKind",
+    "bodyText",
+    "semanticHash",
+    "scopeNonce"
+  ],
+  "additionalProperties": false
+}

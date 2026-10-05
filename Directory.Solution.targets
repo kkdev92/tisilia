@@ -1,0 +1,25 @@
+<Project>
+
+  <!--
+    NuGetAudit runs during restore, but a project that is skipped for any reason is audited silently as "not audited" rather
+    than "clean". This asserts that every project in the solution was either audited or deliberately skipped, so a gap shows
+    up as a build failure instead of a false all-clear.
+
+    It has to live in Directory.Solution.targets: NuGet's restore task runs at the solution level, so in a
+    Directory.Build.props it would be imported per project, where these counters are not set.
+
+    RestoreSkippedCount has to be added in. A restore that finds everything up to date audits nothing and skips everything,
+    which without it would fail every incremental build.
+
+    The counters arrived in MSBuild 17.13 / .NET SDK 9.0.200 and are not set by static graph restore. If any of them is
+    missing, the first check fails the build and says so, rather than leaving the audit unverified.
+  -->
+  <Target Name="AssertRestoreAuditedEveryProject" AfterTargets="Restore" Condition="'$(CI)' == 'true'">
+    <Error Condition="'$(RestoreProjectCount)' == '' or '$(RestoreProjectsAuditedCount)' == '' or '$(RestoreSkippedCount)' == ''"
+           Text="Restore did not report its audit counters, so auditing every project cannot be verified. Static graph restore does not set them." />
+
+    <Error Condition="'$(RestoreProjectCount)' != '$([MSBuild]::Add($(RestoreProjectsAuditedCount), $(RestoreSkippedCount)))'"
+           Text="Restore audited $(RestoreProjectsAuditedCount) and skipped $(RestoreSkippedCount) of $(RestoreProjectCount) projects. Every project must be audited or skipped." />
+  </Target>
+
+</Project>

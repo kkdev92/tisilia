@@ -1,0 +1,386 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tisilia.invalid/0.4/http.schema.json",
+  "title": "Tisilia HTTP contract definitions 0.4",
+  "$comment": "Changed HTTP definitions only. Unchanged codec/control definitions retain their immutable 0.3 schema.",
+  "$defs": {
+    "operation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/id"
+        },
+        "method": {
+          "enum": [
+            "GET",
+            "HEAD",
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+            "OPTIONS"
+          ]
+        },
+        "route": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/parameter"
+          },
+          "minItems": 0
+        },
+        "requestBody": {
+          "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/requestBody"
+        },
+        "responses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/response"
+          },
+          "minItems": 1
+        },
+        "pipelineBindingIds": {
+          "type": "array",
+          "items": {
+            "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/id"
+          },
+          "minItems": 0
+        },
+        "security": {
+          "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/security"
+        },
+        "routePlan": {
+          "$ref": "#/$defs/routePlan"
+        }
+      },
+      "required": [
+        "id",
+        "method",
+        "route",
+        "tags",
+        "parameters",
+        "requestBody",
+        "responses",
+        "pipelineBindingIds",
+        "security",
+        "routePlan"
+      ],
+      "additionalProperties": false
+    },
+    "parameter": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/id"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "location": {
+          "enum": [
+            "path",
+            "query",
+            "header"
+          ]
+        },
+        "binderId": {
+          "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/id"
+        },
+        "use": {
+          "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/typeUse"
+        },
+        "presence": {
+          "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/presence"
+        },
+        "serverDefault": {
+          "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/jsonValue"
+        },
+        "hasServerDefault": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "location",
+        "binderId",
+        "use",
+        "presence"
+      ],
+      "additionalProperties": false
+    },
+    "responseBody": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "none"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/jsonBody"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "text"
+            },
+            "mediaType": {
+              "type": "string",
+              "minLength": 1
+            },
+            "use": {
+              "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/typeUse"
+            }
+          },
+          "required": [
+            "kind",
+            "mediaType",
+            "use"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "binary"
+            },
+            "mediaType": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "kind",
+            "mediaType"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "response": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/id"
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 200,
+          "maximum": 599
+        },
+        "body": {
+          "$ref": "#/$defs/responseBody"
+        },
+        "resultAdapterId": {
+          "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/id"
+        },
+        "hydration": {
+          "enum": [
+            "server-only",
+            "browser-safe"
+          ]
+        },
+        "exposedHeaders": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "body",
+        "resultAdapterId",
+        "hydration",
+        "exposedHeaders"
+      ],
+      "additionalProperties": false
+    },
+    "resultAdapter": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/id"
+        },
+        "bindingId": {
+          "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "minimal-json",
+            "minimal-result",
+            "mvc-object",
+            "mvc-json",
+            "bodyless",
+            "text",
+            "custom",
+            "binary"
+          ]
+        },
+        "implementation": {
+          "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/impl"
+        },
+        "profileIds": {
+          "type": "array",
+          "items": {
+            "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/id"
+          },
+          "minItems": 0
+        },
+        "behaviorIds": {
+          "type": "array",
+          "items": {
+            "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/id"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "id",
+        "bindingId",
+        "kind",
+        "implementation",
+        "profileIds",
+        "behaviorIds"
+      ],
+      "additionalProperties": false
+    },
+    "routePart": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "literal"
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "separator"
+            },
+            "value": {
+              "const": "."
+            }
+          },
+          "required": [
+            "kind",
+            "value"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "parameter"
+            },
+            "parameterId": {
+              "$ref": "https://schemas.tisilia.invalid/0.3/common.schema.json#/$defs/id"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "optional": {
+              "type": "boolean"
+            },
+            "catchAll": {
+              "enum": [
+                "none",
+                "encode-slashes",
+                "preserve-slashes"
+              ]
+            },
+            "hasDefault": {
+              "type": "boolean"
+            },
+            "defaultValue": {
+              "type": "string"
+            },
+            "policies": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "required": [
+            "kind",
+            "parameterId",
+            "name",
+            "optional",
+            "catchAll",
+            "hasDefault",
+            "policies"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "routePlan": {
+      "type": "object",
+      "properties": {
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "parts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/routePart"
+                },
+                "minItems": 1
+              }
+            },
+            "required": [
+              "parts"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "segments"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
