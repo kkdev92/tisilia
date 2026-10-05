@@ -1,0 +1,30 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+artifacts/
+# Node
+node_modules/
+dist/
+.nuxt/
+.output/
+.vite/
+*.tsbuildinfo
+# packed packages (scripts/install-check.ps1 and the release pack into ignored folders; a stray `npm pack` lands here)
+*.nupkg
+*.snupkg
+*.tgz
+# misc
+.DS_Store
+Thumbs.db
+*.log
+# local tool state
+.claude/
+.mcp.json
+# Git history backups are kept outside the repository
+*.bundle
+# local working notes
+/work/

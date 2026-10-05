@@ -1,0 +1,44 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- Pinned, never latest or preview: a language version that moves with the SDK is a build that changes meaning without a
+         commit. -->
+    <LangVersion>14.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+    <!-- Every package is audited, transitive ones included; set explicitly so a change of target framework cannot narrow it. -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <Authors>kkdev92</Authors>
+    <Company>kkdev92</Company>
+    <Product>Tisilia</Product>
+    <Copyright>Copyright (c) kkdev92</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://kkdev92.dev/</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/kkdev92/tisilia</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>aspnetcore;typescript;client-generator;system-text-json;contract;codegen;nuxt</PackageTags>
+    <!-- The NuGet and npm packages are released together, at this version (ReleaseVersionTests holds them to it). -->
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionSuffix Condition="'$(VersionSuffix)' == ''">alpha</VersionSuffix>
+    <!--
+      The SDK puts the git commit into InformationalVersion and into the Source Link map of the PDB, whose content a deterministic
+      build hashes into the assembly's PDB id and checksum (.NET 8 and later). Contracts hash Tisilia.AspNetCore.dll (the .NET artifact
+      of tisilia-additional) byte for byte, so a local build that embeds the commit would change, with every commit, the contract of
+      any application built against it. Release builds (ContinuousIntegrationBuild) keep both: a package's assembly never changes
+      after packing.
+    -->
+    <IncludeSourceRevisionInInformationalVersion Condition="'$(ContinuousIntegrationBuild)' != 'true'">false</IncludeSourceRevisionInInformationalVersion>
+    <EnableSourceLink Condition="'$(ContinuousIntegrationBuild)' != 'true'">false</EnableSourceLink>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+</Project>

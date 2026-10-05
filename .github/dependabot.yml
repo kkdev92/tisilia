@@ -1,0 +1,64 @@
+version: 2
+
+updates:
+  # "/src/backend", not "/": the NuGet updater takes its entry points only from files directly in this directory, and the
+  # solution is src/backend/Tisilia.slnx. The root Directory.Packages.props is updated because every project imports it.
+  - package-ecosystem: nuget
+    directory: "/src/backend"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      test-dependencies:
+        patterns:
+          - "xunit*"
+          - "Microsoft.NET.Test.Sdk"
+    # The packages under src/backend take no third-party runtime dependency. A bot pull request that adds a package
+    # reference to one of them is wrong by construction and must be closed rather than merged.
+
+  # The npm workspaces: the runtime, the Nuxt module and the Explorer, with one lockfile at the root.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # These types decide which Node APIs the code may compile against, so they must not describe a newer Node than the
+      # one the packages declare in `engines` (24). A bump past it passes CI, which is exactly why CI cannot catch it.
+      # Revisit when `engines.node` moves.
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
+      # TypeScript 6 is what generated code is promised to compile under and what the packages are built with; a new
+      # major changes that promise, so it is a deliberate change with its own pull request, not a dependency bump.
+      # Drop this when the next major becomes the baseline.
+      - dependency-name: "typescript"
+        update-types:
+          - version-update:semver-major
+      # The Nuxt module declares `nuxt: ^4.5.0` as its peer; the next major of Nuxt is a new target to support, not a bump.
+      # Drop this when the module supports it.
+      - dependency-name: "nuxt"
+        update-types:
+          - version-update:semver-major
+      - dependency-name: "@nuxt/kit"
+        update-types:
+          - version-update:semver-major
+
+  # Actions are pinned to commit SHAs; Dependabot reads the version from the trailing comment and moves both.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+
+  # global.json names the SDK feature band and accepts its patches; this opens the pull request when a new SDK ships,
+  # security releases included.
+  - package-ecosystem: dotnet-sdk
+    directory: "/"
+    schedule:
+      interval: weekly

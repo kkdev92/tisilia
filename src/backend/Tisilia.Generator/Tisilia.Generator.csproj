@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Kkdev92.Tisilia.Generator</PackageId>
+    <Description>Tisilia's contract validation (schemas and the SV01–SV54 rules), canonical hashing, TypeScript client generation and portable codec generation. It executes no user code.</Description>
+    <RootNamespace>Tisilia.Generator</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Schemas\*.schema.json" LogicalName="Tisilia.Schemas.%(Filename)%(Extension)" />
+    <!-- the additional codec module: installed by `tisilia codec install-additional`, declared by Tisilia.AspNetCore -->
+    <EmbeddedResource Include="Additional\tisilia-additional.js;Additional\tisilia-additional.d.ts" LogicalName="Tisilia.Additional.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- the schema evaluator is tested directly -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tisilia.Contract.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Tisilia.Abstractions\Tisilia.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tisilia.invalid/0.1/explorer-registry.schema.json",
+  "title": "tisilia.explorer-registry",
+  "description": "Input of `tisilia explorer build --registry` (a trusted registry of pre-installed codec modules bundled with the Explorer).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "explorer", "modules"],
+  "properties": {
+    "format": { "const": "tisilia.explorer-registry" },
+    "version": { "const": "0.1" },
+    "explorer": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Directory of the Explorer package source (a package.json with a `build` script), relative to this file."
+    },
+    "contract": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional exported contract copied into the bundle as `contract` so that the static bundle can be viewed without a server."
+    },
+    "modules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["manifest", "digest", "root"],
+        "properties": {
+          "manifest": { "type": "string", "minLength": 1, "description": "Path of the module's tisilia.codec-manifest, relative to this file." },
+          "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$", "description": "SHA-256 of the manifest file bytes; the registry trusts exactly this manifest." },
+          "root": { "type": "string", "minLength": 1, "description": "Directory the manifest's artifact paths are relative to (the application content root), relative to this file." }
+        }
+      }
+    }
+  }
+}

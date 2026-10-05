@@ -1,0 +1,45 @@
+{
+  "format": "tisilia.portable-definition",
+  "version": "0.1",
+  "id": "demo.portable.pmoney",
+  "definitionVersion": "1.0.0",
+  "clrType": "Demo.Portable.PMoney",
+  "request": {
+    "domainTypeId": "demo.portable.PMoney",
+    "projectionId": "tisilia.projection.identity@0.1",
+    "equivalenceId": "demo.portable.PMoney.request",
+    "program": {
+      "op": "object",
+      "unknownMembers": "reject",
+      "members": [
+        {
+          "name": "amount",
+          "presence": "required",
+          "node": {
+            "op": "token-union",
+            "branches": [
+              { "token": "number", "node": { "op": "scalar", "scalarId": "tisilia.decimal@0.1", "representation": "native" } },
+              { "token": "string", "node": { "op": "scalar", "scalarId": "tisilia.decimal@0.1", "representation": "string" } }
+            ]
+          }
+        },
+        { "name": "currency", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.string@0.1", "representation": "native" } },
+        { "name": "note", "presence": "optional", "node": { "op": "nullable", "value": { "op": "scalar", "scalarId": "tisilia.string@0.1", "representation": "native" } } }
+      ]
+    }
+  },
+  "response": {
+    "domainTypeId": "demo.portable.PMoney",
+    "projectionId": "tisilia.projection.identity@0.1",
+    "equivalenceId": "demo.portable.PMoney.response",
+    "program": {
+      "op": "object",
+      "unknownMembers": "reject",
+      "members": [
+        { "name": "amount", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.decimal@0.1", "representation": "string" } },
+        { "name": "currency", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.string@0.1", "representation": "native" } },
+        { "name": "note", "presence": "optional", "node": { "op": "nullable", "value": { "op": "scalar", "scalarId": "tisilia.string@0.1", "representation": "native" } } }
+      ]
+    }
+  }
+}

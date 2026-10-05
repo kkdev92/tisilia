@@ -1,0 +1,292 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tisilia.invalid/0.1/hydration-envelope.schema.json",
+  "title": "Tisilia Nuxt Hydration Envelope 0.1",
+  "$comment": "Format 0.1. Structure only: semantic validation (SV01–SV54) runs after it.",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "format": {
+          "const": "tisilia.hydration-envelope"
+        },
+        "version": {
+          "const": "0.1"
+        },
+        "semanticHash": {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        "operationId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "requestIdentity": {
+          "$ref": "common.schema.json#/$defs/requestIdentity"
+        },
+        "scopeNonce": {
+          "type": "string",
+          "minLength": 16
+        },
+        "kind": {
+          "const": "json"
+        },
+        "responseCaseId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 200,
+          "maximum": 599
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bodyText": {
+          "type": "string",
+          "minLength": 0
+        },
+        "headers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value": {
+                "type": "string",
+                "minLength": 0
+              }
+            },
+            "required": [
+              "name",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "format",
+        "version",
+        "semanticHash",
+        "operationId",
+        "requestIdentity",
+        "scopeNonce",
+        "kind",
+        "responseCaseId",
+        "status",
+        "mediaType",
+        "bodyText",
+        "headers"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "format": {
+          "const": "tisilia.hydration-envelope"
+        },
+        "version": {
+          "const": "0.1"
+        },
+        "semanticHash": {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        "operationId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "requestIdentity": {
+          "$ref": "common.schema.json#/$defs/requestIdentity"
+        },
+        "scopeNonce": {
+          "type": "string",
+          "minLength": 16
+        },
+        "kind": {
+          "const": "bodyless"
+        },
+        "responseCaseId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 200,
+          "maximum": 599
+        },
+        "headers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value": {
+                "type": "string",
+                "minLength": 0
+              }
+            },
+            "required": [
+              "name",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "format",
+        "version",
+        "semanticHash",
+        "operationId",
+        "requestIdentity",
+        "scopeNonce",
+        "kind",
+        "responseCaseId",
+        "status",
+        "headers"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "format": {
+          "const": "tisilia.hydration-envelope"
+        },
+        "version": {
+          "const": "0.1"
+        },
+        "semanticHash": {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        "operationId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "requestIdentity": {
+          "$ref": "common.schema.json#/$defs/requestIdentity"
+        },
+        "scopeNonce": {
+          "type": "string",
+          "minLength": 16
+        },
+        "kind": {
+          "const": "text"
+        },
+        "responseCaseId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "status": {
+          "type": "integer",
+          "minimum": 200,
+          "maximum": 599
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bodyText": {
+          "type": "string",
+          "minLength": 0
+        },
+        "headers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value": {
+                "type": "string",
+                "minLength": 0
+              }
+            },
+            "required": [
+              "name",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "format",
+        "version",
+        "semanticHash",
+        "operationId",
+        "requestIdentity",
+        "scopeNonce",
+        "kind",
+        "responseCaseId",
+        "status",
+        "mediaType",
+        "bodyText",
+        "headers"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "format": {
+          "const": "tisilia.hydration-envelope"
+        },
+        "version": {
+          "const": "0.1"
+        },
+        "semanticHash": {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        "operationId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "requestIdentity": {
+          "$ref": "common.schema.json#/$defs/requestIdentity"
+        },
+        "scopeNonce": {
+          "type": "string",
+          "minLength": 16
+        },
+        "kind": {
+          "const": "failure"
+        },
+        "code": {
+          "enum": [
+            "transport",
+            "codec",
+            "cancelled",
+            "timeout",
+            "contract-mismatch",
+            "limit",
+            "unexpected-response",
+            "server-only"
+          ]
+        },
+        "safeMessageId": {
+          "$ref": "common.schema.json#/$defs/id"
+        }
+      },
+      "required": [
+        "format",
+        "version",
+        "semanticHash",
+        "operationId",
+        "requestIdentity",
+        "scopeNonce",
+        "kind",
+        "code",
+        "safeMessageId"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

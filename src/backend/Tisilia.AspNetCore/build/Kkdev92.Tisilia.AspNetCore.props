@@ -1,0 +1,23 @@
+<Project>
+  <!--
+    With implicit usings on (the ASP.NET Core templates), the namespaces of AddTisilia / WithTisiliaOperation (Tisilia.AspNetCore),
+    of [TisiliaOperation] (Tisilia), of the registrations TisiliaOptions takes (Tisilia.AspNetCore.Bindings: DateTimeWire, …) and of
+    the additional codecs (Tisilia.AspNetCore.Codecs) are imported like the SDK's own. Set TisiliaImplicitUsings to false to opt out.
+  -->
+  <ItemGroup Condition="('$(ImplicitUsings)' == 'enable' or '$(ImplicitUsings)' == 'true') and '$(TisiliaImplicitUsings)' != 'false'">
+    <Using Include="Tisilia" />
+    <Using Include="Tisilia.AspNetCore" />
+    <Using Include="Tisilia.AspNetCore.Bindings" />
+    <Using Include="Tisilia.AspNetCore.Codecs" />
+  </ItemGroup>
+
+  <!--
+    The XML documentation file /// comments travel in: on unless the project decides (Kkdev92.Tisilia.AspNetCore.Documentation.props;
+    a file this one imports is named .props, as NuGet asks: NU5129). This file is imported before the project file, which may still
+    set GenerateDocumentationFile; the decision is made after it, through the .NET SDK's hook that runs between the project file and
+    the SDK's own documentation settings.
+  -->
+  <PropertyGroup>
+    <BeforeMicrosoftNETSdkTargets>$(BeforeMicrosoftNETSdkTargets);$(MSBuildThisFileDirectory)Kkdev92.Tisilia.AspNetCore.Documentation.props</BeforeMicrosoftNETSdkTargets>
+  </PropertyGroup>
+</Project>

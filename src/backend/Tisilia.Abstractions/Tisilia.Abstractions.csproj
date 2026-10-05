@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Kkdev92.Tisilia.Abstractions</PackageId>
+    <Description>Tisilia's contract model: the contract, binding descriptors and the records the tools read and write. Data only; nothing in it executes.</Description>
+    <RootNamespace>Tisilia</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+</Project>

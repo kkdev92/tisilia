@@ -1,0 +1,129 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Declared explicitly so the repository default can be tightened to read-only.
+# An explicit declaration overrides the default, so narrowing the default cannot break this.
+permissions:
+  contents: read
+
+# Supersede a run when the same branch is pushed again. Safe here because every job is a check:
+# nothing it cancels had side effects worth keeping.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  CI: true
+
+jobs:
+  # Refuses a pull request that introduces a dependency with a known vulnerability, or one whose licence is not compatible
+  # with shipping under MIT. Dependabot reports what is already here; this is the half that stops it arriving. It needs the
+  # dependency graph, which a private repository on the free plan does not have.
+  dependency-review:
+    name: dependency review
+    if: github.event_name == 'pull_request' && !github.event.repository.private
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # to leave the summary as a comment
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          # Anything that would actually be exploitable in a consumer's application. Low and moderate still appear in the
+          # summary; they do not block, because a wall of advisories nobody can act on is how a gate gets switched off.
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0, LGPL-2.1, LGPL-3.0
+
+  build-test:
+    name: build & test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both, because line endings, path separators and resource names have each differed between them before.
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: npm ci
+        run: npm ci
+
+      - name: Verify brand asset copies
+        run: npm run brand:check
+
+      # The runtime and the Nuxt module compile to dist; the Explorer page is built into src/frontend/explorer/dist, which
+      # Tisilia.Explorer embeds. So this comes before the .NET build, as it does in scripts/verify.ps1.
+      - name: Build the npm packages
+        run: npm run build
+
+      - name: Restore
+        run: dotnet restore src/backend/Tisilia.slnx
+
+      - name: Build
+        run: dotnet build src/backend/Tisilia.slnx -c Release --no-restore
+
+      - name: Test (.NET)
+        run: dotnet test src/backend/Tisilia.slnx -c Release --no-build
+
+      - name: Typecheck (npm)
+        run: npm run typecheck
+
+      - name: Test (npm)
+        run: npm test
+
+      - name: Install test browsers
+        run: npm exec -- playwright install --with-deps chromium firefox webkit
+
+      - name: Adoption HTTP and browser matrix
+        shell: pwsh
+        run: ./scripts/verify-adoption.ps1
+
+      # Formatting is checked, not applied: a pull request that would be reformatted fails here and says where.
+      - name: Verify formatting
+        if: matrix.os == 'ubuntu-latest'
+        run: dotnet format src/backend/Tisilia.slnx --verify-no-changes
+
+      # NuGetAudit already fails restore on a vulnerable package. This reports transitive advisories that do not meet the
+      # failure threshold, so they are visible before they bite.
+      - name: Report vulnerable NuGet packages
+        if: matrix.os == 'ubuntu-latest'
+        run: dotnet list src/backend/Tisilia.slnx package --vulnerable --include-transitive
+
+      # This excludes the workspace's Nuxt dev dependency. Consumer Nuxt advisories are tracked by Dependabot and SECURITY.md.
+      - name: Audit workspace production dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: npm audit --omit=dev --audit-level=high
+
+      # The packed packages in fresh projects: a new ASP.NET Core application that references them, exported, validated and
+      # called through a client generated from it by the packed CLI, compiled under strict settings against the packed
+      # runtime. The unit tests read the projects; only this reads what a user installs.
+      - name: Clean install of the packed packages
+        shell: pwsh
+        run: ./scripts/install-check.ps1

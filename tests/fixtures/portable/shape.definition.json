@@ -1,0 +1,75 @@
+{
+  "format": "tisilia.portable-definition",
+  "version": "0.1",
+  "id": "demo.portable.shape",
+  "definitionVersion": "1.0.0",
+  "clrType": "Demo.Portable.Shape",
+  "request": {
+    "domainTypeId": "demo.portable.Shape",
+    "projectionId": "tisilia.projection.identity@0.1",
+    "equivalenceId": "demo.portable.Shape.request",
+    "program": {
+      "op": "tagged-union",
+      "discriminator": "kind",
+      "branches": [
+        {
+          "tag": "circle",
+          "node": {
+            "op": "object",
+            "unknownMembers": "reject",
+            "members": [
+              { "name": "radius", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.decimal@0.1", "representation": "string" } },
+              { "name": "label", "presence": "optional", "node": { "op": "nullable", "value": { "op": "scalar", "scalarId": "tisilia.string@0.1", "representation": "native" } } }
+            ]
+          }
+        },
+        {
+          "tag": "rect",
+          "node": {
+            "op": "object",
+            "unknownMembers": "reject",
+            "members": [
+              { "name": "width", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.int32@0.1", "representation": "native" } },
+              { "name": "height", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.int32@0.1", "representation": "native" } },
+              { "name": "tags", "presence": "required", "node": { "op": "array", "element": { "op": "scalar", "scalarId": "tisilia.string@0.1", "representation": "native" } } }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "response": {
+    "domainTypeId": "demo.portable.Shape",
+    "projectionId": "tisilia.projection.identity@0.1",
+    "equivalenceId": "demo.portable.Shape.response",
+    "program": {
+      "op": "tagged-union",
+      "discriminator": "kind",
+      "branches": [
+        {
+          "tag": "circle",
+          "node": {
+            "op": "object",
+            "unknownMembers": "reject",
+            "members": [
+              { "name": "radius", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.decimal@0.1", "representation": "string" } },
+              { "name": "label", "presence": "optional", "node": { "op": "nullable", "value": { "op": "scalar", "scalarId": "tisilia.string@0.1", "representation": "native" } } }
+            ]
+          }
+        },
+        {
+          "tag": "rect",
+          "node": {
+            "op": "object",
+            "unknownMembers": "reject",
+            "members": [
+              { "name": "width", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.int32@0.1", "representation": "native" } },
+              { "name": "height", "presence": "required", "node": { "op": "scalar", "scalarId": "tisilia.int32@0.1", "representation": "native" } },
+              { "name": "tags", "presence": "required", "node": { "op": "array", "element": { "op": "scalar", "scalarId": "tisilia.string@0.1", "representation": "native" } } }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

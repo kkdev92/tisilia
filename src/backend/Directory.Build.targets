@@ -1,0 +1,52 @@
+<Project>
+  <!-- Every package carries one README (PACKAGE-README.md): what Tisilia is, which package does what, the first commands. -->
+  <PropertyGroup Condition="'$(IsPackable)' == 'true'">
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>nuget-icon.jpg</PackageIcon>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(IsPackable)' == 'true'">
+    <None Include="$(MSBuildThisFileDirectory)PACKAGE-README.md" Pack="true" PackagePath="README.md" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)../../assets/brand/tisilia/icons/nuget-icon.jpg" Pack="true" PackagePath="nuget-icon.jpg" Visible="false" />
+    <!-- Every product package redistributes the mascot icon; its policy is separate from the code's MIT license. -->
+    <None Include="$(MSBuildThisFileDirectory)../../assets/brand/tisilia/BRAND-ASSET-POLICY.md" Pack="true" PackagePath="BRAND-ASSET-POLICY.md" Visible="false" />
+    <!-- What the packages contain from others (the Explorer page's Vue and Feather Icons, code adapted from ASP.NET Core),
+         and the license text NOTICE refers to, not only the MIT expression. -->
+    <None Include="$(MSBuildThisFileDirectory)../../NOTICE" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)../../LICENSE" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
+
+  <!--
+    The libraries: symbols in a snupkg, and package validation. Once a version is on nuget.org, PackageValidationBaselineVersion
+    names it and pack compares the assemblies being built against it, so a binary breaking change fails the pack rather than
+    waiting for a reviewer to spot it.
+
+    0.1.0-alpha is the first release and has nothing to compare against, which LastVersionWithoutBaseline records. Moving
+    VersionPrefix past it without a baseline stops the build with instructions, so the absence cannot quietly outlive the one
+    release it was meant for. Each release's version bump moves the baseline to the release before it. The tool package is a
+    program, not a library: nothing compiles against it.
+  -->
+  <PropertyGroup Condition="'$(IsPackable)' == 'true' and '$(PackAsTool)' != 'true'">
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <!-- The first release has no published package to use as a binary compatibility baseline. -->
+    <LastVersionWithoutBaseline>0.1.0</LastVersionWithoutBaseline>
+    <PackageValidationBaselineVersion></PackageValidationBaselineVersion>
+  </PropertyGroup>
+
+  <!--
+    Hooked before BeforeBuild rather than Build: Build's own dependencies, compilation included, run before anything hooked
+    BeforeTargets="Build", so the refusal would come after the work it makes pointless. GenerateNuspec covers a pack run with no
+    build in front of it.
+  -->
+  <Target Name="RequireAPackageValidationBaseline"
+          BeforeTargets="BeforeBuild;GenerateNuspec"
+          Condition="'$(EnablePackageValidation)' == 'true'
+                     AND '$(PackageValidationBaselineVersion)' == ''
+                     AND $([MSBuild]::VersionGreaterThan('$(VersionPrefix)', '$(LastVersionWithoutBaseline)'))">
+    <Error Text="This project is version $(VersionPrefix) and no PackageValidationBaselineVersion is set. $(LastVersionWithoutBaseline)-alpha was the first release and had nothing to compare against; past it, nothing would be checking binary compatibility at all. Set PackageValidationBaselineVersion in src/backend/Directory.Build.targets to the last version published to nuget.org, or, if this release is a deliberate reshape of the surface, move LastVersionWithoutBaseline forward and say why in the same commit." />
+  </Target>
+</Project>

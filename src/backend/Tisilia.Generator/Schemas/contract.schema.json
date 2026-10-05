@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tisilia.invalid/0.1/contract.schema.json",
+  "title": "Tisilia Contract IR 0.1",
+  "$comment": "Contract 0.1. Structure only: semantic validation (SV01–SV54) runs after it. Codec ABI is 0.1.",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "tisilia.contract"
+    },
+    "version": {
+      "const": "0.1"
+    },
+    "apiId": {
+      "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/id"
+    },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/profile"
+      },
+      "minItems": 0
+    },
+    "types": {
+      "type": "array",
+      "items": {
+        "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/model"
+      },
+      "minItems": 0
+    },
+    "wires": {
+      "type": "array",
+      "items": {
+        "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/wire"
+      },
+      "minItems": 0
+    },
+    "codecs": {
+      "type": "array",
+      "items": {
+        "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/codec"
+      },
+      "minItems": 0
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/binding"
+      },
+      "minItems": 0
+    },
+    "equivalences": {
+      "type": "array",
+      "items": {
+        "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/equivalence"
+      },
+      "minItems": 0
+    },
+    "projections": {
+      "type": "array",
+      "items": {
+        "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/projection"
+      },
+      "minItems": 0
+    },
+    "comparers": {
+      "type": "array",
+      "items": {
+        "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/comparer"
+      },
+      "minItems": 0
+    },
+    "binders": {
+      "type": "array",
+      "items": {
+        "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/binder"
+      },
+      "minItems": 0
+    },
+    "resultAdapters": {
+      "type": "array",
+      "items": {
+        "$ref": "https://schemas.tisilia.invalid/0.1/http.schema.json#/$defs/resultAdapter"
+      },
+      "minItems": 0
+    },
+    "operations": {
+      "type": "array",
+      "items": {
+        "$ref": "https://schemas.tisilia.invalid/0.1/http.schema.json#/$defs/operation"
+      },
+      "minItems": 1
+    },
+    "modules": {
+      "type": "array",
+      "items": {
+        "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/module"
+      },
+      "minItems": 0
+    },
+    "documentation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "targetId": {
+            "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/id"
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 0
+          },
+          "description": {
+            "type": "string",
+            "minLength": 0
+          }
+        },
+        "required": [
+          "targetId",
+          "summary",
+          "description"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    },
+    "semanticHash": {
+      "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/digest"
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "apiId",
+    "profiles",
+    "types",
+    "wires",
+    "codecs",
+    "bindings",
+    "equivalences",
+    "projections",
+    "comparers",
+    "binders",
+    "resultAdapters",
+    "operations",
+    "modules",
+    "documentation",
+    "semanticHash"
+  ],
+  "additionalProperties": false
+}

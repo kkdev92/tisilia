@@ -1,0 +1,168 @@
+{
+  "format": "tisilia.conformance-evidence",
+  "version": "0.3",
+  "id": "ev.sample-api.20260930T120000Z.77e8ac29da5f",
+  "issuerId": "ci",
+  "issuedAt": "2026-09-30T12:00:00.0000000Z",
+  "verdict": "passed",
+  "semanticHash": "sha256:9911bd4f68788c690c6f754e6e92978867ac731229d751d0baf8ebe564781f48",
+  "closureDigest": "sha256:77e8ac29da5fd9f2af8ff7a1c61e8984889867734cee799c8dcb31d621da3cc9",
+  "abi": "0.3",
+  "scope": {
+    "operationIds": [
+      "users.get"
+    ],
+    "capabilities": [
+      "binder",
+      "hydration",
+      "requestInput",
+      "requestKey",
+      "response",
+      "responseKey",
+      "result"
+    ],
+    "equivalenceIds": [
+      "demo.ProblemResponse.response",
+      "demo.UserResponse.response",
+      "demo.money.response.eq",
+      "std.datetime-offset.key",
+      "std.datetime-offset.request",
+      "std.datetime-offset.response",
+      "std.decimal.key",
+      "std.decimal.request",
+      "std.decimal.response",
+      "std.guid.key",
+      "std.guid.request",
+      "std.guid.response",
+      "std.int32.request",
+      "std.int32.response",
+      "std.int64.key",
+      "std.int64.request",
+      "std.int64.response",
+      "std.json-value.request",
+      "std.json-value.response",
+      "std.string.key",
+      "std.string.request",
+      "std.string.response"
+    ]
+  },
+  "matrix": {
+    "dotnet": "10.0.12",
+    "aspnetcore": "10.0.12",
+    "stj": "10.0.0",
+    "typescript": "6.0.3",
+    "node": "24.13.1",
+    "os": "test",
+    "architecture": "x64"
+  },
+  "moduleArtifacts": [
+    {
+      "moduleId": "demo.money",
+      "artifact": {
+        "target": "dotnet",
+        "path": "modules/demo.money/Demo.Money.dll",
+        "digest": "sha256:bf24c12dd1c205e273d91f03334e969938f2a56c87e3c1e7b054785faa1374ed"
+      }
+    },
+    {
+      "moduleId": "demo.money",
+      "artifact": {
+        "target": "node",
+        "path": "modules/demo.money/money.node.js",
+        "digest": "sha256:dbc1e0308a00708829516118ea089b06a52ba63010c9c5bf59f8dbf21bcaf1a3"
+      }
+    },
+    {
+      "moduleId": "demo.money",
+      "artifact": {
+        "target": "browser",
+        "path": "modules/demo.money/money.browser.js",
+        "digest": "sha256:3010881e0e41cf514bd8883613b042b9c82c927cd3b6ae0eb54450182a891525"
+      }
+    }
+  ],
+  "applicationArtifacts": [
+    {
+      "target": "dotnet",
+      "path": "bin/App.dll",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "context": [
+    {
+      "name": "dotnet.timeZone",
+      "value": "UTC"
+    }
+  ],
+  "suite": {
+    "id": "tisilia.conformance.standard",
+    "version": "0.3.0",
+    "digest": "sha256:8201125ab91b729d75fc2fc936ac4666afbfac6e37e69dd297feac9ba321722e",
+    "seed": "1",
+    "runnerDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "protocol": "0.3"
+  },
+  "counts": {
+    "passed": 264,
+    "failed": 0,
+    "skipped": 0
+  },
+  "requiredTests": [
+    "domain-validation:object",
+    "domain-validation:paired",
+    "domain-validation:std.datetime-offset",
+    "domain-validation:std.decimal",
+    "domain-validation:std.guid",
+    "domain-validation:std.int32",
+    "domain-validation:std.int64",
+    "domain-validation:std.json-value",
+    "domain-validation:std.string",
+    "key-round-trip:std.datetime-offset",
+    "key-round-trip:std.decimal",
+    "key-round-trip:std.guid",
+    "key-round-trip:std.int64",
+    "key-round-trip:std.string",
+    "negative-wire:object",
+    "negative-wire:paired",
+    "negative-wire:std.datetime-offset",
+    "negative-wire:std.decimal",
+    "negative-wire:std.guid",
+    "negative-wire:std.int32",
+    "negative-wire:std.int64",
+    "negative-wire:std.string",
+    "oracle-discrimination:object",
+    "oracle-discrimination:paired",
+    "oracle-discrimination:std.datetime-offset",
+    "oracle-discrimination:std.decimal",
+    "oracle-discrimination:std.guid",
+    "oracle-discrimination:std.int32",
+    "oracle-discrimination:std.int64",
+    "oracle-discrimination:std.json-value",
+    "oracle-discrimination:std.string",
+    "request-round-trip:std.datetime-offset",
+    "request-round-trip:std.decimal",
+    "request-round-trip:std.guid",
+    "request-round-trip:std.int32",
+    "request-round-trip:std.int64",
+    "request-round-trip:std.json-value",
+    "request-round-trip:std.string",
+    "response-round-trip:object",
+    "response-round-trip:paired",
+    "response-round-trip:std.datetime-offset",
+    "response-round-trip:std.decimal",
+    "response-round-trip:std.guid",
+    "response-round-trip:std.int32",
+    "response-round-trip:std.int64",
+    "response-round-trip:std.json-value",
+    "response-round-trip:std.string"
+  ],
+  "limits": {
+    "maxBodyBytes": 16777216,
+    "maxDepth": 64,
+    "maxTokens": 1000000,
+    "maxNumberCharacters": 4096,
+    "timeoutMs": 30000,
+    "maxDiagnosticBytes": 262144
+  },
+  "claim": "observed-conformance"
+}

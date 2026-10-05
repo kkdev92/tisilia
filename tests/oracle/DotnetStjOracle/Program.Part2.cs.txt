@@ -1,0 +1,105 @@
+// Real .NET 10 / System.Text.Json oracle, part 2: formatting thresholds and rounding modes.
+using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+static string Ser<T>(T v, JsonSerializerOptions? o = null) => JsonSerializer.Serialize(v, o);
+static string Try(Func<string> f)
+{
+    try { return f(); }
+    catch (Exception e) { return "ERR " + e.GetType().Name + ": " + (e.Message.Length > 100 ? e.Message[..100] : e.Message); }
+}
+static void P(string label, string value) => Console.WriteLine($"{label,-58} => {value}");
+
+Console.WriteLine("--- double formatting thresholds ---");
+foreach (var d in new[] { 1e14, 1e15, 1.5e15, 1e16, 1.5e16, 9.9e16, 1e17, 1.2345678901234568e17, 123456789012345678.0, 1e20, 0.001, 0.0001, 0.00001, 0.000123, 0.0000123, 1.5e-5, 1234.5678e10, 2.5e-5, 1e-4, 100000000000000000000.0 })
+    P("ser double " + d.ToString("R", CultureInfo.InvariantCulture), Ser(d));
+foreach (var f in new[] { 1e14f, 1e15f, 1e16f, 1e7f, 1.5e7f, 1e8f, 123456.7f, 1e-4f, 1e-5f, 1.5e-5f })
+    P("ser float " + f.ToString("R", CultureInfo.InvariantCulture), Ser(f));
+
+Console.WriteLine("--- decimal rounding mode beyond 28 fraction digits ---");
+foreach (var s in new[] { "1.00000000000000000000000000025", "1.00000000000000000000000000035", "1.00000000000000000000000000045", "1.000000000000000000000000000449", "1.000000000000000000000000000450", "-1.00000000000000000000000000025", "0.000000000000000000000000000050", "0.000000000000000000000000000049", "12345678901234567890123456789.5", "12345678901234567890123456788.5", "1234567890123456789012345678.55", "1234567890123456789012345678.45" })
+    P("des " + s, Try(() => JsonSerializer.Deserialize<decimal>(s).ToString(CultureInfo.InvariantCulture)));
+P("des 1.0e2 (scale?)", Try(() => JsonSerializer.Deserialize<decimal>("1.0e2").ToString(CultureInfo.InvariantCulture)));
+P("des 1.50e2", Try(() => JsonSerializer.Deserialize<decimal>("1.50e2").ToString(CultureInfo.InvariantCulture)));
+P("des 100e-2", Try(() => JsonSerializer.Deserialize<decimal>("100e-2").ToString(CultureInfo.InvariantCulture)));
+P("des 1e0", Try(() => JsonSerializer.Deserialize<decimal>("1e0").ToString(CultureInfo.InvariantCulture)));
+P("des 0e5", Try(() => JsonSerializer.Deserialize<decimal>("0e5").ToString(CultureInfo.InvariantCulture)));
+P("des 0.0000000000000000000000000000 (28 zeros)", Try(() => JsonSerializer.Deserialize<decimal>("0.0000000000000000000000000000").ToString(CultureInfo.InvariantCulture)));
+P("des 0.00000000000000000000000000000 (29 zeros)", Try(() => JsonSerializer.Deserialize<decimal>("0.00000000000000000000000000000").ToString(CultureInfo.InvariantCulture)));
+P("des 1e-28 scale", Try(() => { var d = JsonSerializer.Deserialize<decimal>("1e-28"); return d.Scale.ToString(); }));
+P("des 1.00 scale", Try(() => { var d = JsonSerializer.Deserialize<decimal>("1.00"); return d.Scale.ToString(); }));
+P("des 1e2 scale", Try(() => { var d = JsonSerializer.Deserialize<decimal>("1e2"); return d.Scale.ToString(); }));
+P("des 0.10e1 scale", Try(() => { var d = JsonSerializer.Deserialize<decimal>("0.10e1"); return d.ToString(CultureInfo.InvariantCulture) + " scale=" + d.Scale; }));
+P("des 12345678901234567890123456789012 (32 int digits)", Try(() => JsonSerializer.Deserialize<decimal>("12345678901234567890123456789012").ToString(CultureInfo.InvariantCulture)));
+P("des 0.1234567890123456789012345678901234 (34 frac)", Try(() => JsonSerializer.Deserialize<decimal>("0.1234567890123456789012345678901234").ToString(CultureInfo.InvariantCulture)));
+
+Console.WriteLine("--- date/time extra ---");
+P("des DTO 16 frac + offset", Try(() => JsonSerializer.Deserialize<DateTimeOffset>("\"2026-09-30T15:04:05.1234567890123456+09:00\"").ToString("O")));
+P("des DTO frac then Z, 7 digits", Try(() => JsonSerializer.Deserialize<DateTimeOffset>("\"2026-09-30T15:04:05.1234567Z\"").ToString("O")));
+P("des DT 2026-09-30T15:04Z", Try(() => JsonSerializer.Deserialize<DateTime>("\"2026-09-30T15:04Z\"").ToString("O")));
+P("des DT 2026-09-30T15 (hour only)", Try(() => JsonSerializer.Deserialize<DateTime>("\"2026-09-30T15\"").ToString("O")));
+P("des DT 2026-09-30T15:04:05. (empty frac)", Try(() => JsonSerializer.Deserialize<DateTime>("\"2026-09-30T15:04:05.\"").ToString("O")));
+P("des DT 2026-09-30T15:04:05+0900 (no colon)", Try(() => JsonSerializer.Deserialize<DateTime>("\"2026-09-30T15:04:05+0900\"").ToString("O")));
+P("des DT 2026-09-30T15:04:05+09 (hours only)", Try(() => JsonSerializer.Deserialize<DateTime>("\"2026-09-30T15:04:05+09\"").ToString("O")));
+P("des DT 2026-09-30T24:00:00", Try(() => JsonSerializer.Deserialize<DateTime>("\"2026-09-30T24:00:00\"").ToString("O")));
+P("des DT 2024-02-29", Try(() => JsonSerializer.Deserialize<DateTime>("\"2024-02-29\"").ToString("O")));
+P("des DT 2100-02-29", Try(() => JsonSerializer.Deserialize<DateTime>("\"2100-02-29\"").ToString("O")));
+P("des DT 2000-02-29", Try(() => JsonSerializer.Deserialize<DateTime>("\"2000-02-29\"").ToString("O")));
+P("des DT 2026-09-30T15:04:05-00:00", Try(() => { var d = JsonSerializer.Deserialize<DateTime>("\"2026-09-30T15:04:05-00:00\""); return d.Kind + " " + d.ToString("O"); }));
+P("des DTO 2026-09-30T15:04:05-00:00", Try(() => JsonSerializer.Deserialize<DateTimeOffset>("\"2026-09-30T15:04:05-00:00\"").ToString("O")));
+P("des DTO 2026-09-30T15:04:05+14:00", Try(() => JsonSerializer.Deserialize<DateTimeOffset>("\"2026-09-30T15:04:05+14:00\"").ToString("O")));
+P("des DTO 2026-09-30T15:04:05-14:00", Try(() => JsonSerializer.Deserialize<DateTimeOffset>("\"2026-09-30T15:04:05-14:00\"").ToString("O")));
+P("des DTO 2026-09-30T15:04:05+09:60", Try(() => JsonSerializer.Deserialize<DateTimeOffset>("\"2026-09-30T15:04:05+09:60\"").ToString("O")));
+P("des DT 9999-12-31T23:59:59.9999999Z", Try(() => JsonSerializer.Deserialize<DateTime>("\"9999-12-31T23:59:59.9999999Z\"").ToString("O")));
+P("des DT 9999-12-31T23:59:59.99999995 (rounds up?)", Try(() => JsonSerializer.Deserialize<DateTime>("\"9999-12-31T23:59:59.99999995\"").ToString("O")));
+P("des DT 0001-01-01T00:00:00+01:00 → DateTime (Local)", Try(() => { var d = JsonSerializer.Deserialize<DateTime>("\"0001-01-01T00:00:00+01:00\""); return d.Kind + " " + d.ToString("O"); }));
+P("des TimeOnly 23:59:59.9999999", Try(() => JsonSerializer.Deserialize<TimeOnly>("\"23:59:59.9999999\"").ToString("O")));
+P("des TimeOnly 5:5", Try(() => JsonSerializer.Deserialize<TimeOnly>("\"5:5\"").ToString("O")));
+P("des TimeOnly 05:15:5", Try(() => JsonSerializer.Deserialize<TimeOnly>("\"05:15:5\"").ToString("O")));
+P("des TimeOnly 005:15:00", Try(() => JsonSerializer.Deserialize<TimeOnly>("\"005:15:00\"").ToString("O")));
+P("des TimeOnly 05:15:00.", Try(() => JsonSerializer.Deserialize<TimeOnly>("\"05:15:00.\"").ToString("O")));
+P("des TimeSpan 1.5 (days.hours?)", Try(() => JsonSerializer.Deserialize<TimeSpan>("\"1.5\"").ToString("c")));
+P("des TimeSpan 1.02:03", Try(() => JsonSerializer.Deserialize<TimeSpan>("\"1.02:03\"").ToString("c")));
+P("des TimeSpan 00:00:00.5", Try(() => JsonSerializer.Deserialize<TimeSpan>("\"00:00:00.5\"").ToString("c")));
+P("des TimeSpan 100:00:00", Try(() => JsonSerializer.Deserialize<TimeSpan>("\"100:00:00\"").ToString("c")));
+P("des TimeSpan 10675199.02:48:05.4775807 (max)", Try(() => JsonSerializer.Deserialize<TimeSpan>("\"10675199.02:48:05.4775807\"").ToString("c")));
+P("des TimeSpan -10675199.02:48:05.4775808 (min)", Try(() => JsonSerializer.Deserialize<TimeSpan>("\"-10675199.02:48:05.4775808\"").ToString("c")));
+P("des TimeSpan 10675200.00:00:00 (over)", Try(() => JsonSerializer.Deserialize<TimeSpan>("\"10675200.00:00:00\"").ToString("c")));
+P("des TimeSpan 1.02:03:04.5", Try(() => JsonSerializer.Deserialize<TimeSpan>("\"1.02:03:04.5\"").ToString("c")));
+P("des TimeSpan 02:03:04.0000000", Try(() => JsonSerializer.Deserialize<TimeSpan>("\"02:03:04.0000000\"").ToString("c")));
+P("des TimeSpan 02:03:04. (empty frac)", Try(() => JsonSerializer.Deserialize<TimeSpan>("\"02:03:04.\"").ToString("c")));
+P("des TimeSpan -0 (neg zero days)", Try(() => JsonSerializer.Deserialize<TimeSpan>("\"-0\"").ToString("c")));
+P("des TimeSpan 1.02 (days.hours?)", Try(() => JsonSerializer.Deserialize<TimeSpan>("\"1.02\"").ToString("c")));
+P("des TimeSpan 1:2", Try(() => JsonSerializer.Deserialize<TimeSpan>("\"1:2\"").ToString("c")));
+P("des TimeSpan 01:02:03:04", Try(() => JsonSerializer.Deserialize<TimeSpan>("\"01:02:03:04\"").ToString("c")));
+
+Console.WriteLine("--- string/number handling extra ---");
+P("des string \"\\u0000\"", Try(() => JsonSerializer.Deserialize<string>("\"\\u0000\"")!.Length.ToString()));
+P("des string raw control char 0x01", Try(() => JsonSerializer.Deserialize<string>("\"\u0001\"")!.Length.ToString()));
+P("des string \"\\ude00\\ud83d\" (reversed pair)", Try(() => JsonSerializer.Deserialize<string>("\"\\ude00\\ud83d\"")!.Length.ToString()));
+P("des string overlong utf8 C0 80", Try(() => JsonSerializer.Deserialize<string>(new byte[] { (byte)'"', 0xC0, 0x80, (byte)'"' })!.Length.ToString()));
+P("des string ED A0 80 (encoded surrogate)", Try(() => JsonSerializer.Deserialize<string>(new byte[] { (byte)'"', 0xED, 0xA0, 0x80, (byte)'"' })!.Length.ToString()));
+P("des object key \"\\u0061\" matches a? (Dictionary)", Try(() => JsonSerializer.Deserialize<Dictionary<string, int>>("{\"\\u0061\":1}")!.Keys.First()));
+P("des ulong 18446744073709551615", Try(() => JsonSerializer.Deserialize<ulong>("18446744073709551615").ToString()));
+P("des ulong -1", Try(() => JsonSerializer.Deserialize<ulong>("-1").ToString()));
+P("des long \"9007199254740993\" web string", Try(() => JsonSerializer.Deserialize<long>("\"9007199254740993\"", new JsonSerializerOptions(JsonSerializerDefaults.Web)).ToString()));
+P("des int 1E0 (int with exponent zero)", Try(() => JsonSerializer.Deserialize<int>("1E0").ToString()));
+P("des int 01 (leading zero JSON)", Try(() => JsonSerializer.Deserialize<int>("01").ToString()));
+P("des int -", Try(() => JsonSerializer.Deserialize<int>("-").ToString()));
+P("des double 1. (trailing dot)", Try(() => JsonSerializer.Deserialize<double>("1.").ToString(CultureInfo.InvariantCulture)));
+P("des double .5", Try(() => JsonSerializer.Deserialize<double>(".5").ToString(CultureInfo.InvariantCulture)));
+P("des double 1e (dangling)", Try(() => JsonSerializer.Deserialize<double>("1e").ToString(CultureInfo.InvariantCulture)));
+P("des double 0.1 bits", Try(() => BitConverter.DoubleToInt64Bits(JsonSerializer.Deserialize<double>("0.1")).ToString("x16")));
+P("des double 2.2250738585072011e-308 (subnormal boundary)", Try(() => BitConverter.DoubleToInt64Bits(JsonSerializer.Deserialize<double>("2.2250738585072011e-308")).ToString("x16")));
+P("des double 9007199254740993 (halfway → even)", Try(() => JsonSerializer.Deserialize<double>("9007199254740993").ToString("R", CultureInfo.InvariantCulture)));
+P("des double 1.00000000000000011102230246251565404236316680908203125 (halfway 1+2^-53)", Try(() => BitConverter.DoubleToInt64Bits(JsonSerializer.Deserialize<double>("1.00000000000000011102230246251565404236316680908203125")).ToString("x16")));
+P("des double 1.000000000000000111022302462515654042363166809082031251 (just above)", Try(() => BitConverter.DoubleToInt64Bits(JsonSerializer.Deserialize<double>("1.000000000000000111022302462515654042363166809082031251")).ToString("x16")));
+P("des double 800-digit input", Try(() => JsonSerializer.Deserialize<double>("1" + new string('0', 400) + "e-400").ToString("R", CultureInfo.InvariantCulture)));
+P("ser float 1.00000006f", Ser(1.00000006f));
+P("ser float 16777217 via cast", Ser((float)16777217));
+P("ser Half 1.5 ", Ser((Half)1.5));
+P("ser Int128 max", Try(() => Ser(Int128.MaxValue)));
+P("ser BigInteger", Try(() => Ser(System.Numerics.BigInteger.Parse("123"))));
+P("ser Uri", Try(() => Ser(new Uri("https://example.com/a b?x=1"))));
+P("ser Version", Try(() => Ser(new Version(1, 2))));

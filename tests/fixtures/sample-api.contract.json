@@ -1,0 +1,2807 @@
+{
+  "format": "tisilia.contract",
+  "version": "0.1",
+  "apiId": "sample-api",
+  "profiles": [
+    {
+      "id": "sample-api.profile.web",
+      "dotnetVersion": "10.0.12",
+      "stjVersion": "10.0.0",
+      "mode": "reflection",
+      "options": {
+        "propertyNameCaseInsensitive": true,
+        "propertyNamingPolicyId": "tisilia.naming.camel-case@0.1",
+        "dictionaryKeyPolicyId": "tisilia.naming.none@0.1",
+        "encoderId": "tisilia.encoder.default@0.1",
+        "numberHandling": [
+          "AllowReadingFromString"
+        ],
+        "defaultIgnoreCondition": "Never",
+        "ignoreNullValues": false,
+        "ignoreReadOnlyProperties": false,
+        "ignoreReadOnlyFields": false,
+        "includeFields": false,
+        "respectNullableAnnotations": false,
+        "respectRequiredConstructorParameters": false,
+        "allowDuplicateProperties": true,
+        "allowOutOfOrderMetadataProperties": false,
+        "allowTrailingCommas": false,
+        "readCommentHandling": "Disallow",
+        "maxDepthRaw": 0,
+        "maxDepthEffective": 64,
+        "preferredObjectCreationHandling": "Replace",
+        "unmappedMemberHandling": "Skip",
+        "referenceHandling": "None",
+        "resolverIds": [
+          "tisilia.resolver.reflection@0.1"
+        ],
+        "converterBindingIds": []
+      },
+      "scopes": [],
+      "behaviors": [],
+      "fingerprint": "sha256:60ef432e389f7d17c1525e4e9c9bac810535676b3fb6a1ba6a6d3a042530804c"
+    }
+  ],
+  "types": [
+    {
+      "id": "std.guid",
+      "tsName": "Guid",
+      "clrIdentity": "System.Guid",
+      "shape": {
+        "kind": "primitive",
+        "primitiveId": "tisilia.guid@0.1"
+      }
+    },
+    {
+      "id": "std.int64",
+      "tsName": "Int64",
+      "clrIdentity": "System.Int64",
+      "shape": {
+        "kind": "primitive",
+        "primitiveId": "tisilia.int64@0.1"
+      }
+    },
+    {
+      "id": "std.string",
+      "tsName": "string",
+      "clrIdentity": "System.String",
+      "shape": {
+        "kind": "primitive",
+        "primitiveId": "tisilia.string@0.1"
+      }
+    },
+    {
+      "id": "std.datetime-offset",
+      "tsName": "DateTimeOffset",
+      "clrIdentity": "System.DateTimeOffset",
+      "shape": {
+        "kind": "primitive",
+        "primitiveId": "tisilia.datetime-offset@0.1"
+      }
+    },
+    {
+      "id": "std.decimal",
+      "tsName": "Decimal",
+      "clrIdentity": "System.Decimal",
+      "shape": {
+        "kind": "primitive",
+        "primitiveId": "tisilia.decimal@0.1"
+      }
+    },
+    {
+      "id": "std.json-value",
+      "tsName": "JsonValue",
+      "clrIdentity": "System.Text.Json.JsonElement",
+      "shape": {
+        "kind": "primitive",
+        "primitiveId": "tisilia.json-value@0.1"
+      }
+    },
+    {
+      "id": "demo.MoneyRequest",
+      "tsName": "MoneyRequest",
+      "clrIdentity": "Demo.Money",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          {
+            "name": "amount",
+            "use": {
+              "typeId": "std.decimal",
+              "codecId": "std.decimal.codec.r",
+              "semanticNullable": false
+            },
+            "presence": "required"
+          }
+        ],
+        "extension": {
+          "kind": "none"
+        }
+      }
+    },
+    {
+      "id": "demo.MoneyResponse",
+      "tsName": "MoneyResponse",
+      "clrIdentity": "Demo.Money",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          {
+            "name": "amount",
+            "use": {
+              "typeId": "std.decimal",
+              "codecId": "std.decimal.codec.r",
+              "semanticNullable": false
+            },
+            "presence": "required"
+          },
+          {
+            "name": "currency",
+            "use": {
+              "typeId": "std.string",
+              "codecId": "std.string.codec",
+              "semanticNullable": false
+            },
+            "presence": "required"
+          }
+        ],
+        "extension": {
+          "kind": "none"
+        }
+      }
+    },
+    {
+      "id": "demo.UserPutRequest",
+      "tsName": "UserPutRequest",
+      "clrIdentity": "Demo.UserPutRequest",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          {
+            "name": "revision",
+            "use": {
+              "typeId": "std.int64",
+              "codecId": "std.int64.codec.r",
+              "semanticNullable": false
+            },
+            "presence": "required"
+          },
+          {
+            "name": "nickname",
+            "use": {
+              "typeId": "std.string",
+              "codecId": "std.string.codec.nullable",
+              "semanticNullable": true
+            },
+            "presence": "optional"
+          },
+          {
+            "name": "balance",
+            "use": {
+              "typeId": "demo.MoneyRequest",
+              "codecId": "demo.MoneyRequest.codec",
+              "semanticNullable": false
+            },
+            "presence": "required"
+          }
+        ],
+        "extension": {
+          "kind": "none"
+        }
+      }
+    },
+    {
+      "id": "demo.UserResponse",
+      "tsName": "UserResponse",
+      "clrIdentity": "Demo.UserResponse",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          {
+            "name": "id",
+            "use": {
+              "typeId": "std.guid",
+              "codecId": "std.guid.codec",
+              "semanticNullable": false
+            },
+            "presence": "required"
+          },
+          {
+            "name": "revision",
+            "use": {
+              "typeId": "std.int64",
+              "codecId": "std.int64.codec.r",
+              "semanticNullable": false
+            },
+            "presence": "required"
+          },
+          {
+            "name": "nickname",
+            "use": {
+              "typeId": "std.string",
+              "codecId": "std.string.codec",
+              "semanticNullable": false
+            },
+            "presence": "optional"
+          },
+          {
+            "name": "balance",
+            "use": {
+              "typeId": "demo.MoneyResponse",
+              "codecId": "demo.MoneyResponse.codec",
+              "semanticNullable": false
+            },
+            "presence": "required"
+          },
+          {
+            "name": "createdAt",
+            "use": {
+              "typeId": "std.datetime-offset",
+              "codecId": "std.datetime-offset.codec",
+              "semanticNullable": false
+            },
+            "presence": "required"
+          }
+        ],
+        "extension": {
+          "kind": "none"
+        }
+      }
+    },
+    {
+      "id": "std.int32",
+      "tsName": "Int32",
+      "clrIdentity": "System.Int32",
+      "shape": {
+        "kind": "primitive",
+        "primitiveId": "tisilia.int32@0.1"
+      }
+    },
+    {
+      "id": "demo.ProblemResponse",
+      "tsName": "ProblemResponse",
+      "clrIdentity": "Microsoft.AspNetCore.Mvc.ProblemDetails",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          {
+            "name": "type",
+            "use": {
+              "typeId": "std.string",
+              "codecId": "std.string.codec.nullable",
+              "semanticNullable": true
+            },
+            "presence": "optional"
+          },
+          {
+            "name": "title",
+            "use": {
+              "typeId": "std.string",
+              "codecId": "std.string.codec.nullable",
+              "semanticNullable": true
+            },
+            "presence": "optional"
+          },
+          {
+            "name": "status",
+            "use": {
+              "typeId": "std.int32",
+              "codecId": "std.int32.codec.r.nullable",
+              "semanticNullable": true
+            },
+            "presence": "optional"
+          },
+          {
+            "name": "detail",
+            "use": {
+              "typeId": "std.string",
+              "codecId": "std.string.codec.nullable",
+              "semanticNullable": true
+            },
+            "presence": "optional"
+          },
+          {
+            "name": "instance",
+            "use": {
+              "typeId": "std.string",
+              "codecId": "std.string.codec.nullable",
+              "semanticNullable": true
+            },
+            "presence": "optional"
+          }
+        ],
+        "extension": {
+          "kind": "capture",
+          "value": {
+            "typeId": "std.json-value",
+            "codecId": "std.json-value.codec",
+            "semanticNullable": false
+          },
+          "collision": "reject"
+        }
+      }
+    }
+  ],
+  "wires": [
+    {
+      "id": "std.guid.read",
+      "direction": "server-read",
+      "shape": {
+        "kind": "string",
+        "grammarId": "tisilia.grammar.guid@0.1"
+      }
+    },
+    {
+      "id": "std.guid.write",
+      "direction": "server-write",
+      "shape": {
+        "kind": "string",
+        "grammarId": "tisilia.grammar.guid@0.1"
+      }
+    },
+    {
+      "id": "std.int64.read",
+      "direction": "server-read",
+      "shape": {
+        "kind": "number",
+        "grammarId": "tisilia.grammar.int64@0.1"
+      }
+    },
+    {
+      "id": "std.int64.read.string",
+      "direction": "server-read",
+      "shape": {
+        "kind": "string",
+        "grammarId": "tisilia.grammar.int64-string@0.1"
+      }
+    },
+    {
+      "id": "std.int64.read.r",
+      "direction": "server-read",
+      "shape": {
+        "kind": "token-union",
+        "branches": [
+          {
+            "token": "number",
+            "wire": {
+              "wireId": "std.int64.read",
+              "direction": "server-read"
+            }
+          },
+          {
+            "token": "string",
+            "wire": {
+              "wireId": "std.int64.read.string",
+              "direction": "server-read"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "std.int64.write",
+      "direction": "server-write",
+      "shape": {
+        "kind": "number",
+        "grammarId": "tisilia.grammar.int64@0.1"
+      }
+    },
+    {
+      "id": "std.string.read",
+      "direction": "server-read",
+      "shape": {
+        "kind": "string",
+        "grammarId": "tisilia.grammar.string@0.1"
+      }
+    },
+    {
+      "id": "std.string.write",
+      "direction": "server-write",
+      "shape": {
+        "kind": "string",
+        "grammarId": "tisilia.grammar.string@0.1"
+      }
+    },
+    {
+      "id": "std.null.read",
+      "direction": "server-read",
+      "shape": {
+        "kind": "null"
+      }
+    },
+    {
+      "id": "std.string.read.or-null",
+      "direction": "server-read",
+      "shape": {
+        "kind": "token-union",
+        "branches": [
+          {
+            "token": "null",
+            "wire": {
+              "wireId": "std.null.read",
+              "direction": "server-read"
+            }
+          },
+          {
+            "token": "string",
+            "wire": {
+              "wireId": "std.string.read",
+              "direction": "server-read"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "std.null.write",
+      "direction": "server-write",
+      "shape": {
+        "kind": "null"
+      }
+    },
+    {
+      "id": "std.string.write.or-null",
+      "direction": "server-write",
+      "shape": {
+        "kind": "token-union",
+        "branches": [
+          {
+            "token": "null",
+            "wire": {
+              "wireId": "std.null.write",
+              "direction": "server-write"
+            }
+          },
+          {
+            "token": "string",
+            "wire": {
+              "wireId": "std.string.write",
+              "direction": "server-write"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "std.datetime-offset.read",
+      "direction": "server-read",
+      "shape": {
+        "kind": "string",
+        "grammarId": "tisilia.grammar.datetime-offset@0.1"
+      }
+    },
+    {
+      "id": "std.datetime-offset.write",
+      "direction": "server-write",
+      "shape": {
+        "kind": "string",
+        "grammarId": "tisilia.grammar.datetime-offset@0.1"
+      }
+    },
+    {
+      "id": "std.decimal.read",
+      "direction": "server-read",
+      "shape": {
+        "kind": "number",
+        "grammarId": "tisilia.grammar.decimal@0.1"
+      }
+    },
+    {
+      "id": "std.decimal.read.string",
+      "direction": "server-read",
+      "shape": {
+        "kind": "string",
+        "grammarId": "tisilia.grammar.decimal-string@0.1"
+      }
+    },
+    {
+      "id": "std.decimal.read.r",
+      "direction": "server-read",
+      "shape": {
+        "kind": "token-union",
+        "branches": [
+          {
+            "token": "number",
+            "wire": {
+              "wireId": "std.decimal.read",
+              "direction": "server-read"
+            }
+          },
+          {
+            "token": "string",
+            "wire": {
+              "wireId": "std.decimal.read.string",
+              "direction": "server-read"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "std.decimal.write",
+      "direction": "server-write",
+      "shape": {
+        "kind": "number",
+        "grammarId": "tisilia.grammar.decimal@0.1"
+      }
+    },
+    {
+      "id": "std.json-value.read",
+      "direction": "server-read",
+      "shape": {
+        "kind": "lossless-json",
+        "grammarId": "tisilia.json-rfc8259@0.1"
+      }
+    },
+    {
+      "id": "std.json-value.write",
+      "direction": "server-write",
+      "shape": {
+        "kind": "lossless-json",
+        "grammarId": "tisilia.json-rfc8259@0.1"
+      }
+    },
+    {
+      "id": "demo.money.request.wire",
+      "direction": "server-read",
+      "shape": {
+        "kind": "string",
+        "grammarId": "tisilia.grammar.decimal-string@0.1"
+      }
+    },
+    {
+      "id": "demo.money.response.amount",
+      "direction": "server-write",
+      "shape": {
+        "kind": "string",
+        "grammarId": "tisilia.grammar.decimal-string@0.1"
+      }
+    },
+    {
+      "id": "demo.money.response.wire",
+      "direction": "server-write",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          {
+            "name": "amount",
+            "wire": {
+              "wireId": "demo.money.response.amount",
+              "direction": "server-write"
+            },
+            "presence": "required"
+          },
+          {
+            "name": "currency",
+            "wire": {
+              "wireId": "std.string.write",
+              "direction": "server-write"
+            },
+            "presence": "required"
+          }
+        ],
+        "additional": {
+          "kind": "reject"
+        },
+        "duplicatePolicyId": "tisilia.duplicates.reject@0.1",
+        "nameMatchingId": "tisilia.names.ordinal@0.1"
+      }
+    },
+    {
+      "id": "demo.UserPutRequest.read",
+      "direction": "server-read",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          {
+            "name": "revision",
+            "wire": {
+              "wireId": "std.int64.read.r",
+              "direction": "server-read"
+            },
+            "presence": "required"
+          },
+          {
+            "name": "nickname",
+            "wire": {
+              "wireId": "std.string.read.or-null",
+              "direction": "server-read"
+            },
+            "presence": "optional"
+          },
+          {
+            "name": "balance",
+            "wire": {
+              "wireId": "demo.money.request.wire",
+              "direction": "server-read"
+            },
+            "presence": "required"
+          }
+        ],
+        "additional": {
+          "kind": "ignore"
+        },
+        "duplicatePolicyId": "tisilia.duplicates.last-wins@0.1",
+        "nameMatchingId": "sample-api.profile.web.name-matching"
+      }
+    },
+    {
+      "id": "demo.UserResponse.write",
+      "direction": "server-write",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          {
+            "name": "id",
+            "wire": {
+              "wireId": "std.guid.write",
+              "direction": "server-write"
+            },
+            "presence": "required"
+          },
+          {
+            "name": "revision",
+            "wire": {
+              "wireId": "std.int64.write",
+              "direction": "server-write"
+            },
+            "presence": "required"
+          },
+          {
+            "name": "nickname",
+            "wire": {
+              "wireId": "std.string.write",
+              "direction": "server-write"
+            },
+            "presence": "optional"
+          },
+          {
+            "name": "balance",
+            "wire": {
+              "wireId": "demo.money.response.wire",
+              "direction": "server-write"
+            },
+            "presence": "required"
+          },
+          {
+            "name": "createdAt",
+            "wire": {
+              "wireId": "std.datetime-offset.write",
+              "direction": "server-write"
+            },
+            "presence": "required"
+          }
+        ],
+        "additional": {
+          "kind": "ignore"
+        },
+        "duplicatePolicyId": "tisilia.duplicates.reject@0.1",
+        "nameMatchingId": "tisilia.names.ordinal@0.1"
+      }
+    },
+    {
+      "id": "std.int32.read",
+      "direction": "server-read",
+      "shape": {
+        "kind": "number",
+        "grammarId": "tisilia.grammar.int32@0.1"
+      }
+    },
+    {
+      "id": "std.int32.read.string",
+      "direction": "server-read",
+      "shape": {
+        "kind": "string",
+        "grammarId": "tisilia.grammar.int32-string@0.1"
+      }
+    },
+    {
+      "id": "std.int32.read.r",
+      "direction": "server-read",
+      "shape": {
+        "kind": "token-union",
+        "branches": [
+          {
+            "token": "number",
+            "wire": {
+              "wireId": "std.int32.read",
+              "direction": "server-read"
+            }
+          },
+          {
+            "token": "string",
+            "wire": {
+              "wireId": "std.int32.read.string",
+              "direction": "server-read"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "std.int32.write",
+      "direction": "server-write",
+      "shape": {
+        "kind": "number",
+        "grammarId": "tisilia.grammar.int32@0.1"
+      }
+    },
+    {
+      "id": "std.int32.read.r.or-null",
+      "direction": "server-read",
+      "shape": {
+        "kind": "token-union",
+        "branches": [
+          {
+            "token": "null",
+            "wire": {
+              "wireId": "std.null.read",
+              "direction": "server-read"
+            }
+          },
+          {
+            "token": "number",
+            "wire": {
+              "wireId": "std.int32.read",
+              "direction": "server-read"
+            }
+          },
+          {
+            "token": "string",
+            "wire": {
+              "wireId": "std.int32.read.string",
+              "direction": "server-read"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "std.int32.write.or-null",
+      "direction": "server-write",
+      "shape": {
+        "kind": "token-union",
+        "branches": [
+          {
+            "token": "null",
+            "wire": {
+              "wireId": "std.null.write",
+              "direction": "server-write"
+            }
+          },
+          {
+            "token": "number",
+            "wire": {
+              "wireId": "std.int32.write",
+              "direction": "server-write"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "demo.ProblemResponse.write",
+      "direction": "server-write",
+      "shape": {
+        "kind": "object",
+        "properties": [
+          {
+            "name": "type",
+            "wire": {
+              "wireId": "std.string.write.or-null",
+              "direction": "server-write"
+            },
+            "presence": "optional"
+          },
+          {
+            "name": "title",
+            "wire": {
+              "wireId": "std.string.write.or-null",
+              "direction": "server-write"
+            },
+            "presence": "optional"
+          },
+          {
+            "name": "status",
+            "wire": {
+              "wireId": "std.int32.write.or-null",
+              "direction": "server-write"
+            },
+            "presence": "optional"
+          },
+          {
+            "name": "detail",
+            "wire": {
+              "wireId": "std.string.write.or-null",
+              "direction": "server-write"
+            },
+            "presence": "optional"
+          },
+          {
+            "name": "instance",
+            "wire": {
+              "wireId": "std.string.write.or-null",
+              "direction": "server-write"
+            },
+            "presence": "optional"
+          }
+        ],
+        "additional": {
+          "kind": "capture",
+          "wire": {
+            "wireId": "std.json-value.write",
+            "direction": "server-write"
+          }
+        },
+        "duplicatePolicyId": "tisilia.duplicates.reject@0.1",
+        "nameMatchingId": "tisilia.names.ordinal@0.1"
+      }
+    }
+  ],
+  "codecs": [
+    {
+      "id": "std.guid.codec",
+      "typeId": "std.guid",
+      "origin": "builtin",
+      "bindingId": "tisilia.binding.guid@0.1",
+      "validateDomain": {
+        "kind": "builtin",
+        "id": "tisilia.codec.guid.validate@0.1"
+      },
+      "capabilities": {
+        "request": {
+          "wire": {
+            "wireId": "std.guid.read",
+            "direction": "server-read"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.guid.encode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "std.guid.request",
+          "domainRuleId": "tisilia.domain.guid@0.1"
+        },
+        "response": {
+          "wire": {
+            "wireId": "std.guid.write",
+            "direction": "server-write"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.guid.decode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "std.guid.response",
+          "domainRuleId": "tisilia.domain.guid@0.1"
+        },
+        "requestKey": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.guid.encode-key@0.1"
+          },
+          "grammarId": "tisilia.grammar.guid-key@0.1",
+          "equivalenceId": "std.guid.key",
+          "collision": "reject"
+        },
+        "responseKey": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.guid.decode-key@0.1"
+          },
+          "grammarId": "tisilia.grammar.guid-key@0.1",
+          "equivalenceId": "std.guid.key",
+          "collision": "reject"
+        },
+        "requestInput": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.guid.parse-input@0.1"
+          },
+          "inputKind": "text",
+          "editorId": "tisilia.editor.text@0.1"
+        }
+      },
+      "dependencies": [],
+      "profileIds": []
+    },
+    {
+      "id": "std.int64.codec.r",
+      "typeId": "std.int64",
+      "origin": "builtin",
+      "bindingId": "tisilia.binding.int64@0.1",
+      "validateDomain": {
+        "kind": "builtin",
+        "id": "tisilia.codec.int64.validate@0.1"
+      },
+      "capabilities": {
+        "request": {
+          "wire": {
+            "wireId": "std.int64.read.r",
+            "direction": "server-read"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.int64.encode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "std.int64.request",
+          "domainRuleId": "tisilia.domain.int64@0.1"
+        },
+        "response": {
+          "wire": {
+            "wireId": "std.int64.write",
+            "direction": "server-write"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.int64.decode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "std.int64.response",
+          "domainRuleId": "tisilia.domain.int64@0.1"
+        },
+        "requestKey": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.int64.encode-key@0.1"
+          },
+          "grammarId": "tisilia.grammar.int64-key@0.1",
+          "equivalenceId": "std.int64.key",
+          "collision": "reject"
+        },
+        "responseKey": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.int64.decode-key@0.1"
+          },
+          "grammarId": "tisilia.grammar.int64-key@0.1",
+          "equivalenceId": "std.int64.key",
+          "collision": "reject"
+        },
+        "requestInput": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.int64.parse-input@0.1"
+          },
+          "inputKind": "text",
+          "editorId": "tisilia.editor.text@0.1"
+        }
+      },
+      "dependencies": [],
+      "profileIds": []
+    },
+    {
+      "id": "std.string.codec",
+      "typeId": "std.string",
+      "origin": "builtin",
+      "bindingId": "tisilia.binding.string@0.1",
+      "validateDomain": {
+        "kind": "builtin",
+        "id": "tisilia.codec.string.validate@0.1"
+      },
+      "capabilities": {
+        "request": {
+          "wire": {
+            "wireId": "std.string.read",
+            "direction": "server-read"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.string.encode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "std.string.request",
+          "domainRuleId": "tisilia.domain.string@0.1"
+        },
+        "response": {
+          "wire": {
+            "wireId": "std.string.write",
+            "direction": "server-write"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.string.decode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "std.string.response",
+          "domainRuleId": "tisilia.domain.string@0.1"
+        },
+        "requestKey": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.string.encode-key@0.1"
+          },
+          "grammarId": "tisilia.grammar.string-key@0.1",
+          "equivalenceId": "std.string.key",
+          "collision": "reject"
+        },
+        "responseKey": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.string.decode-key@0.1"
+          },
+          "grammarId": "tisilia.grammar.string-key@0.1",
+          "equivalenceId": "std.string.key",
+          "collision": "reject"
+        },
+        "requestInput": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.string.parse-input@0.1"
+          },
+          "inputKind": "text",
+          "editorId": "tisilia.editor.text@0.1"
+        }
+      },
+      "dependencies": [],
+      "profileIds": []
+    },
+    {
+      "id": "std.string.codec.nullable",
+      "typeId": "std.string",
+      "origin": "builtin",
+      "bindingId": "tisilia.binding.string@0.1",
+      "validateDomain": {
+        "kind": "builtin",
+        "id": "tisilia.codec.string.validate@0.1"
+      },
+      "capabilities": {
+        "request": {
+          "wire": {
+            "wireId": "std.string.read.or-null",
+            "direction": "server-read"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.string.encode@0.1"
+          },
+          "nullBehavior": "bypass",
+          "equivalenceId": "std.string.request",
+          "domainRuleId": "tisilia.domain.string@0.1"
+        },
+        "response": {
+          "wire": {
+            "wireId": "std.string.write.or-null",
+            "direction": "server-write"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.string.decode@0.1"
+          },
+          "nullBehavior": "bypass",
+          "equivalenceId": "std.string.response",
+          "domainRuleId": "tisilia.domain.string@0.1"
+        },
+        "requestInput": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.string.parse-input@0.1"
+          },
+          "inputKind": "text",
+          "editorId": "tisilia.editor.text@0.1"
+        }
+      },
+      "dependencies": [],
+      "profileIds": []
+    },
+    {
+      "id": "std.datetime-offset.codec",
+      "typeId": "std.datetime-offset",
+      "origin": "builtin",
+      "bindingId": "tisilia.binding.datetime-offset@0.1",
+      "validateDomain": {
+        "kind": "builtin",
+        "id": "tisilia.codec.datetime-offset.validate@0.1"
+      },
+      "capabilities": {
+        "request": {
+          "wire": {
+            "wireId": "std.datetime-offset.read",
+            "direction": "server-read"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.datetime-offset.encode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "std.datetime-offset.request",
+          "domainRuleId": "tisilia.domain.datetime-offset@0.1"
+        },
+        "response": {
+          "wire": {
+            "wireId": "std.datetime-offset.write",
+            "direction": "server-write"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.datetime-offset.decode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "std.datetime-offset.response",
+          "domainRuleId": "tisilia.domain.datetime-offset@0.1"
+        },
+        "requestKey": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.datetime-offset.encode-key@0.1"
+          },
+          "grammarId": "tisilia.grammar.datetime-offset-key@0.1",
+          "equivalenceId": "std.datetime-offset.key",
+          "collision": "reject"
+        },
+        "responseKey": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.datetime-offset.decode-key@0.1"
+          },
+          "grammarId": "tisilia.grammar.datetime-offset-key@0.1",
+          "equivalenceId": "std.datetime-offset.key",
+          "collision": "reject"
+        },
+        "requestInput": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.datetime-offset.parse-input@0.1"
+          },
+          "inputKind": "text",
+          "editorId": "tisilia.editor.text@0.1"
+        }
+      },
+      "dependencies": [],
+      "profileIds": []
+    },
+    {
+      "id": "std.decimal.codec.r",
+      "typeId": "std.decimal",
+      "origin": "builtin",
+      "bindingId": "tisilia.binding.decimal@0.1",
+      "validateDomain": {
+        "kind": "builtin",
+        "id": "tisilia.codec.decimal.validate@0.1"
+      },
+      "capabilities": {
+        "request": {
+          "wire": {
+            "wireId": "std.decimal.read.r",
+            "direction": "server-read"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.decimal.encode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "std.decimal.request",
+          "domainRuleId": "tisilia.domain.decimal@0.1"
+        },
+        "response": {
+          "wire": {
+            "wireId": "std.decimal.write",
+            "direction": "server-write"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.decimal.decode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "std.decimal.response",
+          "domainRuleId": "tisilia.domain.decimal@0.1"
+        },
+        "requestKey": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.decimal.encode-key@0.1"
+          },
+          "grammarId": "tisilia.grammar.decimal-key@0.1",
+          "equivalenceId": "std.decimal.key",
+          "collision": "reject"
+        },
+        "responseKey": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.decimal.decode-key@0.1"
+          },
+          "grammarId": "tisilia.grammar.decimal-key@0.1",
+          "equivalenceId": "std.decimal.key",
+          "collision": "reject"
+        },
+        "requestInput": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.decimal.parse-input@0.1"
+          },
+          "inputKind": "text",
+          "editorId": "tisilia.editor.text@0.1"
+        }
+      },
+      "dependencies": [],
+      "profileIds": []
+    },
+    {
+      "id": "std.json-value.codec",
+      "typeId": "std.json-value",
+      "origin": "builtin",
+      "bindingId": "tisilia.binding.json-value@0.1",
+      "validateDomain": {
+        "kind": "builtin",
+        "id": "tisilia.codec.json-value.validate@0.1"
+      },
+      "capabilities": {
+        "request": {
+          "wire": {
+            "wireId": "std.json-value.read",
+            "direction": "server-read"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.json-value.encode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "std.json-value.request",
+          "domainRuleId": "tisilia.domain.json-value@0.1"
+        },
+        "response": {
+          "wire": {
+            "wireId": "std.json-value.write",
+            "direction": "server-write"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.json-value.decode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "std.json-value.response",
+          "domainRuleId": "tisilia.domain.json-value@0.1"
+        },
+        "requestInput": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.json-value.parse-input@0.1"
+          },
+          "inputKind": "json-value",
+          "editorId": "tisilia.editor.json@0.1"
+        }
+      },
+      "dependencies": [],
+      "profileIds": []
+    },
+    {
+      "id": "demo.MoneyRequest.codec",
+      "typeId": "demo.MoneyRequest",
+      "origin": "paired",
+      "bindingId": "demo.money.converter",
+      "validateDomain": {
+        "kind": "module",
+        "moduleId": "demo.money",
+        "exportName": "moneyRequestValidate"
+      },
+      "capabilities": {
+        "request": {
+          "wire": {
+            "wireId": "demo.money.request.wire",
+            "direction": "server-read"
+          },
+          "implementation": {
+            "kind": "module",
+            "moduleId": "demo.money",
+            "exportName": "moneyRequestEncode"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "demo.money.request.eq",
+          "domainRuleId": "demo.money.domain-rule"
+        },
+        "requestInput": {
+          "implementation": {
+            "kind": "module",
+            "moduleId": "demo.money",
+            "exportName": "moneyRequestInput"
+          },
+          "inputKind": "text",
+          "editorId": "tisilia.editor.text@0.1"
+        }
+      },
+      "dependencies": [
+        "std.decimal.codec.r"
+      ],
+      "profileIds": [
+        "sample-api.profile.web"
+      ]
+    },
+    {
+      "id": "demo.MoneyResponse.codec",
+      "typeId": "demo.MoneyResponse",
+      "origin": "paired",
+      "bindingId": "demo.money.converter",
+      "validateDomain": {
+        "kind": "module",
+        "moduleId": "demo.money",
+        "exportName": "moneyResponseValidate"
+      },
+      "capabilities": {
+        "response": {
+          "wire": {
+            "wireId": "demo.money.response.wire",
+            "direction": "server-write"
+          },
+          "implementation": {
+            "kind": "module",
+            "moduleId": "demo.money",
+            "exportName": "moneyResponseDecode"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "demo.money.response.eq",
+          "domainRuleId": "demo.money.domain-rule"
+        }
+      },
+      "dependencies": [
+        "std.decimal.codec.r",
+        "std.string.codec"
+      ],
+      "profileIds": [
+        "sample-api.profile.web"
+      ]
+    },
+    {
+      "id": "demo.UserPutRequest.codec",
+      "typeId": "demo.UserPutRequest",
+      "origin": "builtin",
+      "bindingId": "tisilia.binding.object@0.1",
+      "validateDomain": {
+        "kind": "builtin",
+        "id": "tisilia.codec.object.validate@0.1"
+      },
+      "capabilities": {
+        "request": {
+          "wire": {
+            "wireId": "demo.UserPutRequest.read",
+            "direction": "server-read"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.object.encode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "demo.UserPutRequest.request",
+          "domainRuleId": "tisilia.domain.object@0.1"
+        },
+        "requestInput": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.object.parse-input@0.1"
+          },
+          "inputKind": "json-value",
+          "editorId": "tisilia.editor.json@0.1"
+        }
+      },
+      "dependencies": [
+        "std.int64.codec.r",
+        "std.string.codec.nullable",
+        "demo.MoneyRequest.codec"
+      ],
+      "profileIds": []
+    },
+    {
+      "id": "demo.UserResponse.codec",
+      "typeId": "demo.UserResponse",
+      "origin": "builtin",
+      "bindingId": "tisilia.binding.object@0.1",
+      "validateDomain": {
+        "kind": "builtin",
+        "id": "tisilia.codec.object.validate@0.1"
+      },
+      "capabilities": {
+        "response": {
+          "wire": {
+            "wireId": "demo.UserResponse.write",
+            "direction": "server-write"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.object.decode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "demo.UserResponse.response",
+          "domainRuleId": "tisilia.domain.object@0.1"
+        },
+        "requestInput": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.object.parse-input@0.1"
+          },
+          "inputKind": "json-value",
+          "editorId": "tisilia.editor.json@0.1"
+        }
+      },
+      "dependencies": [
+        "std.guid.codec",
+        "std.int64.codec.r",
+        "std.string.codec",
+        "demo.MoneyResponse.codec",
+        "std.datetime-offset.codec"
+      ],
+      "profileIds": []
+    },
+    {
+      "id": "std.int32.codec.r",
+      "typeId": "std.int32",
+      "origin": "builtin",
+      "bindingId": "tisilia.binding.int32@0.1",
+      "validateDomain": {
+        "kind": "builtin",
+        "id": "tisilia.codec.int32.validate@0.1"
+      },
+      "capabilities": {
+        "request": {
+          "wire": {
+            "wireId": "std.int32.read.r",
+            "direction": "server-read"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.int32.encode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "std.int32.request",
+          "domainRuleId": "tisilia.domain.int32@0.1"
+        },
+        "response": {
+          "wire": {
+            "wireId": "std.int32.write",
+            "direction": "server-write"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.int32.decode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "std.int32.response",
+          "domainRuleId": "tisilia.domain.int32@0.1"
+        },
+        "requestKey": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.int32.encode-key@0.1"
+          },
+          "grammarId": "tisilia.grammar.int32-key@0.1",
+          "equivalenceId": "std.int32.key",
+          "collision": "reject"
+        },
+        "responseKey": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.int32.decode-key@0.1"
+          },
+          "grammarId": "tisilia.grammar.int32-key@0.1",
+          "equivalenceId": "std.int32.key",
+          "collision": "reject"
+        },
+        "requestInput": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.int32.parse-input@0.1"
+          },
+          "inputKind": "text",
+          "editorId": "tisilia.editor.text@0.1"
+        }
+      },
+      "dependencies": [],
+      "profileIds": []
+    },
+    {
+      "id": "std.int32.codec.r.nullable",
+      "typeId": "std.int32",
+      "origin": "builtin",
+      "bindingId": "tisilia.binding.int32@0.1",
+      "validateDomain": {
+        "kind": "builtin",
+        "id": "tisilia.codec.int32.validate@0.1"
+      },
+      "capabilities": {
+        "request": {
+          "wire": {
+            "wireId": "std.int32.read.r.or-null",
+            "direction": "server-read"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.int32.encode@0.1"
+          },
+          "nullBehavior": "bypass",
+          "equivalenceId": "std.int32.request",
+          "domainRuleId": "tisilia.domain.int32@0.1"
+        },
+        "response": {
+          "wire": {
+            "wireId": "std.int32.write.or-null",
+            "direction": "server-write"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.int32.decode@0.1"
+          },
+          "nullBehavior": "bypass",
+          "equivalenceId": "std.int32.response",
+          "domainRuleId": "tisilia.domain.int32@0.1"
+        },
+        "requestInput": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.int32.parse-input@0.1"
+          },
+          "inputKind": "text",
+          "editorId": "tisilia.editor.text@0.1"
+        }
+      },
+      "dependencies": [],
+      "profileIds": []
+    },
+    {
+      "id": "demo.ProblemResponse.codec",
+      "typeId": "demo.ProblemResponse",
+      "origin": "builtin",
+      "bindingId": "tisilia.binding.object@0.1",
+      "validateDomain": {
+        "kind": "builtin",
+        "id": "tisilia.codec.object.validate@0.1"
+      },
+      "capabilities": {
+        "response": {
+          "wire": {
+            "wireId": "demo.ProblemResponse.write",
+            "direction": "server-write"
+          },
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.object.decode@0.1"
+          },
+          "nullBehavior": "reject",
+          "equivalenceId": "demo.ProblemResponse.response",
+          "domainRuleId": "tisilia.domain.object@0.1"
+        },
+        "requestInput": {
+          "implementation": {
+            "kind": "builtin",
+            "id": "tisilia.codec.object.parse-input@0.1"
+          },
+          "inputKind": "json-value",
+          "editorId": "tisilia.editor.json@0.1"
+        }
+      },
+      "dependencies": [
+        "std.string.codec.nullable",
+        "std.int32.codec.r.nullable",
+        "std.json-value.codec"
+      ],
+      "profileIds": []
+    }
+  ],
+  "bindings": [
+    {
+      "id": "sample-api.profile.web.name-matching",
+      "kind": "name-matching",
+      "version": "0.1.0",
+      "implementation": {
+        "kind": "builtin",
+        "id": "tisilia.names.ordinal-ignore-case@0.1"
+      },
+      "settingsDigest": "sha256:4f9735288e3f88e5a2d52141152d3bed51d9c63159c2dd426dc84721b0a3ae4d",
+      "dependencyIds": [],
+      "context": []
+    },
+    {
+      "id": "demo.money.converter",
+      "kind": "converter",
+      "version": "1.0.0",
+      "implementation": {
+        "kind": "module",
+        "moduleId": "demo.money",
+        "exportName": "MoneyJsonConverter"
+      },
+      "settingsDigest": "sha256:c8db1976d2d7767c6a1fb8630436f77bb6c4d95d355ba26c8b70c014ca12977b",
+      "dependencyIds": [],
+      "context": [
+        {
+          "name": "currency",
+          "value": "JPY",
+          "confidential": false
+        }
+      ]
+    },
+    {
+      "id": "demo.money.domain-rule",
+      "kind": "domain-rule",
+      "version": "1.0.0",
+      "implementation": {
+        "kind": "module",
+        "moduleId": "demo.money",
+        "exportName": "moneyDomainRule"
+      },
+      "settingsDigest": "sha256:5a53070ad79c1f15ad3bd704c74e3c13147a1bee55c51f66de41e6c5b8ecd7ca",
+      "dependencyIds": [],
+      "context": []
+    }
+  ],
+  "equivalences": [
+    {
+      "id": "std.guid.request",
+      "version": "0.1.0",
+      "domainTypeId": "std.guid",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.guid@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": [
+        "hex-case"
+      ]
+    },
+    {
+      "id": "std.guid.response",
+      "version": "0.1.0",
+      "domainTypeId": "std.guid",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.guid@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": [
+        "hex-case"
+      ]
+    },
+    {
+      "id": "std.guid.key",
+      "version": "0.1.0",
+      "domainTypeId": "std.guid",
+      "scope": "key",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.guid@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": [
+        "hex-case"
+      ]
+    },
+    {
+      "id": "std.int64.request",
+      "version": "0.1.0",
+      "domainTypeId": "std.int64",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.int64@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": []
+    },
+    {
+      "id": "std.int64.response",
+      "version": "0.1.0",
+      "domainTypeId": "std.int64",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.int64@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": []
+    },
+    {
+      "id": "std.int64.key",
+      "version": "0.1.0",
+      "domainTypeId": "std.int64",
+      "scope": "key",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.int64@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": []
+    },
+    {
+      "id": "std.string.request",
+      "version": "0.1.0",
+      "domainTypeId": "std.string",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.string@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": []
+    },
+    {
+      "id": "std.string.response",
+      "version": "0.1.0",
+      "domainTypeId": "std.string",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.string@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": []
+    },
+    {
+      "id": "std.string.key",
+      "version": "0.1.0",
+      "domainTypeId": "std.string",
+      "scope": "key",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.string@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": []
+    },
+    {
+      "id": "std.datetime-offset.request",
+      "version": "0.1.0",
+      "domainTypeId": "std.datetime-offset",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.datetime-offset@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": [
+        "fraction-digits-beyond-7"
+      ]
+    },
+    {
+      "id": "std.datetime-offset.response",
+      "version": "0.1.0",
+      "domainTypeId": "std.datetime-offset",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.datetime-offset@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": [
+        "fraction-digits-beyond-7"
+      ]
+    },
+    {
+      "id": "std.datetime-offset.key",
+      "version": "0.1.0",
+      "domainTypeId": "std.datetime-offset",
+      "scope": "key",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.datetime-offset@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": [
+        "fraction-digits-beyond-7"
+      ]
+    },
+    {
+      "id": "std.decimal.request",
+      "version": "0.1.0",
+      "domainTypeId": "std.decimal",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.decimal@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.numeric@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.numeric@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": [
+        "scale",
+        "negative-zero-sign"
+      ]
+    },
+    {
+      "id": "std.decimal.response",
+      "version": "0.1.0",
+      "domainTypeId": "std.decimal",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.decimal@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.numeric@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.numeric@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": [
+        "scale",
+        "negative-zero-sign"
+      ]
+    },
+    {
+      "id": "std.decimal.key",
+      "version": "0.1.0",
+      "domainTypeId": "std.decimal",
+      "scope": "key",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.decimal@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.numeric@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.numeric@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": [
+        "scale",
+        "negative-zero-sign"
+      ]
+    },
+    {
+      "id": "std.json-value.request",
+      "version": "0.1.0",
+      "domainTypeId": "std.json-value",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.json-value@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": []
+    },
+    {
+      "id": "std.json-value.response",
+      "version": "0.1.0",
+      "domainTypeId": "std.json-value",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.json-value@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": []
+    },
+    {
+      "id": "std.json-value.key",
+      "version": "0.1.0",
+      "domainTypeId": "std.json-value",
+      "scope": "key",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.json-value@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": []
+    },
+    {
+      "id": "demo.MoneyRequest.request",
+      "version": "0.1.0",
+      "domainTypeId": "demo.MoneyRequest",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.object@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "structure",
+        "member-values"
+      ],
+      "notPreserved": [
+        "property-order",
+        "reference-identity"
+      ]
+    },
+    {
+      "id": "demo.MoneyRequest.response",
+      "version": "0.1.0",
+      "domainTypeId": "demo.MoneyRequest",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.object@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "structure",
+        "member-values"
+      ],
+      "notPreserved": [
+        "property-order",
+        "reference-identity"
+      ]
+    },
+    {
+      "id": "demo.MoneyResponse.request",
+      "version": "0.1.0",
+      "domainTypeId": "demo.MoneyResponse",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.object@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "structure",
+        "member-values"
+      ],
+      "notPreserved": [
+        "property-order",
+        "reference-identity"
+      ]
+    },
+    {
+      "id": "demo.MoneyResponse.response",
+      "version": "0.1.0",
+      "domainTypeId": "demo.MoneyResponse",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.object@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "structure",
+        "member-values"
+      ],
+      "notPreserved": [
+        "property-order",
+        "reference-identity"
+      ]
+    },
+    {
+      "id": "demo.money.request.eq",
+      "version": "1.0.0",
+      "domainTypeId": "demo.MoneyRequest",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "demo.money.domain-rule",
+      "dotnetOracle": {
+        "kind": "module",
+        "moduleId": "demo.money",
+        "exportName": "moneyOracleDotnet"
+      },
+      "typescriptOracle": {
+        "kind": "module",
+        "moduleId": "demo.money",
+        "exportName": "moneyOracleTs"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "amount",
+        "currency"
+      ],
+      "notPreserved": [
+        "scale-beyond-4"
+      ]
+    },
+    {
+      "id": "demo.money.response.eq",
+      "version": "1.0.0",
+      "domainTypeId": "demo.MoneyResponse",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "demo.money.domain-rule",
+      "dotnetOracle": {
+        "kind": "module",
+        "moduleId": "demo.money",
+        "exportName": "moneyOracleDotnet"
+      },
+      "typescriptOracle": {
+        "kind": "module",
+        "moduleId": "demo.money",
+        "exportName": "moneyOracleTs"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "amount",
+        "currency"
+      ],
+      "notPreserved": [
+        "scale-beyond-4"
+      ]
+    },
+    {
+      "id": "demo.UserPutRequest.request",
+      "version": "0.1.0",
+      "domainTypeId": "demo.UserPutRequest",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.object@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "structure",
+        "member-values"
+      ],
+      "notPreserved": [
+        "property-order",
+        "reference-identity"
+      ]
+    },
+    {
+      "id": "demo.UserPutRequest.response",
+      "version": "0.1.0",
+      "domainTypeId": "demo.UserPutRequest",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.object@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "structure",
+        "member-values"
+      ],
+      "notPreserved": [
+        "property-order",
+        "reference-identity"
+      ]
+    },
+    {
+      "id": "demo.UserResponse.request",
+      "version": "0.1.0",
+      "domainTypeId": "demo.UserResponse",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.object@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "structure",
+        "member-values"
+      ],
+      "notPreserved": [
+        "property-order",
+        "reference-identity"
+      ]
+    },
+    {
+      "id": "demo.UserResponse.response",
+      "version": "0.1.0",
+      "domainTypeId": "demo.UserResponse",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.object@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "structure",
+        "member-values"
+      ],
+      "notPreserved": [
+        "property-order",
+        "reference-identity"
+      ]
+    },
+    {
+      "id": "std.int32.request",
+      "version": "0.1.0",
+      "domainTypeId": "std.int32",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.int32@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": []
+    },
+    {
+      "id": "std.int32.response",
+      "version": "0.1.0",
+      "domainTypeId": "std.int32",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.int32@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": []
+    },
+    {
+      "id": "std.int32.key",
+      "version": "0.1.0",
+      "domainTypeId": "std.int32",
+      "scope": "key",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.int32@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "value"
+      ],
+      "notPreserved": []
+    },
+    {
+      "id": "demo.ProblemResponse.request",
+      "version": "0.1.0",
+      "domainTypeId": "demo.ProblemResponse",
+      "scope": "request",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.object@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "structure",
+        "member-values"
+      ],
+      "notPreserved": [
+        "property-order",
+        "reference-identity"
+      ]
+    },
+    {
+      "id": "demo.ProblemResponse.response",
+      "version": "0.1.0",
+      "domainTypeId": "demo.ProblemResponse",
+      "scope": "response",
+      "grade": "G2",
+      "domainRuleId": "tisilia.domain.object@0.1",
+      "dotnetOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "typescriptOracle": {
+        "kind": "builtin",
+        "id": "tisilia.oracle.structural@0.1"
+      },
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "preserved": [
+        "structure",
+        "member-values"
+      ],
+      "notPreserved": [
+        "property-order",
+        "reference-identity"
+      ]
+    }
+  ],
+  "projections": [],
+  "comparers": [],
+  "binders": [
+    {
+      "id": "std.binder.guid.path",
+      "bindingId": "tisilia.binder.path-segment@0.1",
+      "location": "path",
+      "typeId": "std.guid",
+      "implementation": {
+        "kind": "builtin",
+        "id": "tisilia.binder.path-segment@0.1"
+      },
+      "cardinality": "single",
+      "nullPolicy": "reject",
+      "emptyPolicy": "reject",
+      "encoding": "path-segment",
+      "grammarId": "tisilia.grammar.guid-key@0.1",
+      "normalizationId": "tisilia.normalize.identity@0.1",
+      "serverAcceptanceId": "tisilia.accept.dotnet-tryparse-invariant@0.1",
+      "orderSensitive": false
+    }
+  ],
+  "resultAdapters": [
+    {
+      "id": "std.result.minimal-result.sample-api.profile.web",
+      "bindingId": "tisilia.result.minimal-result@0.1",
+      "kind": "minimal-result",
+      "implementation": {
+        "kind": "builtin",
+        "id": "tisilia.result.minimal-result@0.1"
+      },
+      "profileIds": [
+        "sample-api.profile.web"
+      ],
+      "behaviorIds": []
+    }
+  ],
+  "operations": [
+    {
+      "id": "users.get",
+      "method": "GET",
+      "route": "/users/{id:guid}",
+      "routePlan": {
+        "segments": [
+          {
+            "parts": [
+              {
+                "kind": "literal",
+                "value": "users"
+              }
+            ]
+          },
+          {
+            "parts": [
+              {
+                "kind": "parameter",
+                "parameterId": "users.get.id",
+                "name": "id",
+                "optional": false,
+                "catchAll": "none",
+                "hasDefault": false,
+                "policies": [
+                  "guid"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "users"
+      ],
+      "parameters": [
+        {
+          "id": "users.get.id",
+          "name": "id",
+          "location": "path",
+          "binderId": "std.binder.guid.path",
+          "use": {
+            "typeId": "std.guid",
+            "codecId": "std.guid.codec",
+            "semanticNullable": false
+          },
+          "presence": "required",
+          "hasServerDefault": false
+        }
+      ],
+      "requestBody": {
+        "kind": "none"
+      },
+      "responses": [
+        {
+          "id": "users.get.ok",
+          "status": 200,
+          "body": {
+            "kind": "json",
+            "mediaType": "application/json",
+            "profileId": "sample-api.profile.web",
+            "use": {
+              "typeId": "demo.UserResponse",
+              "codecId": "demo.UserResponse.codec",
+              "semanticNullable": false
+            }
+          },
+          "resultAdapterId": "std.result.minimal-result.sample-api.profile.web",
+          "hydration": "browser-safe",
+          "exposedHeaders": [
+            "etag"
+          ]
+        },
+        {
+          "id": "users.get.not-found",
+          "status": 404,
+          "body": {
+            "kind": "json",
+            "mediaType": "application/problem+json",
+            "profileId": "sample-api.profile.web",
+            "use": {
+              "typeId": "demo.ProblemResponse",
+              "codecId": "demo.ProblemResponse.codec",
+              "semanticNullable": false
+            }
+          },
+          "resultAdapterId": "std.result.minimal-result.sample-api.profile.web",
+          "hydration": "server-only",
+          "exposedHeaders": []
+        }
+      ],
+      "pipelineBindingIds": [
+        "tisilia.pipeline.problem-details@0.1"
+      ],
+      "security": {
+        "authPolicyId": "tisilia.auth.anonymous@0.1",
+        "requestExecution": "browser-allowed",
+        "redaction": {
+          "default": "mask",
+          "rules": [
+            {
+              "direction": "response",
+              "selector": {
+                "kind": "body-path",
+                "segments": [
+                  {
+                    "property": "id"
+                  }
+                ]
+              },
+              "action": "show"
+            },
+            {
+              "direction": "response",
+              "selector": {
+                "kind": "body-path",
+                "segments": [
+                  {
+                    "property": "revision"
+                  }
+                ]
+              },
+              "action": "show"
+            }
+          ]
+        },
+        "requestHeaderAllowlist": [
+          "accept-language"
+        ],
+        "csrfPolicyId": "tisilia.csrf.none@0.1"
+      }
+    },
+    {
+      "id": "users.put",
+      "method": "PUT",
+      "route": "/users/{id:guid}",
+      "routePlan": {
+        "segments": [
+          {
+            "parts": [
+              {
+                "kind": "literal",
+                "value": "users"
+              }
+            ]
+          },
+          {
+            "parts": [
+              {
+                "kind": "parameter",
+                "parameterId": "users.put.id",
+                "name": "id",
+                "optional": false,
+                "catchAll": "none",
+                "hasDefault": false,
+                "policies": [
+                  "guid"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "users"
+      ],
+      "parameters": [
+        {
+          "id": "users.put.id",
+          "name": "id",
+          "location": "path",
+          "binderId": "std.binder.guid.path",
+          "use": {
+            "typeId": "std.guid",
+            "codecId": "std.guid.codec",
+            "semanticNullable": false
+          },
+          "presence": "required",
+          "hasServerDefault": false
+        }
+      ],
+      "requestBody": {
+        "kind": "json",
+        "mediaType": "application/json",
+        "profileId": "sample-api.profile.web",
+        "use": {
+          "typeId": "demo.UserPutRequest",
+          "codecId": "demo.UserPutRequest.codec",
+          "semanticNullable": false
+        },
+        "presence": "required"
+      },
+      "responses": [
+        {
+          "id": "users.put.ok",
+          "status": 200,
+          "body": {
+            "kind": "json",
+            "mediaType": "application/json",
+            "profileId": "sample-api.profile.web",
+            "use": {
+              "typeId": "demo.UserResponse",
+              "codecId": "demo.UserResponse.codec",
+              "semanticNullable": false
+            }
+          },
+          "resultAdapterId": "std.result.minimal-result.sample-api.profile.web",
+          "hydration": "browser-safe",
+          "exposedHeaders": []
+        },
+        {
+          "id": "users.put.not-found",
+          "status": 404,
+          "body": {
+            "kind": "json",
+            "mediaType": "application/problem+json",
+            "profileId": "sample-api.profile.web",
+            "use": {
+              "typeId": "demo.ProblemResponse",
+              "codecId": "demo.ProblemResponse.codec",
+              "semanticNullable": false
+            }
+          },
+          "resultAdapterId": "std.result.minimal-result.sample-api.profile.web",
+          "hydration": "server-only",
+          "exposedHeaders": []
+        }
+      ],
+      "pipelineBindingIds": [
+        "tisilia.pipeline.problem-details@0.1",
+        "tisilia.pipeline.minimal-validation@0.1"
+      ],
+      "security": {
+        "authPolicyId": "tisilia.auth.anonymous@0.1",
+        "requestExecution": "browser-allowed",
+        "redaction": {
+          "default": "mask",
+          "rules": [
+            {
+              "direction": "response",
+              "selector": {
+                "kind": "body-path",
+                "segments": [
+                  {
+                    "property": "id"
+                  }
+                ]
+              },
+              "action": "show"
+            },
+            {
+              "direction": "response",
+              "selector": {
+                "kind": "body-path",
+                "segments": [
+                  {
+                    "property": "revision"
+                  }
+                ]
+              },
+              "action": "show"
+            }
+          ]
+        },
+        "requestHeaderAllowlist": [
+          "accept-language"
+        ],
+        "csrfPolicyId": "tisilia.csrf.none@0.1"
+      }
+    }
+  ],
+  "modules": [
+    {
+      "id": "demo.money",
+      "version": "1.0.0",
+      "abi": "0.1",
+      "artifacts": [
+        {
+          "target": "dotnet",
+          "path": "modules/demo.money/Demo.Money.dll",
+          "digest": "sha256:bf24c12dd1c205e273d91f03334e969938f2a56c87e3c1e7b054785faa1374ed"
+        },
+        {
+          "target": "browser",
+          "path": "modules/demo.money/money.browser.js",
+          "digest": "sha256:3010881e0e41cf514bd8883613b042b9c82c927cd3b6ae0eb54450182a891525"
+        },
+        {
+          "target": "node",
+          "path": "modules/demo.money/money.node.js",
+          "digest": "sha256:dbc1e0308a00708829516118ea089b06a52ba63010c9c5bf59f8dbf21bcaf1a3"
+        }
+      ],
+      "exports": [
+        {
+          "name": "MoneyJsonConverter",
+          "role": "codec",
+          "targets": [
+            "dotnet"
+          ]
+        },
+        {
+          "name": "moneyRequestEncode",
+          "role": "codec",
+          "targets": [
+            "browser",
+            "node"
+          ]
+        },
+        {
+          "name": "moneyRequestValidate",
+          "role": "validator",
+          "targets": [
+            "browser",
+            "node"
+          ]
+        },
+        {
+          "name": "moneyRequestInput",
+          "role": "request-input",
+          "targets": [
+            "browser"
+          ]
+        },
+        {
+          "name": "moneyResponseDecode",
+          "role": "codec",
+          "targets": [
+            "browser",
+            "node"
+          ]
+        },
+        {
+          "name": "moneyResponseValidate",
+          "role": "validator",
+          "targets": [
+            "browser",
+            "node"
+          ]
+        },
+        {
+          "name": "moneyDomainRule",
+          "role": "domain-rule",
+          "targets": [
+            "dotnet",
+            "browser",
+            "node"
+          ]
+        },
+        {
+          "name": "moneyOracleDotnet",
+          "role": "oracle",
+          "targets": [
+            "dotnet"
+          ]
+        },
+        {
+          "name": "moneyOracleTs",
+          "role": "oracle",
+          "targets": [
+            "browser",
+            "node"
+          ]
+        }
+      ],
+      "dependencyIds": [],
+      "license": "MIT",
+      "noticeFiles": [
+        "modules/demo.money/NOTICE"
+      ]
+    }
+  ],
+  "documentation": [
+    {
+      "targetId": "users.get",
+      "summary": "Get a user by id",
+      "description": ""
+    }
+  ],
+  "semanticHash": "sha256:478f3e2d09cde7b30e564d57750d41ba56a4c054eafc797a64da4ea076514af0"
+}

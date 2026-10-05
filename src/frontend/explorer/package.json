@@ -1,0 +1,52 @@
+{
+  "name": "@kkdev92/tisilia-explorer",
+  "version": "0.1.0-alpha",
+  "description": "The source of the Tisilia Explorer, an API explorer page that runs every call through the generated client's own codecs; `tisilia explorer build` bundles it with an application's trusted codec modules.",
+  "license": "MIT",
+  "author": {
+    "name": "kkdev92",
+    "url": "https://kkdev92.dev/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kkdev92/tisilia.git",
+    "directory": "src/frontend/explorer"
+  },
+  "homepage": "https://kkdev92.dev/",
+  "bugs": {
+    "url": "https://github.com/kkdev92/tisilia/issues"
+  },
+  "keywords": [
+    "tisilia",
+    "aspnetcore",
+    "api-explorer",
+    "vue",
+    "vite"
+  ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "type": "module",
+  "files": [
+    "NOTICE",
+    "third-party-sources.json",
+    "index.html",
+    "public",
+    "src",
+    "vite.config.ts",
+    "tsconfig.json"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "typecheck": "vue-tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kkdev92/tisilia-runtime": "0.1.0-alpha",
+    "@vitejs/plugin-vue": "6.0.9",
+    "vite": "8.3.1",
+    "vue": "3.5.43"
+  }
+}

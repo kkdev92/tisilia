@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tisilia.invalid/0.1/config.schema.json",
+  "title": "Tisilia Project Configuration 0.1",
+  "$comment": "Format 0.1. Structure only: semantic validation (SV01–SV54) runs after it.",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "tisilia.config"
+    },
+    "version": {
+      "const": "0.1"
+    },
+    "apiId": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "contract": {
+      "$ref": "common.schema.json#/$defs/safePath"
+    },
+    "output": {
+      "$ref": "common.schema.json#/$defs/safePath"
+    },
+    "target": {
+      "type": "object",
+      "properties": {
+        "typescriptMinimumMajor": {
+          "const": 6
+        },
+        "ecmaScript": {
+          "const": "ES2022"
+        },
+        "moduleMode": {
+          "enum": [
+            "bundler",
+            "nodenext"
+          ]
+        }
+      },
+      "required": [
+        "typescriptMinimumMajor",
+        "ecmaScript",
+        "moduleMode"
+      ],
+      "additionalProperties": false
+    },
+    "selection": {
+      "const": "explicit"
+    },
+    "coveragePolicy": {
+      "enum": [
+        "development",
+        "qualified-only"
+      ]
+    },
+    "modules": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/safePath"
+      },
+      "minItems": 0
+    },
+    "portableProjects": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/safePath"
+      },
+      "minItems": 0
+    },
+    "limits": {
+      "$ref": "common.schema.json#/$defs/limits"
+    },
+    "nuxt": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "hydration": {
+          "const": "browser-safe-only"
+        },
+        "sharedCache": {
+          "const": false
+        }
+      },
+      "required": [
+        "enabled",
+        "hydration",
+        "sharedCache"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "apiId",
+    "contract",
+    "output",
+    "target",
+    "selection",
+    "coveragePolicy",
+    "modules",
+    "portableProjects",
+    "limits",
+    "nuxt"
+  ],
+  "additionalProperties": false
+}

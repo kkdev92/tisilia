@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tisilia.invalid/0.1/runner-message.schema.json",
+  "title": "Tisilia Isolated Conformance Runner Message 0.1",
+  "$comment": "Format 0.1. Structure only: semantic validation (SV01–SV54) runs after it.",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "format": {
+          "const": "tisilia.runner-message"
+        },
+        "version": {
+          "const": "0.1"
+        },
+        "sessionId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "requestId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "kind": {
+          "const": "request"
+        },
+        "action": {
+          "enum": [
+            "dotnet-read",
+            "dotnet-write",
+            "ts-encode-request",
+            "ts-decode-response",
+            "dotnet-read-key",
+            "dotnet-write-key",
+            "ts-encode-key",
+            "ts-decode-key",
+            "validate-domain",
+            "parse-request-input",
+            "compare",
+            "ts-project",
+            "dotnet-project"
+          ]
+        },
+        "adapterId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "profileId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "context": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value": {
+                "type": "string",
+                "minLength": 0
+              }
+            },
+            "required": [
+              "name",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/jsonValue"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "format",
+        "version",
+        "sessionId",
+        "requestId",
+        "kind",
+        "action",
+        "adapterId",
+        "profileId",
+        "context",
+        "inputs"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "format": {
+          "const": "tisilia.runner-message"
+        },
+        "version": {
+          "const": "0.1"
+        },
+        "sessionId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "requestId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "kind": {
+          "const": "success"
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/jsonValue"
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "format",
+        "version",
+        "sessionId",
+        "requestId",
+        "kind",
+        "outputs"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "format": {
+          "const": "tisilia.runner-message"
+        },
+        "version": {
+          "const": "0.1"
+        },
+        "sessionId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "requestId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "kind": {
+          "const": "failure"
+        },
+        "code": {
+          "enum": [
+            "invalid-input",
+            "contract",
+            "codec",
+            "limit",
+            "timeout",
+            "cancelled",
+            "internal"
+          ]
+        },
+        "safeMessageId": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 0
+        }
+      },
+      "required": [
+        "format",
+        "version",
+        "sessionId",
+        "requestId",
+        "kind",
+        "code",
+        "safeMessageId",
+        "path"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

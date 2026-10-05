@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tisilia.invalid/0.1/conformance-evidence.schema.json",
+  "title": "Tisilia Conformance Evidence Record 0.1",
+  "$comment": "Format 0.1. Structure only: semantic validation (SV01–SV54) runs after it.",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "tisilia.conformance-evidence"
+    },
+    "version": {
+      "const": "0.1"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "issuerId": {
+      "$ref": "common.schema.json#/$defs/id"
+    },
+    "issuedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "verdict": {
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "semanticHash": {
+      "$ref": "common.schema.json#/$defs/digest"
+    },
+    "closureDigest": {
+      "$ref": "common.schema.json#/$defs/digest"
+    },
+    "abi": {
+      "const": "0.1"
+    },
+    "scope": {
+      "type": "object",
+      "properties": {
+        "operationIds": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "minItems": 1
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "request",
+              "response",
+              "requestKey",
+              "responseKey",
+              "requestInput",
+              "binder",
+              "result",
+              "hydration",
+              "round-trip"
+            ]
+          },
+          "minItems": 1
+        },
+        "equivalenceIds": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/id"
+          },
+          "minItems": 0
+        }
+      },
+      "required": [
+        "operationIds",
+        "capabilities",
+        "equivalenceIds"
+      ],
+      "additionalProperties": false
+    },
+    "matrix": {
+      "$ref": "common.schema.json#/$defs/runtimeMatrix"
+    },
+    "moduleArtifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/identifiedArtifact"
+      },
+      "minItems": 0
+    },
+    "applicationArtifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/artifact"
+      },
+      "minItems": 1
+    },
+    "context": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": "string",
+            "minLength": 0
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0
+    },
+    "suite": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "common.schema.json#/$defs/id"
+        },
+        "version": {
+          "$ref": "common.schema.json#/$defs/version"
+        },
+        "digest": {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        "seed": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runnerDigest": {
+          "$ref": "common.schema.json#/$defs/digest"
+        },
+        "protocol": {
+          "const": "0.1"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "digest",
+        "seed",
+        "runnerDigest",
+        "protocol"
+      ],
+      "additionalProperties": false
+    },
+    "counts": {
+      "type": "object",
+      "properties": {
+        "passed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "passed",
+        "failed",
+        "skipped"
+      ],
+      "additionalProperties": false
+    },
+    "requiredTests": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "limits": {
+      "$ref": "common.schema.json#/$defs/limits"
+    },
+    "claim": {
+      "const": "observed-conformance"
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "id",
+    "issuerId",
+    "issuedAt",
+    "verdict",
+    "semanticHash",
+    "closureDigest",
+    "abi",
+    "scope",
+    "matrix",
+    "moduleArtifacts",
+    "applicationArtifacts",
+    "context",
+    "suite",
+    "counts",
+    "requiredTests",
+    "limits",
+    "claim"
+  ],
+  "additionalProperties": false
+}

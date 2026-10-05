@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="Tisilia.Abstractions/Tisilia.Abstractions.csproj" />
+    <Project Path="Tisilia.AspNetCore/Tisilia.AspNetCore.csproj" />
+    <Project Path="Tisilia.Explorer/Tisilia.Explorer.csproj" />
+    <Project Path="Tisilia.Generator/Tisilia.Generator.csproj" />
+    <Project Path="Tisilia.Tool/Tisilia.Tool.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="../../tests/Tisilia.Contract.Tests/Tisilia.Contract.Tests.csproj" />
+  </Folder>
+</Solution>

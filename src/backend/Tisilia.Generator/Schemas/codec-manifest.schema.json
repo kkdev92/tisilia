@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.tisilia.invalid/0.1/codec-manifest.schema.json",
+  "title": "Tisilia Codec Module Manifest 0.1",
+  "$comment": "Format 0.1. Structure only: semantic validation (SV01–SV54) runs after it.",
+  "type": "object",
+  "properties": {
+    "format": {
+      "const": "tisilia.codec-manifest"
+    },
+    "version": {
+      "const": "0.1"
+    },
+    "module": {
+      "$ref": "common.schema.json#/$defs/module"
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/binding"
+      },
+      "minItems": 0
+    },
+    "codecs": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/codec"
+      },
+      "minItems": 0
+    },
+    "types": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/model"
+      },
+      "minItems": 0
+    },
+    "wires": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/wire"
+      },
+      "minItems": 0
+    },
+    "equivalences": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/equivalence"
+      },
+      "minItems": 0
+    },
+    "projections": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/projection"
+      },
+      "minItems": 0
+    },
+    "comparers": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/comparer"
+      },
+      "minItems": 0
+    },
+    "binders": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/binder"
+      },
+      "minItems": 0
+    },
+    "resultAdapters": {
+      "type": "array",
+      "items": {
+        "$ref": "common.schema.json#/$defs/resultAdapter"
+      },
+      "minItems": 0
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "module",
+    "bindings",
+    "codecs",
+    "types",
+    "wires",
+    "equivalences",
+    "projections",
+    "comparers",
+    "binders",
+    "resultAdapters"
+  ],
+  "additionalProperties": false
+}

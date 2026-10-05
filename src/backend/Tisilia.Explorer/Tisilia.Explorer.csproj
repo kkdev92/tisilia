@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Tisilia.Explorer</RootNamespace>
+    <PackageId>Kkdev92.Tisilia.Explorer</PackageId>
+    <IsPackable>true</IsPackable>
+    <Description>The Tisilia Explorer for ASP.NET Core: an API explorer page on an authorized route that runs every call through the generated client's own codecs.</Description>
+    <ExplorerDist>$(MSBuildThisFileDirectory)../../frontend/explorer/dist</ExplorerDist>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tisilia.Contract.Tests" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\Tisilia.AspNetCore\Tisilia.AspNetCore.csproj" />
+  </ItemGroup>
+
+  <!-- The built SPA (src/frontend/explorer: vite build) is embedded; without a build the endpoint answers 503 instead of guessing. -->
+  <ItemGroup>
+    <EmbeddedResource Include="$(ExplorerDist)/**/*" LogicalName="explorer/%(RecursiveDir)%(Filename)%(Extension)" Condition="Exists('$(ExplorerDist)')" />
+  </ItemGroup>
+
+  <!-- implicit usings for the projects that reference the package (build/<PackageId>.props is imported by NuGet) -->
+  <ItemGroup>
+    <None Include="build\Kkdev92.Tisilia.Explorer.props" Pack="true" PackagePath="build\" />
+  </ItemGroup>
+
+</Project>
