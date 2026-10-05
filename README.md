@@ -16,7 +16,7 @@ integer, a decimal keeps its scale, a date keeps its offset, and what the contra
 guessed.
 _Built for teams that need consistent value semantics across .NET and TypeScript._
 
-> **Status:** `0.1.0-alpha`, an unreleased first preview. On every CI run the packed packages are installed into a fresh ASP.NET
+> **Status:** `0.1.0-alpha`, the first preview. On every CI run the packed packages are installed into a fresh ASP.NET
 > Core application and a fresh TypeScript project: the CLI exports and validates the application's contract, generates a
 > client, compiles it under strict settings, and calls the running application through it, and an int64 beyond 2^53 and a
 > `+09:00` offset have to arrive exactly.
