@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { buildPlannedUrl, type RouteParameter, type RoutePlan } from "../src/http/routes.js";
 import { execute, fetchResponse, prepareRequest, type BufferedFile, type OperationDescriptor } from "../src/http/client.js";
-import { suggestedFileName } from "../src/http/filename.js";
+import { safeFileName, suggestedFileName } from "../src/http/filename.js";
 import { standardBinder } from "../src/http/binders.js";
 import { createHydrationEnvelope, checkHydrationEnvelope } from "../src/hydration.js";
 import { scalarCodec } from "../src/codec/scalars.js";
@@ -197,4 +197,22 @@ describe("Content-Disposition", () => {
     ['attachment; filename=".."', undefined],
     ['attachment; filename="a\u0000b"', undefined],
   ])("BD21 BD22 BD23 %s", (header, name) => { expect(suggestedFileName(header)).toBe(name); });
+
+  it.each([
+    ["report.pdf. . ", "report.pdf"],
+    ["dir/report. ", "report"],
+    ["dir\\report..", "report"],
+    [" report.pdf ", "report.pdf"],
+    ["...", undefined],
+    [". .", undefined],
+    ["", undefined],
+  ])("safeFileName(%j)", (name, expected) => { expect(safeFileName(name)).toBe(expected); });
+
+  it("strips trailing dots and spaces in time linear in the name's length", () => {
+    // The name comes from the server. A trailing-anchored regex retried the run from each of its dots and spaces.
+    const started = performance.now();
+    expect(safeFileName("a" + ". ".repeat(20_000) + "b")).toBeUndefined(); // longer than 255 characters
+    expect(safeFileName("report.pdf" + " .".repeat(20_000))).toBe("report.pdf");
+    expect(performance.now() - started).toBeLessThan(100);
+  });
 });

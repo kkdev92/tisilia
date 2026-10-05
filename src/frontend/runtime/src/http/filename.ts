@@ -47,7 +47,12 @@ export function suggestedFileName(header: string | undefined): string | undefine
 
 /** Advisory basename, not a filesystem path or a guarantee that opening its content is safe. */
 export function safeFileName(name: string): string | undefined {
-  const base = name.split(/[\\/]/).at(-1)?.trim().replace(/[. ]+$/, "");
+  const last = name.split(/[\\/]/).at(-1)?.trim() ?? "";
+  // Trailing dots and spaces are stripped by index: `/[. ]+$/` is retried from every dot and space of a run that does not
+  // end the name, which takes time quadratic in its length.
+  let end = last.length;
+  while (end > 0 && (last[end - 1] === "." || last[end - 1] === " ")) { end--; }
+  const base = last.slice(0, end);
   if (!base || base.length > 255 || /^[.]+$/.test(base) || /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069<>:"|?*]/.test(base)
     || /^(?:CON|PRN|AUX|NUL|COM[0-9¹²³]|LPT[0-9¹²³])(?:\.|$)/i.test(base)) { return undefined; }
   return base;

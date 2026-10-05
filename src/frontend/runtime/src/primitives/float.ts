@@ -153,13 +153,25 @@ export function formatFloat64(value: number, path = ""): string {
   return String(value);
 }
 
+/**
+ * `s` without its trailing zeros, by index. `/0+$/` is retried from every zero of a run that does not end the string; the
+ * strings here are at most a few dozen characters, so it was never slow, but the loop does not depend on that.
+ */
+function withoutTrailingZeros(s: string): string {
+  let end = s.length;
+  while (end > 0 && s.charCodeAt(end - 1) === 0x30) {
+    end--;
+  }
+  return s.slice(0, end);
+}
+
 /** Rewrites `1.50e+2`-style output of toPrecision into a minimal valid JSON lexeme (strip trailing zeros of the mantissa). */
 function normalizeExponent(s: string): string {
   const e = s.indexOf("e");
   let mantissa = e >= 0 ? s.slice(0, e) : s;
   const exponent = e >= 0 ? s.slice(e) : "";
   if (mantissa.includes(".")) {
-    mantissa = mantissa.replace(/0+$/, "").replace(/\.$/, "");
+    mantissa = withoutTrailingZeros(mantissa).replace(/\.$/, "");
   }
   return mantissa + exponent;
 }
@@ -189,7 +201,7 @@ export function formatDotnetShortest(value: number, single: boolean): string {
   let digits = (intPart + fracPart).replace(/^0+/, "");
   const leadingZerosRemoved = intPart.length + fracPart.length - digits.length;
   const pointPos = intPart.length - leadingZerosRemoved + expPart; // number of digits before the decimal point
-  digits = digits.replace(/0+$/, "");
+  digits = withoutTrailingZeros(digits);
   const sciExp = pointPos - 1;
   const precision = single ? 9 : 17;
   let out: string;

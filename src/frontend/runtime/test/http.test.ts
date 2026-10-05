@@ -225,6 +225,37 @@ describe("url building", () => {
     expect(parseMediaType("text/plain; charset=utf 8")).toBeUndefined();
     expect(parseMediaType("text/plain charset=utf-8")).toBeUndefined();
   });
+
+  it("trims a long run of OWS in time linear in its length", () => {
+    // The server chooses this header, and browsers pass on values far longer than these. A trailing-anchored regex retried
+    // the run from each of its blanks.
+    const blanks = " \t".repeat(20_000);
+    const started = performance.now();
+    expect(parseMediaType("application/json" + blanks + "x")).toBeUndefined();
+    expect(parseMediaType("application/json" + blanks + "; charset=utf-8")?.charset).toBe("utf-8");
+    expect(parseMediaType(blanks + "application/json" + blanks)?.essence).toBe("application/json");
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+
+  it("trims SP and HTAB and no other blank, on generated values", () => {
+    // OWS around a value leaves it as it is; any other blank at either end is outside the grammar, so the value is refused.
+    let seed = 0x7151;
+    const random = (): number => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const pick = (items: readonly string[]): string => items[Math.floor(random() * items.length)]!;
+    const blanks = [" ", "\t", " ", "\t", " ", "\n", "\r", "\v", "\f", "　", "﻿"];
+    const pad = (): string => Array.from({ length: Math.floor(random() * 4) }, () => pick(blanks)).join("");
+    const cores = ["a/x", "a/x;a=x", 'a/x; a="x;\\"y"', "a/x ;", "a/x;;a=x", "a/x; a=x", "a/", "/x", "a/x;a"];
+    for (let n = 0; n < 20_000; n++) {
+      const [left, core, right] = [pad(), pick(cores), pad()];
+      const owsOnly = /^[ \t]*$/.test(left + right);
+      expect(parseMediaType(left + core + right), JSON.stringify(left + core + right)).toEqual(owsOnly ? parseMediaType(core) : undefined);
+    }
+  });
 });
 
 describe("execute", () => {
