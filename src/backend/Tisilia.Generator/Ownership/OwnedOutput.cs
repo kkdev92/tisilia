@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Tisilia.Documents;
 using Tisilia.Generator.Canonical;
 using Tisilia.Generator.Diagnostics;
@@ -16,10 +18,14 @@ public sealed record OutputPlan(IReadOnlyList<GeneratedFile> Files, GenerationMa
 /// files, rejects paths outside the output root (including symlinks/reparse points) and replaces files atomically per file
 /// after every file was generated and checked.
 /// </summary>
-public static class OwnedOutput
+public static partial class OwnedOutput
 {
     public static string ManifestText(GenerationManifest manifest) => JsonSerializer.Serialize(manifest, TisiliaJson.IndentedOptions) + "\n";
 
+    /// <summary>
+    /// The previous generation's manifest, or null when there is none. One that cannot be read (broken, or written by a version
+    /// of Tisilia with another format) is an error: without it, generated files cannot be told from foreign ones.
+    /// </summary>
     public static GenerationManifest? ReadManifest(string outputRoot, DiagnosticBag bag)
     {
         var path = Path.Combine(outputRoot, OutputPlan.ManifestFileName);
@@ -28,14 +34,46 @@ public static class OwnedOutput
             return null;
         }
 
-        var node = Validation.TisiliaSchemas.ParseStrict(File.ReadAllText(path), bag);
-        if (node is null || !Validation.TisiliaSchemas.Instance.ValidateStructure(Validation.DocumentKind.GenerationManifest, node, bag))
+        // diagnostics about the manifest carry the manifest's file: their JSON Pointers point into it, not into the config
+        var manifestBag = new DiagnosticBag { File = path };
+        try
         {
+            var node = Validation.TisiliaSchemas.ParseStrict(File.ReadAllText(path), manifestBag);
+            if (node is not null && Validation.TisiliaSchemas.Instance.ValidateStructure(Validation.DocumentKind.GenerationManifest, node, manifestBag))
+            {
+                return JsonSerializer.Deserialize<GenerationManifest>(node, TisiliaJson.Options);
+            }
+
+            manifestBag.Error(TisiliaCodes.GenerationManifest, "SV48", "",
+                $"cannot read the previous generation's manifest{WrittenBy(node)}, so the files it generated cannot be told from files of your own",
+                fix: "delete the generated files and the manifest (or generate into an empty directory), then generate again; --force does not apply: it overrides edits only to files a readable manifest owns");
             return null;
         }
-
-        return JsonSerializer.Deserialize<GenerationManifest>(node, TisiliaJson.Options);
+        finally
+        {
+            bag.AddRange(manifestBag.Items);
+        }
     }
+
+    /// <summary>" (version 0.3, written by Tisilia 0.2.0-alpha; this Tisilia reads 0.1)" for a manifest of another format version, else "".</summary>
+    private static string WrittenBy(JsonNode? manifest)
+    {
+        var version = VersionText((manifest as JsonObject)?["version"]);
+        if (version is null || version == TisiliaJson.DraftVersion)
+        {
+            return "";
+        }
+
+        var generator = VersionText((manifest as JsonObject)?["generatorVersion"]);
+        return $" (version {version}{(generator is null ? "" : ", written by Tisilia " + generator)}; this Tisilia reads {TisiliaJson.DraftVersion})";
+    }
+
+    // the manifest failed validation, so only what looks like a version goes into the message
+    private static string? VersionText(JsonNode? node)
+        => node is JsonValue value && value.TryGetValue<string>(out var text) && VersionLike().IsMatch(text) ? text : null;
+
+    [GeneratedRegex("^[0-9][0-9A-Za-z.+-]{0,63}$")]
+    private static partial Regex VersionLike();
 
     /// <summary>
     /// Compares the plan with the current output directory. Returns the list of paths that differ (no writes). Line endings do

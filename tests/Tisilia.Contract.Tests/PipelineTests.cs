@@ -247,6 +247,64 @@ public sealed class PipelineTests : IDisposable
         Assert.DoesNotContain("line endings", error.Message, StringComparison.Ordinal);
     }
 
+    // ------------------------------------------------------------------ ownership
+
+    [Fact]
+    public void A_generation_manifest_of_another_version_is_reported_against_itself()
+    {
+        var configPath = WriteConfig();
+        var output = Path.Combine(_root, "web", "generated");
+        var (plan, bag) = Plan(configPath);
+        Assert.True(OwnedOutput.Write(output, plan!.Output, previous: null, force: false, bag), string.Join("\n", bag.Items));
+        // what an earlier Tisilia leaves in the output directory: another format version and ABI
+        var manifestPath = Path.Combine(output, OutputPlan.ManifestFileName);
+        var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!.AsObject();
+        manifest["version"] = "0.3";
+        manifest["abi"] = "0.3";
+        manifest["generatorVersion"] = "0.2.0-alpha";
+        File.WriteAllText(manifestPath, manifest.ToJsonString(TisiliaJson.IndentedOptions));
+
+        bag = new DiagnosticBag { File = configPath };
+        Assert.Null(OwnedOutput.ReadManifest(output, bag));
+        // the JSON Pointers point into the manifest, so the diagnostics name it: the config has no /abi to look for
+        Assert.All(bag.Items, d => Assert.Equal((DiagnosticSeverity.Error, manifestPath), (d.Severity, d.File)));
+        Assert.Equal(["/abi", "/version"], bag.Items.Where(d => d.Code == TisiliaCodes.SchemaViolation).Select(d => d.Path).Order(StringComparer.Ordinal));
+        var unreadable = Assert.Single(bag.Items, d => d.Code == TisiliaCodes.GenerationManifest);
+        Assert.Equal(("SV48", ""), (unreadable.Rule, unreadable.Path));
+        Assert.Contains("(version 0.3, written by Tisilia 0.2.0-alpha; this Tisilia reads 0.1)", unreadable.Message, StringComparison.Ordinal);
+        Assert.Contains("generate into an empty directory", unreadable.Fix, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_manifest_that_is_not_json_names_only_itself()
+    {
+        var output = Path.Combine(_root, "web", "generated");
+        Directory.CreateDirectory(output);
+        var manifestPath = Path.Combine(output, OutputPlan.ManifestFileName);
+        File.WriteAllText(manifestPath, "{ \"version\": ");
+
+        var bag = new DiagnosticBag { File = ConfigPath };
+        Assert.Null(OwnedOutput.ReadManifest(output, bag));
+        Assert.All(bag.Items, d => Assert.Equal(manifestPath, d.File));
+        var unreadable = Assert.Single(bag.Items, d => d.Code == TisiliaCodes.GenerationManifest);
+        // nothing in the file looks like a version, so the message claims none
+        Assert.DoesNotContain("written by", unreadable.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_foreign_file_is_not_overwritten_even_with_force()
+    {
+        // --force overrides edits to files the manifest owns; a file generation did not write stays the user's
+        var (plan, bag) = Plan(WriteConfig());
+        var output = Path.Combine(_root, "web", "generated");
+        Directory.CreateDirectory(output);
+        var client = Path.Combine(output, "client.ts");
+        File.WriteAllText(client, "// mine\n");
+        Assert.False(OwnedOutput.Write(output, plan!.Output, previous: null, force: true, bag));
+        Assert.Contains(bag.Items, d => d.Code == TisiliaCodes.OwnershipConflict && d.Message.Contains("'client.ts' exists but is not owned", StringComparison.Ordinal));
+        Assert.Equal("// mine\n", File.ReadAllText(client));
+    }
+
     // ------------------------------------------------------------------ line endings (Git for Windows checks text out with CRLF)
 
     [Fact]
