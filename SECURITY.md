@@ -64,7 +64,7 @@ connections, `nosniff`, `no-referrer` and `no-store`.
 
 ## Nuxt dependency advisories
 
-Nuxt 4.5.2 currently brings two unresolved upstream advisories into a consumer installation:
+Nuxt 4.5.2 currently brings these unresolved upstream advisories into a consumer installation:
 
 - [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm): `braces` through 3.0.3
   can exhaust the stack on deeply nested patterns. Nitro uses it through `globby` / `fast-glob` / `micromatch`
@@ -73,10 +73,26 @@ Nuxt 4.5.2 currently brings two unresolved upstream advisories into a consumer i
   accepts malformed RSA signature encodings. Nuxt's CLI uses it through `listhen` for local certificate handling.
   Do not use the development server or `nuxt preview` as a production server, and do not use this dependency to verify
   untrusted signatures or certificates.
+- [GHSA-858h-whjf-mvg5](https://github.com/advisories/GHSA-858h-whjf-mvg5),
+  [GHSA-g4wm-2vf7-vfgr](https://github.com/advisories/GHSA-g4wm-2vf7-vfgr),
+  [GHSA-x6jw-m9v5-85vh](https://github.com/advisories/GHSA-x6jw-m9v5-85vh) and
+  [GHSA-v5rq-49vh-5v5c](https://github.com/advisories/GHSA-v5rq-49vh-5v5c): `simple-git` through 3.36.0 and
+  `@simple-git/argv-parser` before 2.0.1 let git options, git configuration and editor variables past simple-git's guard
+  against unsafe operations, up to command execution. Nuxt DevTools 3.4.2 (Nuxt 4.5.2 requires `^3.4.1`) depends on
+  `simple-git` `^3.36.0` and runs `git branch`, `rev-parse` and `status` in the project's root when it names a build
+  analysis. A `node-server` build's `.output` contains neither DevTools nor `simple-git`. Run the development server only
+  in a checkout you trust, and turn DevTools off (`devtools: { enabled: false }` in `nuxt.config`) where you do not use it.
 
-Neither advisory has a published fix as of 2026-10-05. Dependabot alerts remain open; these dependencies have not been
-patched, ignored or declared safe. A workspace audit with `--omit=dev` excludes the workspace's Nuxt development dependency
-and does not describe a Nuxt consumer's full installation. Run `npm audit` in the consuming application too.
+As of 2026-10-06, `braces` and `node-forge` have no published fix, and the fixes for `simple-git` (4.0.0 and 4.0.1) and
+`@simple-git/argv-parser` (2.0.1) are majors that Nuxt 4.5.2's dependencies do not admit. Dependabot alerts remain open;
+these dependencies have not been patched, ignored or declared safe. A workspace audit with `--omit=dev` excludes the
+workspace's Nuxt development dependency and does not describe a Nuxt consumer's full installation. Run `npm audit` in the
+consuming application too.
+
+A fix that the dependency ranges already admit reaches a fresh install, but an existing `package-lock.json` keeps the
+version it recorded: run `npm update <package>` or `npm audit fix` in the consuming application, then build again. A Nuxt
+server build copies the server's runtime dependencies into `.output`; Vue's compiler, for example, brings `source-map-js`,
+fixed in 1.2.2 for [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q).
 
 For a Node deployment, build in a trusted environment and deploy only Nuxt's standalone `.output` directory, starting
 `node .output/server/index.mjs` as described in the [Nuxt deployment guide](https://nuxt.com/docs/4.x/getting-started/deployment).
