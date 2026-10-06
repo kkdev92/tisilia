@@ -84,10 +84,12 @@ Nuxt 4.5.2 currently brings these unresolved upstream advisories into a consumer
   in a checkout you trust, and turn DevTools off (`devtools: { enabled: false }` in `nuxt.config`) where you do not use it.
 
 As of 2026-10-06, `braces` and `node-forge` have no published fix, and the fixes for `simple-git` (4.0.0 and 4.0.1) and
-`@simple-git/argv-parser` (2.0.1) are majors that Nuxt 4.5.2's dependencies do not admit. Dependabot alerts remain open;
-these dependencies have not been patched, ignored or declared safe. A workspace audit with `--omit=dev` excludes the
-workspace's Nuxt development dependency and does not describe a Nuxt consumer's full installation. Run `npm audit` in the
-consuming application too.
+`@simple-git/argv-parser` (2.0.1) are majors that Nuxt 4.5.2's dependencies do not admit. In this repository they come
+only through the Nuxt module's development dependency on Nuxt and none of them is in Tisilia's packages, so their
+Dependabot alerts are dismissed as tolerable risk. The dependencies have not been patched or ignored, and a Nuxt
+consumer's own installation still contains them. A workspace audit with `--omit=dev` excludes the workspace's Nuxt
+development dependency and does not describe a Nuxt consumer's full installation. Run `npm audit` in the consuming
+application too.
 
 A fix that the dependency ranges already admit reaches a fresh install, but an existing `package-lock.json` keeps the
 version it recorded: run `npm update <package>` or `npm audit fix` in the consuming application, then build again. A Nuxt
