@@ -8,6 +8,13 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+### Fixed
+
+- `generate` reported a generation manifest it could not read — broken, or written by a version of Tisilia with another
+  format — against the config file, at JSON Pointers the config does not have. It now names the manifest, the version that
+  wrote it and how to recover; `--force` does not apply. The getting-started guide no longer says that `--force` overwrites
+  files the generator did not write.
+
 ## [0.1.0-alpha] - 2026-10-05
 
 The first preview.

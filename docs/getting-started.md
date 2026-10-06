@@ -80,10 +80,13 @@ dotnet tisilia generate --config tisilia.json
 config are relative to it and may not leave its directory, so put it where both the contract and the output are below it
 (the repository root). `--module-mode nodenext` targets Node ESM; the default `bundler` targets Vite, Nuxt and other bundlers.
 
-The output directory is owned by the generator (`tisilia.generation-manifest.json`): edited or foreign files are never
-overwritten without `--force`. `dotnet tisilia check --config tisilia.json` compares the output with what would be generated
-and exits with 4 when it is out of date — the CI step. Generated code compiles with `strict`, `exactOptionalPropertyTypes`,
-`noUncheckedIndexedAccess`, `verbatimModuleSyntax`, `noUnusedLocals`, `noUnusedParameters` and `erasableSyntaxOnly`.
+The output directory is owned by the generator (`tisilia.generation-manifest.json` records what it wrote): a file it did not
+write is never overwritten, and a generated file you edited only with `--force`. A manifest `generate` cannot read — broken,
+or written by a version of Tisilia with another format — stops it, `--force` included: delete the generated files and the
+manifest, or generate into an empty directory. `dotnet tisilia check --config tisilia.json` compares the output with what
+would be generated and exits with 4 when it is out of date — the CI step. Generated code compiles with `strict`,
+`exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`, `noUnusedLocals`, `noUnusedParameters`
+and `erasableSyntaxOnly`.
 
 **Keeping the contract stable.** The contract's `semanticHash` covers the bytes of the assemblies that implement your own
 codecs or behaviors, so build them reproducibly. Set `<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>`

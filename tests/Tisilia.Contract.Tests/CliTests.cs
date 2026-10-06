@@ -121,6 +121,28 @@ public sealed class CliTests : IDisposable
         Assert.DoesNotContain("Unhandled exception", result.Stderr, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Generate_names_a_manifest_it_cannot_read_with_or_without_force()
+    {
+        InitFixtureProject();
+        Assert.Equal(ExitCodes.Success, Run("generate", "--config", "tisilia.json").ExitCode);
+        // what an earlier Tisilia leaves in the output directory: a manifest of another format version
+        var manifestPath = Path.Combine(_dir, "web", "generated", "tisilia.generation-manifest.json");
+        var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(manifestPath))!.AsObject();
+        manifest["version"] = "0.3";
+        File.WriteAllText(manifestPath, manifest.ToJsonString());
+
+        // without the manifest, generated files cannot be told from the user's: --force does not get past it
+        foreach (var force in new[] { false, true })
+        {
+            var result = Run(["generate", "--config", "tisilia.json", "--format", "json", .. force ? new[] { "--force" } : []]);
+            Assert.Equal(ExitCodes.ConfigOrSchema, result.ExitCode);
+            var diagnostics = System.Text.Json.Nodes.JsonNode.Parse(result.Stdout)!["diagnostics"]!.AsArray();
+            Assert.All(diagnostics, d => Assert.EndsWith(Path.Combine("web", "generated", "tisilia.generation-manifest.json"), d!["file"]!.GetValue<string>(), StringComparison.Ordinal));
+            Assert.Contains(diagnostics, d => d!["code"]!.GetValue<string>() == Generator.Diagnostics.TisiliaCodes.GenerationManifest);
+        }
+    }
+
     [Theory]
     [InlineData("watch", "--config", "tisilia.json", "--runs", "two")]
     [InlineData("watch", "--config", "tisilia.json", "--debounce-ms", "-5")]
