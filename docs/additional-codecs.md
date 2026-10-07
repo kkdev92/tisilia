@@ -2,8 +2,8 @@
 
 .NET types outside the builtin scalar set are used through certified additional codecs, never rounded to a string or a
 number silently. Tisilia ships one paired module, `tisilia-additional`, for fifteen of them,
-and lets an application declare the wire of `DateTime`. Without these registrations the exporter keeps
-refusing the types with a diagnostic that names the fix.
+and optionally narrows the builtin mixed `DateTime` wire. Without additional-codec registrations the exporter
+refuses those fifteen types with a diagnostic that names the fix; builtin `DateTime` needs no registration.
 
 ## Setting up
 
@@ -108,12 +108,14 @@ actions the contract binder is `tisilia.grammar.enum-name@0.1` and the client re
 
 ## DateTime
 
-System.Text.Json writes a `DateTime` according to its runtime `Kind` (`Z`, the local offset, or nothing), so the kind a
-position holds is declared: `TisiliaOptions.DateTimes.Default` and member exceptions (`Add(type, member, wire)`). `Utc`
-and `Unspecified` map to the builtin `datetime-utc` / `datetime-unspecified` scalars; `Local` maps to
-`datetime-local-wire`, whose conformance claim is bound to the server's time zone. A `DateTime` parameter can be `Utc` or
-`Unspecified` only: ASP.NET Core binds parameters with `DateTimeStyles.AdjustToUniversal`, which converts an offset to
-UTC (SV30).
+The default builtin `datetime` handles every `Kind`: `DateTimeUtc | DateTimeUnspecified | DateTimeLocalWire`.
+`parseDateTime` / `formatDateTime` keep the suffix and 100 ns ticks without a JS Date or client-zone conversion.
+`TisiliaOptions.DateTimes.Default` and member exceptions (`Add(type, member, wire)`) optionally narrow the domain:
+`Utc` and `Unspecified` select `datetime-utc` / `datetime-unspecified`; `Local` selects `datetime-local-wire`;
+`Mixed` selects the union. Local JSON expectations depend on the server's zone.
+HTTP parameters accept the default union, but a fixed Local declaration is invalid (SV30): ASP.NET Core's
+`DateTimeStyles.AdjustToUniversal` converts offset input to UTC. Multiple mixed DateTime dictionary keys containing Local
+require a zone-aware codec because normalization/DST can collapse them. See [the DateTime guide](getting-started.md#6-what-the-types-say).
 
 ## How it is checked
 

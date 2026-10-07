@@ -10,7 +10,7 @@ import { docOf, isDeprecated } from "../docs.js";
 import { copyToClipboard, documentationOf, redactHeaders } from "../explorer.js";
 import { errorsByPath, exampleOf, parseFormJson, prettyJson, sanitize, scalarText, type FormJson } from "../forms.js";
 import { t } from "../i18n.js";
-import { argsOf, authorized, cancel, clearRun, draftOf, notify, previewOf, resetDraft, runs, send, store, switchEditor, toggle } from "../state.js";
+import { argsOf, authorized, cancel, clearRun, draftOf, notify, previewOf, resetDraft, runs, selectBinaryFile, send, store, switchEditor, toggle } from "../state.js";
 import CodeBlock from "./CodeBlock.vue";
 import DeclaredResponses from "./DeclaredResponses.vue";
 import Icon from "./Icon.vue";
@@ -19,11 +19,13 @@ import ScalarInput from "./ScalarInput.vue";
 import TypeTree from "./TypeTree.vue";
 import RichText from "./RichText.js";
 import ValueEditor from "./ValueEditor.vue";
+import FormFieldsEditor from "./FormFieldsEditor.vue";
 
 /** `tag`: the group the block is listed in — an operation with several tags is listed in each (its first tag owns the plain ids). */
 const props = defineProps<{ op: ContractOperation; tag: string }>();
 const root = ref<HTMLElement>();
 const live = ref<HTMLElement>();
+const binaryInput = ref<HTMLInputElement>();
 
 const domKey = computed(() => (props.tag === (props.op.tags[0] ?? "default") ? props.op.id : props.tag + "-" + props.op.id));
 const method = computed(() => props.op.method.toLowerCase());
@@ -38,6 +40,8 @@ const profileId = computed(() => store.model!.registry.operations.get(props.op.i
 const routeParts = computed(() => props.op.route.split(/(\{[^{}]*\})/).filter((p) => p.length > 0).map((p) => ({ text: p, param: p.startsWith("{") })));
 
 const draft = computed(() => draftOf(props.op));
+watch(() => draft.value.binaryFile, file => { if (file === undefined && binaryInput.value !== undefined) { binaryInput.value.value = ""; } });
+watch(() => draft.value.formUploads, () => { root.value?.querySelectorAll<HTMLInputElement>('input[data-form-file]').forEach(input => { input.value = ""; }); });
 const built = computed(() => argsOf(props.op, draft.value));
 // a value that is merely missing is pointed out once the user has tried to execute or touched the field; a wrong value at once
 const missing = (message: string): boolean => message === "required" || message === "request body is required" || message.startsWith("missing-required");
@@ -257,7 +261,7 @@ watch(() => store.focusId, focusIfLinked);
             <button v-if="draft.edited" type="button" class="btn small ghost" :title="t().resetTitle" @click="resetDraft(op)"><Icon name="refresh" :size="13" />{{ t().reset }}</button>
           </div>
 
-          <p v-if="groups.length === 0 && !bodyNode" class="col-note">{{ t().noInputs }}</p>
+          <p v-if="groups.length === 0 && op.requestBody.kind === 'none'" class="col-note">{{ t().noInputs }}</p>
 
           <div v-for="g in groups" :key="g.location" class="params">
             <h4 class="sub-head">{{ t().locations[g.location] }}</h4>
@@ -303,6 +307,21 @@ watch(() => store.focusId, focusIfLinked);
             </div>
           </div>
 
+          <div v-if="op.requestBody.kind === 'form'" class="body">
+            <div class="sub-head-row"><h4 class="sub-head">{{ t().form }}</h4><code class="body-type">{{ op.requestBody.mediaType }}</code></div>
+            <FormFieldsEditor :fields="op.requestBody.fields" :draft="draft" :dom-key="domKey" />
+            <p v-if="op.requestBody.mediaType === 'multipart/form-data'" class="field-hint">{{ t().uploadHint }}</p>
+            <span v-for="[path, message] in bodyErrors" :key="path" class="field-error">{{ path === "" ? "" : path + ": " }}{{ message }}</span>
+          </div>
+          <div v-if="op.requestBody.kind === 'binary'" class="body">
+            <div class="sub-head-row">
+              <label class="sub-head" :for="'upload-' + domKey">{{ t().uploadBodyLabel }}<span v-if="op.requestBody.presence === 'required'" class="req" :title="t().required">*</span></label>
+              <code class="body-type">{{ op.requestBody.mediaType }}</code>
+            </div>
+            <input :id="'upload-' + domKey" ref="binaryInput" class="input" type="file" :aria-label="t().uploadBodyLabel" @change="selectBinaryFile(draft, ($event.target as HTMLInputElement).files?.[0])" />
+            <p class="field-hint">{{ t().uploadHint }}</p>
+            <span v-for="[path, message] in bodyErrors" :key="path" class="field-error">{{ path === "" ? "" : path + ": " }}{{ message }}</span>
+          </div>
           <div v-if="op.requestBody.kind === 'json' && bodyNode" class="body">
             <div class="sub-head-row">
               <h4 class="sub-head">{{ t().body }}<span v-if="op.requestBody.presence !== 'optional'" class="req" :title="t().required">*</span></h4>
@@ -374,6 +393,7 @@ watch(() => store.focusId, focusIfLinked);
                 <CodeBlock v-if="store.reveal" :code="previewed.prepared.bodyText" language="json" :lines="200" revealed wrap />
                 <p v-else class="col-note">{{ t().valuesHidden(previewed.prepared.bodyBytes?.byteLength ?? 0) }}</p>
               </template>
+              <p v-else-if="previewed.prepared.bodyBytes !== undefined" class="col-note">{{ t().valuesHidden(previewed.prepared.bodyBytes.byteLength) }}</p>
             </details>
             <div class="run-buttons">
               <button type="button" class="btn primary large run-button" :disabled="running" :title="t().executeTitle" @click="execute">

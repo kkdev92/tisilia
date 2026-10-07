@@ -122,6 +122,34 @@ public static class ContractDiff
 
         switch (oldOp.RequestBody, newOp.RequestBody)
         {
+            case (FormRequestBody oldForm, FormRequestBody newForm):
+                if (System.Text.Json.JsonSerializer.Serialize(oldForm, TisiliaJson.Options) != System.Text.Json.JsonSerializer.Serialize(newForm, TisiliaJson.Options)
+                    || oldForm.Fields.Any(f => f.Use is not null && newForm.Fields.FirstOrDefault(n => n.Name == f.Name)?.Use is { } nextUse
+                        && !TypeShapeEquals(oldIndex, newIndex, f.Use, nextUse, WireDirection.ServerRead, [])))
+                {
+                    breaking.Add(new DiffEntry("body-changed", opId, "form field or encoding contract changed"));
+                }
+                break;
+            case (FormRequestBody, _):
+            case (_, FormRequestBody):
+                breaking.Add(new DiffEntry("body-changed", opId, "form request encoding changed"));
+                break;
+            case (NoRequestBody, BinaryRequestBody nb):
+                (nb.Presence == Presence.Required ? breaking : compatible).Add(new DiffEntry("body-added", opId, "raw request body added"));
+                break;
+            case (BinaryRequestBody, NoRequestBody):
+                review.Add(new DiffEntry("body-removed", opId, "raw request body removed"));
+                break;
+            case (BinaryRequestBody ob, BinaryRequestBody nb):
+                if (ob.MediaType != nb.MediaType || (ob.Presence == Presence.Optional && nb.Presence == Presence.Required))
+                {
+                    breaking.Add(new DiffEntry("body-changed", opId, "raw request media type or required presence changed"));
+                }
+                break;
+            case (BinaryRequestBody, JsonRequestBody):
+            case (JsonRequestBody, BinaryRequestBody):
+                breaking.Add(new DiffEntry("body-changed", opId, "request body encoding changed"));
+                break;
             case (NoRequestBody, JsonRequestBody nb):
                 (nb.Presence == Presence.Required ? breaking : compatible).Add(new DiffEntry("body-added", opId, "request body added"));
                 break;
@@ -163,6 +191,11 @@ public static class ContractDiff
             if (r.Hydration != nr.Hydration)
             {
                 review.Add(new DiffEntry("hydration-changed", opId, $"response case '{r.Id}' hydration changed"));
+            }
+            if (r.Body is SseResponseBody oldSse && nr.Body is SseResponseBody newSse
+                && (oldSse.DataFormat != newSse.DataFormat || oldSse.ProfileId != newSse.ProfileId || !TypeShapeEquals(oldIndex, newIndex, oldSse.Use, newSse.Use, WireDirection.ServerWrite, [])))
+            {
+                breaking.Add(new DiffEntry("response-changed", opId, $"SSE case '{r.Id}' data contract changed"));
             }
             if (r.Body is BinaryResponseBody binary && nr.Body is BinaryResponseBody nextBinary && binary.MediaType != nextBinary.MediaType)
             {

@@ -49,6 +49,51 @@ public class PortableTests : IDisposable
     private static string Messages(DiagnosticBag bag) => string.Join("; ", bag.Items.Select(d => d.Rule + " " + d.Message));
 
     [Fact]
+    public async Task Mixed_DateTime_portable_program_runs_all_Kinds_in_the_generated_module()
+    {
+        var definition = Definition("invoice");
+        const string program = """{"op":"object","unknownMembers":"reject","members":[{"name":"stamp","presence":"required","node":{"op":"scalar","scalarId":"tisilia.datetime@0.1","representation":"native"}}]}""";
+        definition["request"]!["program"] = JsonNode.Parse(program);
+        definition["response"]!["program"] = JsonNode.Parse(program);
+        SaveDefinition("invoice", definition);
+        var project = Project();
+        var invoice = project["models"]!.AsArray().Single(m => m!["id"]!.GetValue<string>() == "demo.portable.Invoice")!;
+        invoice["shape"]!["properties"] = JsonNode.Parse("""[{"name":"stamp","use":{"typeId":"std.datetime","codecId":"std.datetime.codec","semanticNullable":false},"presence":"required"}]""");
+        SaveProject(project);
+        var bag = new DiagnosticBag();
+        var plan = PortableCodegen.Plan(ProjectPath, null, bag);
+        Assert.True(plan is not null, Messages(bag)); Assert.NotNull(plan); Assert.Empty(bag.Items);
+        Assert.Contains("readonly \"stamp\": PortableDateTime;", plan.TypescriptFiles.Single(f => f.Path.EndsWith(".d.ts", StringComparison.Ordinal)).Content, StringComparison.Ordinal);
+        Assert.Contains("System.DateTime Stamp", plan.CsharpFiles.Single(f => f.Path == "Domain.g.cs").Content, StringComparison.Ordinal);
+        var module = Path.Combine(_dir, "mixed.mjs");
+        await File.WriteAllTextAsync(module, plan.TypescriptFiles.Single(f => f.Path.EndsWith(".js", StringComparison.Ordinal)).Content);
+        var script = "import * as p from " + System.Text.Json.JsonSerializer.Serialize(new Uri(module).AbsoluteUri) + ";\n" + """
+            import assert from 'node:assert/strict';
+            const ctx = { path: '' };
+            for (const [text, kind] of [['2026-09-30T06:04:05.1234567Z','datetime-utc'], ['2026-09-30T06:04:05.1234567','datetime-unspecified'], ['2026-09-30T15:04:05.1234567+09:00','datetime-local-wire']]) {
+              const wire = { kind: 'object', entries: [{ name: 'stamp', value: { kind: 'string', value: text } }] };
+              const value = p.invoiceResponseDecode.decodeResponse(wire, ctx);
+              assert.equal(value.stamp.kind, kind);
+              assert.equal(typeof value.stamp.ticks, 'bigint');
+              assert.deepEqual(p.invoiceRequestEncode.encodeRequest(value, ctx), wire);
+            }
+            assert.throws(() => p.invoiceRequestEncode.encodeRequest({ stamp: { kind: 'datetime-offset', ticks: 0n, offsetMinutes: 0 } }, ctx));
+            assert.throws(() => p.invoiceRequestEncode.encodeRequest({ stamp: { kind: 'datetime-local-wire', ticks: 0n, offsetMinutes: 840 } }, ctx));
+            console.log('checked');
+            """;
+        // A script file, not `node -e`: a version-manager shim may drop a multi-line -e argument and exit 0 without running it.
+        var check = Path.Combine(_dir, "check.mjs");
+        await File.WriteAllTextAsync(check, script);
+        var start = new System.Diagnostics.ProcessStartInfo("node") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true };
+        start.ArgumentList.Add(check);
+        using var process = System.Diagnostics.Process.Start(start)!;
+        var output = process.StandardOutput.ReadToEndAsync(); var error = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        Assert.True(process.ExitCode == 0, await output + await error);
+        Assert.Equal("checked", (await output).Trim());
+    }
+
+    [Fact]
     public void Sample_project_loads_and_generates_deterministically()
     {
         var bag = new DiagnosticBag();

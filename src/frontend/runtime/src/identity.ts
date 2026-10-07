@@ -17,7 +17,8 @@ export interface RequestIdentityRecord {
   readonly encodedPath: string;
   readonly queryEntries: readonly { readonly name: string; readonly value: string }[];
   readonly selectedHeaderEntries: readonly { readonly name: string; readonly value: string }[];
-  readonly bodyKind: "none" | "json";
+  readonly bodyKind: "none" | "json" | "binary";
+  /** Exact JSON text, or canonical base64 for a binary request. */
   readonly bodyText: string;
   readonly semanticHash: string;
   readonly scopeNonce: string;

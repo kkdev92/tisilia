@@ -1,0 +1,9 @@
+# Primary sources for raw uploads and streaming downloads, retrieved with curl on 2026-10-07.
+# scripts/verify-adoption-sources.ps1 records HTTP status, effective URL and SHA-256.
+https://learn.microsoft.com/en-us/aspnet/core/fundamentals/minimal-apis/parameter-binding?view=aspnetcore-10.0
+https://learn.microsoft.com/en-us/aspnet/core/fundamentals/openapi/include-metadata?view=aspnetcore-10.0
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Http/Http.Extensions/src/RequestDelegateFactory.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Mvc/Mvc.ApiExplorer/src/EndpointMetadataApiDescriptionProvider.cs
+https://streams.spec.whatwg.org/
+https://fetch.spec.whatwg.org/
+https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/preserve-references

@@ -242,6 +242,12 @@ public sealed class ProfileContext
             // Global converters are described per type when they become effective; a bare list entry is not enough.
         }
 
+        if (copy.ReferenceHandler is not null && !ReferenceEquals(copy.ReferenceHandler, ReferenceHandler.Preserve)
+            && !ReferenceEquals(copy.ReferenceHandler, ReferenceHandler.IgnoreCycles))
+        {
+            bag.Error(TisiliaCodes.ReferencePreserve, "SV20", path + "/options/referenceHandling", $"profile '{id}': a custom ReferenceHandler has no declared reference semantics", [id],
+                "use a standard ReferenceHandler or a profile without reference handling");
+        }
         var referenceHandling = copy.ReferenceHandler is null ? ReferenceHandling.None
             : ReferenceEquals(copy.ReferenceHandler, ReferenceHandler.Preserve) ? ReferenceHandling.Preserve
             : ReferenceEquals(copy.ReferenceHandler, ReferenceHandler.IgnoreCycles) ? ReferenceHandling.IgnoreCycles

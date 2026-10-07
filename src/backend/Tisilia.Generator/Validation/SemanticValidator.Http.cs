@@ -98,6 +98,7 @@ public sealed partial class SemanticValidator
                     ResultAdapterKind.Bodyless => Builtins.ResultBodyless,
                     ResultAdapterKind.Text => Builtins.ResultTextUtf8,
                     ResultAdapterKind.Binary => Builtins.ResultBinaryBuffered,
+                    ResultAdapterKind.Sse => Builtins.ResultSse,
                     _ => null,
                 };
                 if (expected is not null && impl.Id != expected)
@@ -239,7 +240,7 @@ public sealed partial class SemanticValidator
     private void CheckRequestBody(Operation op, string opPath)
     {
         var bp = JsonPointer.Append(opPath, "requestBody");
-        if (op.RequestBody is not JsonRequestBody body)
+        if (op.RequestBody is NoRequestBody)
         {
             return;
         }
@@ -249,6 +250,95 @@ public sealed partial class SemanticValidator
             Error(TisiliaCodes.BodyOnGetOrHead, "SV26", bp, $"operation '{op.Id}': {op.Method} requests cannot carry a body (Fetch throws TypeError; ASP.NET Core does not bind it implicitly)", [op.Id]);
         }
 
+        if (op.RequestBody is BinaryRequestBody binary)
+        {
+            if (!HttpRules.IsRawRequestMediaType(binary.MediaType))
+            {
+                Error(TisiliaCodes.MediaTypeInvalid, "SV29", bp + "/mediaType", "raw uploads require a concrete media type without parameters; multipart, form and SSE are not raw upload formats", [op.Id]);
+            }
+            return;
+        }
+        if (op.RequestBody is FormRequestBody form)
+        {
+            if (form.MediaType is not ("multipart/form-data" or "application/x-www-form-urlencoded"))
+            {
+                Error(TisiliaCodes.MediaTypeInvalid, "SV29", bp + "/mediaType", "forms require multipart/form-data or application/x-www-form-urlencoded", [op.Id]);
+            }
+            if (form.Fields.Count(f => f.WireName == "") > 1)
+            {
+                Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "only one root collection can own the form's index space", [op.Id]);
+            }
+            var wirePaths = new List<string[]>();
+            CheckFormFields(form.Fields, 0, "");
+            void CheckFormFields(IReadOnlyList<FormField> fields, int depth, string prefix)
+            {
+                if (depth > 16) { Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "form fields exceed maximum nesting", [op.Id]); return; }
+                var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var field in fields)
+                {
+                    var wireName = prefix + (field.WireName ?? field.Name) + (field.Indexed ? "[]" : "");
+                    if (field.Kind != "object")
+                    {
+                        // [] is an emitted variable index; distinct literal indexes remain distinct form names.
+                        var parts = System.Text.RegularExpressions.Regex.Split(wireName, @"(\[(?:0|[1-9][0-9]*)?\])");
+                        if (wirePaths.Any(other => other.Length == parts.Length && parts.Select((part, i) =>
+                            part.Equals(other[i], StringComparison.OrdinalIgnoreCase) || i % 2 == 1 && (part == "[]" || other[i] == "[]")).All(equal => equal)))
+                        {
+                            Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "form fields have overlapping wire names", [op.Id]);
+                        }
+                        wirePaths.Add(parts);
+                    }
+                    if (field.WireName is not null && (field.WireName != "" || depth != 0 || !field.Indexed))
+                    {
+                        Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "an empty wire name is reserved for indexed root collections", [op.Id]);
+                    }
+                    if (field.Kind == "object")
+                    {
+                        if (field.Use is not null || field.Fields is not { Count: > 0 } || field.Repeated != field.Indexed || field.HasServerDefault || field.EnumDefinedOnly || field.RejectBlank)
+                        {
+                            Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "object form fields require child fields and indexed repetition without scalar options", [op.Id]);
+                        }
+                        if (field.Fields is not null) { CheckFormFields(field.Fields, depth + 1, wireName + "."); }
+                    }
+                    else if (field.Fields is not null)
+                    {
+                        Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "only object form fields can contain children", [op.Id]);
+                    }
+                    if (field.Indexed && !field.Repeated)
+                    {
+                        Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "indexed form fields must be repeated", [op.Id]);
+                    }
+                    if (!names.Add(field.Name) || string.IsNullOrEmpty(field.Name) || field.Name.Any(c => char.IsControl(c) || c is '"' or '\\'))
+                    {
+                        Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "form field names must be unique and safe Content-Disposition names", [op.Id]);
+                    }
+                    if (field.Kind == "object") { continue; }
+                    if (field.Kind == "file")
+                    {
+                        if (field.Use is not null || form.MediaType != "multipart/form-data")
+                        {
+                            Error(TisiliaCodes.TextBodyRule, "SV29", bp + "/fields", "file fields require multipart without a scalar use", [op.Id]);
+                        }
+                    }
+                    else if (field.Kind != "value" || field.Use is null)
+                    {
+                        Error(TisiliaCodes.TextBodyRule, "SV29", bp + "/fields", "value fields require a scalar use", [op.Id]);
+                    }
+                    else if (CheckTypeUse(field.Use, bp + "/fields/use"))
+                    {
+                        var shape = _index.Types[field.Use.TypeId].Shape;
+                        if (field.Use.SemanticNullable || _index.Codecs[field.Use.CodecId].Origin != CodecOrigin.Builtin || shape is not (PrimitiveShape or EnumShape)
+                            || shape is PrimitiveShape scalar && new[] { "bytes", "json-value", "datetime-local-wire" }.Any(s => scalar.PrimitiveId == Builtins.Scalar(s))
+                            || field.EnumDefinedOnly && shape is not EnumShape)
+                        {
+                            Error(TisiliaCodes.TextBodyRule, "SV29", bp + "/fields/use", "form values require non-null builtin HTTP scalars or enums; omit optional fields instead of null", [op.Id]);
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        var body = (JsonRequestBody)op.RequestBody;
         var media = HttpRules.ParseMediaType(body.MediaType);
         if (media is null || !HttpRules.JsonMediaEssences.Contains(media.Essence) || (media.Charset is not null && media.Charset != "utf-8"))
         {
@@ -291,7 +381,7 @@ public sealed partial class SemanticValidator
                 case NoResponseBody:
                     caseKey = r.Status + "|none";
                     bodylessStatuses.Add(r.Status);
-                    if (adapter is { Kind: ResultAdapterKind.Text or ResultAdapterKind.Binary })
+                    if (adapter is { Kind: ResultAdapterKind.Text or ResultAdapterKind.Binary or ResultAdapterKind.Sse })
                     {
                         Error(TisiliaCodes.TextBodyRule, "SV29", JsonPointer.Append(rp, "resultAdapterId"), $"operation '{op.Id}': bodyless case '{r.Id}' cannot use a text result adapter", [op.Id, r.Id]);
                     }
@@ -313,7 +403,7 @@ public sealed partial class SemanticValidator
                     }
 
                     CheckTypeUse(json.Use, JsonPointer.Append(JsonPointer.Append(rp, "body"), "use"));
-                    if (adapter is { Kind: ResultAdapterKind.Bodyless or ResultAdapterKind.Text or ResultAdapterKind.Binary })
+                    if (adapter is { Kind: ResultAdapterKind.Bodyless or ResultAdapterKind.Text or ResultAdapterKind.Binary or ResultAdapterKind.Sse })
                     {
                         Error(TisiliaCodes.TextBodyRule, "SV29", JsonPointer.Append(rp, "resultAdapterId"), $"operation '{op.Id}': JSON case '{r.Id}' cannot use a '{Enum(adapter.Kind)}' result adapter", [op.Id, r.Id]);
                     }
@@ -367,6 +457,49 @@ public sealed partial class SemanticValidator
                     break;
                 }
 
+                case SseResponseBody sse:
+                {
+                    caseKey = r.Status + "|text/event-stream";
+                    bodyStatuses.Add(r.Status);
+                    if (sse.MediaType != "text/event-stream" || sse.DataFormat is not ("text" or "json"))
+                    {
+                        Error(TisiliaCodes.MediaTypeInvalid, "SV29", rp + "/body", "SSE requires text/event-stream and an explicit text or JSON data format", [op.Id, r.Id]);
+                    }
+                    if (HttpRules.IsBodylessStatus(r.Status) || op.Method == HttpMethodKind.HEAD)
+                    {
+                        Error(TisiliaCodes.BodylessStatusMismatch, "SV27", rp + "/body", "this status / method must be bodyless", [op.Id, r.Id]);
+                    }
+                    if (adapter is not null && (adapter.Kind != ResultAdapterKind.Sse || adapter.BehaviorIds.Count != 0))
+                    {
+                        Error(TisiliaCodes.PipelineOrResultClosure, "SV34", rp + "/resultAdapterId", "SSE requires an SSE result adapter", [op.Id, r.Id]);
+                    }
+                    if (r.Hydration != Hydration.ServerOnly)
+                    {
+                        Error(TisiliaCodes.TextBodyRule, "SV29", rp + "/hydration", "SSE cannot be automatically hydrated", [op.Id, r.Id]);
+                    }
+                    var validUse = CheckTypeUse(sse.Use, rp + "/body/use");
+                    if (sse.DataFormat == "text")
+                    {
+                        if (sse.ProfileId is not null || adapter is { ProfileIds.Count: > 0 } || sse.Use.SemanticNullable
+                            || (validUse && (_index.Types[sse.Use.TypeId].Shape is not PrimitiveShape primitive || primitive.PrimitiveId != Builtins.Scalar("string"))))
+                        {
+                            Error(TisiliaCodes.TextBodyRule, "SV29", rp + "/body", "text SSE uses non-null string data without a JSON profile", [op.Id, r.Id]);
+                        }
+                    }
+                    else if (sse.ProfileId is null)
+                    {
+                        Error(TisiliaCodes.ProfileResolution, "SV16", rp + "/body", "JSON SSE requires its JSON profile", [op.Id, r.Id]);
+                    }
+                    else if (RequireProfile(sse.ProfileId, rp + "/body/profileId"))
+                    {
+                        if ((adapter is not null && !adapter.ProfileIds.Contains(sse.ProfileId, StringComparer.Ordinal))
+                            || (_index.Codecs.TryGetValue(sse.Use.CodecId, out var codec) && codec.ProfileIds.Count > 0 && !codec.ProfileIds.Contains(sse.ProfileId, StringComparer.Ordinal)))
+                        {
+                            Error(TisiliaCodes.ProfileResolution, "SV16", rp + "/body/profileId", "SSE codec and adapter must apply to the declared profile", [op.Id, r.Id]);
+                        }
+                    }
+                    break;
+                }
                 case BinaryResponseBody binary:
                 {
                     var media = HttpRules.ParseMediaType(binary.MediaType);

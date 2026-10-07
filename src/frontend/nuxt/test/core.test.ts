@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createHydrationEnvelope, scalarCodec, webNumbers, type OperationDescriptor, type PreparedRequest, type RawOutcome } from "@kkdev92/tisilia-runtime";
+import { createHydrationEnvelope, prepareRequest, scalarCodec, webNumbers, type OperationDescriptor, type PreparedRequest, type RawOutcome } from "@kkdev92/tisilia-runtime";
 import { asyncDataKeyOf, decodeIdentityKey, envelopeMatchesScope, hiddenGuardHeader, hydrate, identityOf, identityRecordOf, operationHeaders, partitionForwardedHeaders } from "../src/runtime/core.js";
 
 const semanticHash = "sha256:" + "a".repeat(64);
@@ -19,6 +19,18 @@ const operation: OperationDescriptor = {
 };
 const prepared: PreparedRequest = { url: new URL("http://api.test/counter"), encodedPath: "/counter", queryEntries: [], method: "GET", headers: [["accept-language", "ja"]], bodyText: undefined, bodyBytes: undefined };
 const options = { baseUrl: "http://api.test" };
+
+it("binds raw upload identities to exact bytes and distinguishes empty from omitted bodies", async () => {
+  const upload: OperationDescriptor = { ...operation, method: "POST", requestBody: { kind: "binary", mediaType: "application/octet-stream", presence: "optional", get: args => args } };
+  const record = (bytes?: Uint8Array) => identityRecordOf(upload, { ...prepared, method: "POST", bodyBytes: bytes }, semanticHash, "scope");
+  const a = record(new Uint8Array([0, 255]));
+  const b = record(new Uint8Array([0, 254]));
+  expect(a.bodyKind).toBe("binary");
+  expect(a.bodyText).toBe("AP8=");
+  expect(asyncDataKeyOf(a)).not.toBe(asyncDataKeyOf(b));
+  expect(await identityOf(a, false, undefined)).not.toBe(await identityOf(b, false, undefined));
+  expect(asyncDataKeyOf(record(new Uint8Array()))).not.toBe(asyncDataKeyOf(record()));
+});
 
 function raw(status: number, caseId: string, body: string): RawOutcome {
   const bytes = new TextEncoder().encode(body);
@@ -42,6 +54,12 @@ describe("header forwarding", () => {
 });
 
 describe("request identity", () => {
+  it("identifies deterministic multipart bytes and distinguishes changed file content", () => {
+    const form: OperationDescriptor = { ...operation, method: "POST", requestBody: { kind: "form", mediaType: "multipart/form-data", presence: "required", get: a => a, fields: [{ name: "file", kind: "file", presence: "required", repeated: false }] } };
+    const record = (byte: number) => identityRecordOf(form, prepareRequest(form, { file: { fileName: "file.bin", bytes: new Uint8Array([byte]) } }, options), semanticHash, "scope");
+    expect(record(0)).toEqual(record(0)); expect(record(0).bodyKind).toBe("binary");
+    expect(asyncDataKeyOf(record(0))).not.toBe(asyncDataKeyOf(record(255)));
+  });
   it("is sha256 without credentials, keyed hmac with credentials, and the async-data key ignores credentials", async () => {
     const record = identityRecordOf(operation, prepared, semanticHash, "nonce-0123456789abcdef");
     expect(record.selectedHeaderEntries).toEqual([{ name: "accept-language", value: "ja" }]);

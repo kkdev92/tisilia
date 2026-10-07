@@ -4,7 +4,7 @@ import { formatDecimal, validateDecimal } from "../primitives/decimal.js";
 import { formatFloat32, formatFloat64 } from "../primitives/float.js";
 import { isSmallInteger, validateBigInteger, validateSmallInteger, type IntegerScalarName } from "../primitives/integers.js";
 import { validateChar, validateGuid, validateString } from "../primitives/text.js";
-import { formatDateOnly, formatDateTimeOffset, formatDateTimeUnspecified, formatDateTimeUtc, formatDuration, formatTimeOnly, validateDateOnly, validateDateTimeOffset, validateDateTimeTicks, validateDuration, validateTimeOnly } from "../primitives/datetime.js";
+import { formatDateTime, validateDateTimeRequest, formatDateOnly, formatDateTimeOffset, formatDateTimeUnspecified, formatDateTimeUtc, formatDuration, formatTimeOnly, validateDateOnly, validateDateTimeOffset, validateDateTimeTicks, validateDuration, validateTimeOnly } from "../primitives/datetime.js";
 import type { ScalarName } from "../codec/scalars.js";
 
 /**
@@ -74,6 +74,8 @@ export function formatScalarForBinding(name: ScalarName, value: unknown, path: s
       return formatDateOnly(validateDateOnly(value, path));
     case "time-only":
       return formatTimeOnly(validateTimeOnly(value, path));
+    case "datetime":
+      return formatDateTime(validateDateTimeRequest(value, path));
     case "datetime-utc":
       return formatDateTimeUtc({ kind: "datetime-utc", ticks: validateDateTimeTicks(value, path, "utc") });
     case "datetime-unspecified":

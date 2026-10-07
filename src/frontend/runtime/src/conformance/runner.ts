@@ -29,6 +29,8 @@ import {
   parseDateTimeLocalWire,
   parseDateTimeOffset,
   parseDateTimeUnspecified,
+  parseDateTime,
+  formatDateTime,
   parseDateTimeUtc,
   parseDuration,
   parseTimeOnly,
@@ -380,6 +382,8 @@ class DomainBridge {
           return ast.kind === "string" ? parseDateOnly(ast.value, "") : natural(ast);
         case "time-only":
           return ast.kind === "string" ? parseTimeOnly(ast.value, "") : natural(ast);
+        case "datetime":
+          return ast.kind === "string" ? parseDateTime(ast.value, "") : natural(ast);
         case "datetime-utc":
           return ast.kind === "string" ? parseDateTimeUtc(ast.value, "") : natural(ast);
         case "datetime-unspecified":
@@ -533,6 +537,8 @@ class DomainBridge {
         return { kind: "string", value: formatDateOnly(value as never) };
       case "time-only":
         return { kind: "string", value: formatTimeOnly(value as never) };
+      case "datetime":
+        return { kind: "string", value: formatDateTime(value as never) };
       case "datetime-utc":
         return { kind: "string", value: formatDateTimeUtc(value as never) };
       case "datetime-unspecified":

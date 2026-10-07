@@ -9,6 +9,7 @@ import { arrayCodec, brandCodec, enumCodec, mapCodec, nullableCodec, objectCodec
 import type { KeyComparer } from "../codec/map.js";
 import { codecBinder, enumBinder, standardBinder, type NullPolicy, type ParameterLocation } from "../http/binders.js";
 import type { HttpMethod, OperationDescriptor, ParameterDescriptor, ResponseBodyDescriptor, ResponseCaseDescriptor } from "../http/client.js";
+import type { FormFieldDescriptor } from "../http/forms.js";
 import type { JsonValue } from "../json/ast.js";
 import { validateRoutePlan } from "../http/routes.js";
 
@@ -159,9 +160,25 @@ export interface ContractParameter {
   readonly serverDefault?: JsonValue;
 }
 
-export type ContractRequestBody = { readonly kind: "none" } | { readonly kind: "json"; readonly mediaType: string; readonly profileId: string; readonly use: ContractTypeUse; readonly presence: Presence };
+export interface ContractFormField {
+  readonly name: string;
+  readonly kind: "value" | "file" | "object";
+  readonly use?: ContractTypeUse;
+  readonly repeated: boolean;
+  readonly rejectBlank?: boolean;
+  readonly indexed?: boolean;
+  readonly wireName?: "";
+  readonly fields?: readonly ContractFormField[];
+  readonly enumDefinedOnly?: boolean;
+  readonly presence: Presence;
+}
+
+export type ContractRequestBody = { readonly kind: "none" } | { readonly kind: "json"; readonly mediaType: string; readonly profileId: string; readonly use: ContractTypeUse; readonly presence: Presence }
+  | { readonly kind: "form"; readonly mediaType: string; readonly presence: Presence; readonly fields: readonly ContractFormField[] }
+  | { readonly kind: "binary"; readonly mediaType: string; readonly presence: Presence };
 
 export type ContractResponseBody =
+  | { readonly kind: "sse"; readonly mediaType: string; readonly dataFormat: "text" | "json"; readonly profileId?: string; readonly use: ContractTypeUse }
   | { readonly kind: "none" }
   | { readonly kind: "json"; readonly mediaType: string; readonly profileId: string; readonly use: ContractTypeUse }
   | { readonly kind: "text"; readonly mediaType: string; readonly use: ContractTypeUse }
@@ -464,6 +481,7 @@ export function createContractRegistry(document: ContractDocument, options: Cont
       return op.requestBody.profileId;
     }
     for (const r of op.responses) {
+      if (r.body.kind === "sse" && r.body.profileId !== undefined) { return r.body.profileId; }
       if (r.body.kind === "json") {
         return r.body.profileId;
       }
@@ -506,14 +524,22 @@ export function createContractRegistry(document: ContractDocument, options: Cont
         body = { kind: "text", mediaType: r.body.mediaType };
       } else if (r.body.kind === "binary") {
         body = { kind: "binary", mediaType: r.body.mediaType };
+      } else if (r.body.kind === "sse") {
+        const codecId = r.body.use.codecId;
+        body = { kind: "sse", mediaType: r.body.mediaType, dataFormat: r.body.dataFormat, codec: () => registry.get(codecId), nullable: r.body.use.semanticNullable, ...(r.body.profileId === undefined ? {} : { profileId: r.body.profileId }) };
       } else if (r.body.kind === "json") {
         const codecId = r.body.use.codecId;
-        body = { kind: "json", mediaType: r.body.mediaType, codec: () => registry.get(codecId), nullable: r.body.use.semanticNullable };
+        body = { kind: "json", profileId: r.body.profileId, mediaType: r.body.mediaType, codec: () => registry.get(codecId), nullable: r.body.use.semanticNullable };
       } else {
         throw new Error("unknown response body kind; re-export with matching Tisilia tooling");
       }
       return { caseId: r.id, status: r.status, body, hydration: r.hydration, exposedHeaders: r.exposedHeaders };
     });
+    const formDescriptor = (f: ContractFormField): FormFieldDescriptor => {
+      const shape = f.use === undefined ? undefined : types.get(f.use.typeId)?.shape;
+      if (f.kind === "value" && shape?.kind !== "primitive" && shape?.kind !== "enum") { throw new Error("form field requires a builtin scalar or enum"); }
+      return { name: f.name, kind: f.kind, repeated: f.repeated, ...(f.rejectBlank === true ? { rejectBlank: true } : {}), presence: f.presence, ...(f.indexed === true ? { indexed: true } : {}), ...(f.wireName === undefined ? {} : { wireName: f.wireName }), ...(f.fields === undefined ? {} : { fields: f.fields.map(formDescriptor) }), ...(shape?.kind === "primitive" ? { scalar: scalarNameOf(shape.primitiveId) } : shape?.kind === "enum" ? { format: enumBinder(() => registry.get(f.use!.codecId), shape.members.map(m => [m.name, BigInt(m.value)] as const), "query", { flags: shape.flags, definedOnly: f.enumDefinedOnly === true }).format } : {}) };
+    };
     const requestBody = op.requestBody;
     operations.set(op.id, {
       id: op.id,
@@ -522,6 +548,8 @@ export function createContractRegistry(document: ContractDocument, options: Cont
       routePlan: op.routePlan,
       ...(profileOf(op) === "" ? {} : { profileId: profileOf(op) }),
       parameters,
+      ...(requestBody.kind === "form" ? { requestBody: { kind: "form" as const, mediaType: requestBody.mediaType, presence: requestBody.presence, fields: requestBody.fields.map(formDescriptor), get: (args: unknown) => (args as { body?: unknown }).body } } : {}),
+      ...(requestBody.kind === "binary" ? { requestBody: { kind: "binary" as const, mediaType: requestBody.mediaType, presence: requestBody.presence, get: (args: unknown) => (args as { body?: unknown }).body } } : {}),
       ...(requestBody.kind === "json"
         ? { requestBody: { mediaType: requestBody.mediaType, codec: () => registry.get(requestBody.use.codecId), presence: requestBody.presence, nullable: requestBody.use.semanticNullable, get: (args: unknown) => (args as { body?: unknown }).body, ...maxDepthOf(document, requestBody.profileId) } }
         : {}),

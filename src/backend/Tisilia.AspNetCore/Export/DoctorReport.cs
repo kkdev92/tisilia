@@ -22,7 +22,7 @@ public sealed record DoctorReport(bool AnalysisComplete, int SelectedCount, int 
     public string Culture => System.Globalization.CultureInfo.CurrentCulture.Name;
     public string? DateTimeDefault { get; init; }
     public IReadOnlyList<string> DateTimeMembers { get; init; } = [];
-    public string DateTimeScope => "JSON: declared Kind and converter binding; route/query/header: HTTP binder semantics, Local unsupported; mixed Kind needs a separate codec";
+    public string DateTimeScope => "JSON: mixed Kind supported by default; optional Kind declarations and converter bindings; route/query/header: mixed Kind supported, offsets bind as UTC; fixed Local is unsupported";
     public int ExitCode => !AnalysisComplete ? 6 : Overall == "blockers" ? 3 : 0;
 }
 
@@ -68,7 +68,7 @@ public sealed partial class TisiliaContractExporter
                 }
             }
             var causes = operations.SelectMany(o => o.Diagnostics.Select(d => (o.OperationId, Diagnostic: d)))
-                .GroupBy(x => (x.Diagnostic.Code, x.Diagnostic.Rule, Message: CauseMessage(x.Diagnostic.Message)))
+                .GroupBy(x => (x.Diagnostic.Code, x.Diagnostic.Rule, Message: x.Diagnostic.Message))
                 .Select(g => new DoctorCause(g.Key.Code + "/" + g.Key.Rule, g.Key.Message, g.First().Diagnostic.Fix,
                     g.Select(x => x.OperationId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(), g.Select(x => x.Diagnostic.Path).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray())).ToArray();
             return new DoctorReport(complete, groups.Length, analyzed, groups.Length - analyzed, operations, causes)
@@ -79,9 +79,6 @@ public sealed partial class TisiliaContractExporter
     private static DoctorOperation Identity(IGrouping<string, RouteEndpoint> group, string readiness, IReadOnlyList<Diagnostic> diagnostics) => new(group.Key,
         group.SelectMany(e => e.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods ?? []).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
         string.Join(" | ", group.Select(e => e.RoutePattern.RawText ?? "<resolved route>").Distinct(StringComparer.Ordinal)), readiness, diagnostics);
-
-    private static string CauseMessage(string message) => message.Contains("System.DateTime", StringComparison.Ordinal) && message.Contains("no declared wire", StringComparison.Ordinal)
-        ? "DateTime wire is undeclared; choose a declaration matching existing Kind semantics (mixed Kind needs a separate codec)" : message;
 
     private static Diagnostic SafeDiagnostic(Diagnostic d) => d with { File = null, Message = Scrub(d.Message), Fix = d.Fix is null ? null : Scrub(d.Fix) };
     private static string Scrub(string value)

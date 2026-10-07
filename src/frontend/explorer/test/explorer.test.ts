@@ -1,12 +1,52 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseJson } from "@kkdev92/tisilia-runtime";
+import { parseJson, type ContractOperation } from "@kkdev92/tisilia-runtime";
 import { credentialShapes } from "../src/auth.js";
 import { apiBaseOf, buildArgs, copyToClipboard, describeValue, execute, executionStatus, filterOperations, loadExplorer, prettyWire, preview, redactHeaders, redactTree, responseOf, summarize, type ExplorerModel } from "../src/explorer.js";
-import { curlSnippet } from "../src/snippets.js";
+import { curlSnippet, fetchSnippet } from "../src/snippets.js";
 
 const snippetOptions = { apiId: "sample-api", operationId: "users.put", baseUrl: "http://api.test", credentials: [], reveal: false } as const;
+
+it("builds exact form values and file parts using the public request-input codecs", async () => {
+  const document = JSON.parse(contractText) as { operations: ContractOperation[]; types: { id: string; shape: { kind: string; primitiveId?: string } }[]; codecs: { id: string; typeId: string }[] };
+  const original = document.operations.find(op => op.id === "users.put")!;
+  const type = document.types.find(t => t.shape.primitiveId === "tisilia.primitive.int64@0.1") ?? document.types.find(t => t.shape.primitiveId?.includes("int64"));
+  expect(type).toBeDefined();
+  const codec = document.codecs.find(c => c.typeId === type!.id)!;
+  document.operations = [{ ...original, requestBody: { kind: "form", mediaType: "multipart/form-data", presence: "required", fields: [
+    { name: "id", kind: "value", use: { typeId: type!.id, codecId: codec.id, semanticNullable: false }, presence: "required", repeated: false },
+    { name: "files", kind: "file", presence: "optional", repeated: true },
+  ] } }];
+  const model = await load(JSON.stringify(document)); const op = model.operations[0]!;
+  const parameters = { id: "550e8400-e29b-41d4-a716-446655440000" };
+  const built = buildArgs(model, op, { parameters, body: "", formValues: { id: "9007199254740993" }, formFiles: { files: [{ fileName: "sample.bin", bytes: new Uint8Array([0, 255]) }] } });
+  expect(built.errors).toEqual([]);
+  expect((built.args["body"] as { id: bigint }).id).toBe(9007199254740993n);
+  const request = preview(model.registry.operations.get(op.id)!, built.args, { baseUrl: "http://api.test" });
+  expect(request.headers[0]?.[1]).toContain("multipart/form-data; boundary=");
+  expect(buildArgs(model, op, { parameters, body: "" }).errors).toContainEqual({ path: "/body/id", message: "required", code: "required" });
+});
+
+it("previews raw uploads without coercing bytes to JSON and keeps snippets masked", async () => {
+  const document = JSON.parse(contractText) as { operations: ContractOperation[] };
+  const original = document.operations.find(op => op.id === "users.put")!;
+  document.operations = [{ ...original, requestBody: { kind: "binary", mediaType: "application/octet-stream", presence: "required" } }];
+  const model = await load(JSON.stringify(document));
+  const op = model.operations[0]!;
+  const parameters = { id: "550e8400-e29b-41d4-a716-446655440000" };
+  const bytes = new Uint8Array([0, 255, 195, 40]);
+  expect(buildArgs(model, op, { parameters, body: "" }).errors).toContainEqual({ path: "/body", message: "request body is required", code: "body-required" });
+  const built = buildArgs(model, op, { parameters, body: "", bodyBytes: bytes });
+  expect(built.errors).toEqual([]);
+  const prepared = preview(model.registry.operations.get(op.id)!, built.args, { baseUrl: "http://api.test" });
+  expect(prepared.bodyBytes).toEqual(bytes);
+  expect(prepared.bodyText).toBeUndefined();
+  expect(curlSnippet(prepared, snippetOptions)).toContain("--data-binary '@<file>'");
+  expect(fetchSnippet(prepared, snippetOptions)).toContain("body: fileBytes");
+  expect(fetchSnippet(prepared, snippetOptions)).not.toContain("255");
+  expect(fetchSnippet(prepared, { ...snippetOptions, reveal: true })).toContain("new Uint8Array([0, 255, 195, 40])");
+});
 
 const sampleDir = fileURLToPath(new URL("../../../../tests/fixtures/", import.meta.url));
 const contractText = readFileSync(sampleDir + "minimal-api.contract.json", "utf8");

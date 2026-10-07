@@ -50,6 +50,28 @@ public class ValidationTests(ITestOutputHelper output)
         Assert.Contains(bag.Items, d => d.Code == TisiliaCodes.SchemaViolation);
     }
 
+    [Theory]
+    [InlineData("application/octet-stream", "PUT", false)]
+    [InlineData("image/png", "PUT", false)]
+    [InlineData("application/json", "PUT", false)]
+    [InlineData("application/octet-stream", "GET", true)]
+    [InlineData("application/octet-stream", "HEAD", true)]
+    [InlineData("*/*", "PUT", true)]
+    [InlineData("multipart/form-data", "PUT", true)]
+    [InlineData("application/x-www-form-urlencoded", "PUT", true)]
+    [InlineData("text/event-stream", "PUT", true)]
+    [InlineData("text/plain; charset=utf-8", "PUT", true)]
+    public void Raw_uploads_validate_media_and_fetch_body_rules(string media, string method, bool invalid)
+    {
+        var root = SampleContracts.UsersApiJson();
+        var op = root["operations"]![1]!;
+        op["method"] = method;
+        op["requestBody"] = new JsonObject { ["kind"] = "binary", ["mediaType"] = media, ["presence"] = "required" };
+        var (_, bag) = ValidateAll(root, verifyHashes: false);
+        Assert.Equal(invalid, bag.HasErrors);
+        if (invalid) { Assert.Contains(bag.Items, d => d.Code == TisiliaCodes.MediaTypeInvalid || d.Code == TisiliaCodes.BodyOnGetOrHead); }
+    }
+
     [Fact]
     public void Old_draft_version_is_rejected_before_schema()
     {
@@ -58,6 +80,26 @@ public class ValidationTests(ITestOutputHelper output)
         var (loaded, bag) = Load(root);
         Assert.Null(loaded);
         Assert.Contains(bag.Items, d => d.Code == TisiliaCodes.FormatOrVersion);
+    }
+
+    [Theory]
+    [InlineData("valid", false)]
+    [InlineData("urlencoded-file", true)]
+    [InlineData("duplicate", true)]
+    [InlineData("header-injection", true)]
+    [InlineData("value-without-type", true)]
+    [InlineData("get", true)]
+    public void Form_contracts_reject_ambiguous_or_unsafe_bindings(string change, bool invalid)
+    {
+        var root = SampleContracts.UsersApiJson();
+        var field = new JsonObject { ["name"] = "file", ["kind"] = "file", ["repeated"] = false, ["presence"] = "required" };
+        var fields = new JsonArray(field);
+        root["operations"]![1]!["requestBody"] = new JsonObject { ["kind"] = "form", ["mediaType"] = change == "urlencoded-file" ? "application/x-www-form-urlencoded" : "multipart/form-data", ["presence"] = "required", ["fields"] = fields };
+        if (change == "duplicate") { fields.Add(field.DeepClone()); }
+        if (change == "header-injection") { field["name"] = "file\r\nX: yes"; }
+        if (change == "value-without-type") { field["kind"] = "value"; }
+        if (change == "get") { root["operations"]![1]!["method"] = "GET"; }
+        Assert.Equal(invalid, ValidateAll(root, verifyHashes: false).Diagnostics.HasErrors);
     }
 
     [Fact]

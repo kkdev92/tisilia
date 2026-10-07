@@ -2,13 +2,19 @@
 // gone on reload, and nothing is written to browser storage, the URL (beyond the operation id) or the contract. The display
 // preferences (language, theme) are prefs.ts's.
 import { computed, markRaw, reactive, type Raw } from "vue";
-import { isFailure, type ContractOperation, type PreparedRequest } from "@kkdev92/tisilia-runtime";
+import { defaultLimits, isFailure, type ContractOperation, type PreparedRequest, type UploadFile } from "@kkdev92/tisilia-runtime";
 import { credentialShapes, parseAuthHints, tokenField, type AuthHint, type Credential, type CredentialShape } from "./auth.js";
 import { apiBaseOf, buildArgs, execute, executionStatus, loadExplorer, preview, summarize, type BuiltArgs, type Execution, type ExecutionStatus, type ExplorerModel, type OperationSummary } from "./explorer.js";
 import { exampleOf, FormSchema, parseFormJson, prettyJson, sanitize, type FormJson } from "./forms.js";
 import { t } from "./i18n.js";
 
 export interface Draft {
+  formValues: Record<string, string>;
+  formUploads: Record<string, { files: readonly File[]; values?: readonly UploadFile[]; loading: boolean; error?: string }>;
+  binaryFile: File | undefined;
+  binaryBody: Uint8Array | undefined;
+  binaryError: string | undefined;
+  binaryLoading: boolean;
   /** Editor text per parameter ("" = not sent). */
   parameters: Record<string, string>;
   /** The body as the form holds it; undefined = no body. */
@@ -146,7 +152,42 @@ window.addEventListener("hashchange", applyHash);
 
 function freshDraft(op: ContractOperation): Draft {
   const body = op.requestBody.kind === "json" && store.schema !== undefined ? exampleOf(store.schema.body(op.requestBody.use)) : undefined;
-  return { parameters: {}, body, bodyText: body === undefined ? "" : prettyJson(sanitize(body)), editor: "json", raw: false, jsonError: undefined, touched: {}, attempted: false, edited: false };
+  return { formValues: Object.create(null) as Record<string, string>, formUploads: Object.create(null) as Draft["formUploads"], parameters: {}, body, bodyText: body === undefined ? "" : prettyJson(sanitize(body)), editor: "json", raw: false, jsonError: undefined, touched: {}, attempted: false, edited: false, binaryFile: undefined, binaryBody: undefined, binaryError: undefined, binaryLoading: false };
+}
+
+export async function selectFormFiles(draft: Draft, name: string, files: readonly File[]): Promise<void> {
+  draft.formUploads[name] = { files, loading: files.length > 0 };
+  const selection = draft.formUploads[name]!;
+  draft.edited = true;
+  draft.touched["/body"] = true;
+  try {
+    const total = Object.values(draft.formUploads).reduce((n, s) => n + s.files.reduce((m, f) => m + f.size, 0), 0);
+    if (total > defaultLimits.maxBodyBytes) { selection.error = t().uploadTooLarge; return; }
+    const values: UploadFile[] = [];
+    for (const file of files) { values.push({ fileName: file.name, bytes: new Uint8Array(await file.arrayBuffer()) }); }
+    if (draft.formUploads[name] === selection) { selection.values = values; }
+  } catch { if (draft.formUploads[name] === selection) { selection.error = t().uploadReadFailed; } }
+  finally { selection.loading = false; }
+}
+
+/** Read a selected finite file in memory, rejecting oversized inputs before allocating their bytes. */
+export async function selectBinaryFile(draft: Draft, file: File | undefined): Promise<void> {
+  draft.binaryFile = file;
+  draft.binaryBody = undefined;
+  draft.binaryError = undefined;
+  draft.binaryLoading = file !== undefined;
+  draft.edited = true;
+  draft.touched["/body"] = true;
+  if (file === undefined) { return; }
+  try {
+    if (file.size > defaultLimits.maxBodyBytes) { draft.binaryError = t().uploadTooLarge; return; }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (draft.binaryFile === file) { draft.binaryBody = bytes; }
+  } catch {
+    if (draft.binaryFile === file) { draft.binaryError = t().uploadReadFailed; }
+  } finally {
+    if (draft.binaryFile === file) { draft.binaryLoading = false; }
+  }
 }
 
 export function draftOf(op: ContractOperation): Draft {
@@ -186,6 +227,16 @@ export function switchEditor(draft: Draft, editor: "form" | "json"): void {
 /** The arguments the draft stands for, with every input error (built by the codecs, never by the page). */
 export function argsOf(op: ContractOperation, draft: Draft): BuiltArgs {
   const model = store.model!;
+  if (op.requestBody.kind === "form") {
+    const built = buildArgs(model, op, { parameters: draft.parameters, body: "", formValues: draft.formValues, formFiles: Object.fromEntries(Object.entries(draft.formUploads).filter(([, s]) => s.values !== undefined).map(([name, s]) => [name, s.values!])) });
+    const errors = Object.entries(draft.formUploads).flatMap(([name, s]) => s.loading || s.error !== undefined ? [{ path: "/body/" + name, message: s.loading ? t().uploadReading : s.error! }] : []);
+    return { args: built.args, errors: [...errors, ...built.errors] };
+  }
+  if (op.requestBody.kind === "binary") {
+    const built = buildArgs(model, op, { parameters: draft.parameters, body: "", ...(draft.binaryBody === undefined ? {} : { bodyBytes: draft.binaryBody }) });
+    const issue = draft.binaryLoading ? t().uploadReading : draft.binaryError;
+    return issue === undefined ? built : { args: built.args, errors: [{ path: "/body", message: issue }, ...built.errors] };
+  }
   if (draft.editor === "json") {
     const parsed = parseFormJson(draft.bodyText);
     if ("error" in parsed && draft.bodyText.trim().length > 0) {

@@ -18,7 +18,7 @@ namespace Tisilia.AspNetCore.Export;
 /// because presence and nullability differ between what the server reads and what it writes. Standard types use builtin
 /// codecs; custom converters require a registered paired binding; anything else is a diagnostic — never <c>any</c>.
 /// </summary>
-public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profile, TisiliaOptions options, DiagnosticBag bag, Conformance.RunnerAdapterTable adapters)
+public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profile, TisiliaOptions options, DiagnosticBag bag, Conformance.RunnerAdapterTable adapters, string? modelScope = null)
 {
     private readonly Dictionary<(Type, WireDirection), TypeUse?> _cache = new();
 
@@ -608,29 +608,23 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         }
     }
 
-    /// <summary>A DateTime with its declared wire (<see cref="TisiliaOptions.DateTimes"/>): the builtin datetime scalar of that kind.</summary>
+    /// <summary>A DateTime with its optional narrowed wire, or the mixed-Kind builtin scalar.</summary>
     private TypeUse? MapDateTime(string path, JsonPropertyInfo? member, NumberProfile numbers)
     {
-        if (DateTimeScalar(member) is not { } scalar)
-        {
-            bag.Error(TisiliaCodes.UnresolvedReference, "SV03", path, $"System.DateTime at '{path}' has a runtime-dependent Kind (Utc/Local/Unspecified) and no declared wire",
-                fix: "declare the existing meaning using TisiliaOptions.DateTimes.Default or DateTimes.Add(typeof(T), \"Member\", …): Utc only for values already Utc, Unspecified for zone-less values, Local for server-zone-dependent JSON (not HTTP parameters). Mixed Kind needs a separate codec. A custom converter requires its own binding; no value or serializer setting is changed");
-            return null;
-        }
-
+        var scalar = DateTimeScalar(member);
         RecordTypeScope(typeof(DateTime));
         var use = builder.Scalar(scalar, numbers);
         RecordAdapter(use, typeof(DateTime), numbers);
         return use;
     }
 
-    /// <summary>The builtin scalar of the DateTime wire declared for a position (a member declaration, else the default), or null.</summary>
-    public string? DateTimeScalar(JsonPropertyInfo? member) => options.DateTimes.Find(member?.DeclaringType, member?.AttributeProvider as MemberInfo, member?.Name) switch
+    /// <summary>The builtin scalar for a DateTime position: a member declaration, the default, or the mixed-Kind union.</summary>
+    public string DateTimeScalar(JsonPropertyInfo? member) => options.DateTimes.Find(member?.DeclaringType, member?.AttributeProvider as MemberInfo, member?.Name) switch
     {
         DateTimeWire.Utc => "datetime-utc",
         DateTimeWire.Unspecified => "datetime-unspecified",
         DateTimeWire.Local => "datetime-local-wire",
-        _ => null,
+        _ => "datetime",
     };
 
     private static bool IsBuiltinConverter(JsonConverter converter)
@@ -644,9 +638,11 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
     /// <summary>The longest suffix the builder appends to a model id (".codec.nullable"), reserved so that every derived id fits the 160-character id grammar.</summary>
     private const int IdReserve = 16;
 
-    private string ModelId(Type type, WireDirection direction) => options.ApiId + "." + ProfileContext.IdPart(options.ApiId + ".", CleanName(type), "." + DirectionSuffix(direction), IdReserve) + "." + DirectionSuffix(direction);
+    private string ModelPrefix => (modelScope ?? options.ApiId) + ".";
 
-    private string NeutralModelId(Type type) => options.ApiId + "." + ProfileContext.IdPart(options.ApiId + ".", CleanName(type), ".string", IdReserve);
+    private string ModelId(Type type, WireDirection direction) => ModelPrefix + ProfileContext.IdPart(ModelPrefix, CleanName(type), "." + DirectionSuffix(direction), IdReserve) + "." + DirectionSuffix(direction);
+
+    private string NeutralModelId(Type type) => ModelPrefix + ProfileContext.IdPart(ModelPrefix, CleanName(type), ".string", IdReserve);
 
     /// <summary>
     /// Anonymous types (minimal API handlers often return them) carry compiler names such as <c>&lt;&gt;f__AnonymousType0`2</c> whose
@@ -837,13 +833,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         {
             // System.Text.Json writes and reads DateTime property names like DateTime values (WritePropertyName(DateTime)); a key has no
             // member of its own, so the declared default applies
-            if (DateTimeScalar(null) is not { } dateKey)
-            {
-                return Unsupported(type, path, "a DateTime dictionary key has a runtime-dependent Kind and no declared wire; declare TisiliaOptions.DateTimes.Default");
-            }
-
-            key = builder.Scalar(dateKey, numbers);
-            RecordAdapter(key, typeof(DateTime), numbers);
+            key = Map(keyType, direction, path + "/key", isRoot: false);
         }
         else if (keyScalar is null && PairedKeyConverter(keyType) is { } keyConverter)
         {
@@ -877,7 +867,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
 
         // The comparer is an instance property invisible in metadata: the ordinal default is recorded and API authors
         // register a comparer binding for case-insensitive dictionaries.
-        var comparerId = builder.StandardComparer(keyScalar ?? "string");
+        var comparerId = builder.StandardComparer(keyScalar ?? (keyType == typeof(DateTime) ? DateTimeScalar(null) : "string"));
         RecordTypeScope(type);
         var mapId = ModelId(type, direction);
         var mapUse = builder.MapOf(mapId, UniqueTsName(Capitalize(valueName) + "Map", mapId, direction), CleanName(type), key, value, comparerId);
@@ -2019,7 +2009,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         "date-only" => typeof(DateOnly),
         "time-only" => typeof(TimeOnly),
         // DateTime kinds reach a contract only through portable definitions (raw members are SV03); the runner reads them as DateTime
-        "datetime-utc" or "datetime-unspecified" or "datetime-local-wire" => typeof(DateTime),
+        "datetime" or "datetime-utc" or "datetime-unspecified" or "datetime-local-wire" => typeof(DateTime),
         "datetime-offset" => typeof(DateTimeOffset),
         "duration" => typeof(TimeSpan),
         _ => null,

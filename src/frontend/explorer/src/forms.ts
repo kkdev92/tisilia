@@ -122,6 +122,7 @@ const primitiveGrammar: Readonly<Record<string, string>> = {
   "tisilia.float64@0.1": "float64",
   "tisilia.date-only@0.1": "date-only",
   "tisilia.time-only@0.1": "time-only",
+  "tisilia.datetime@0.1": "datetime",
   "tisilia.datetime-utc@0.1": "datetime-utc",
   "tisilia.datetime-unspecified@0.1": "datetime-unspecified",
   "tisilia.datetime-local-wire@0.1": "datetime-local-wire",
@@ -144,6 +145,8 @@ function widgetOf(kind: string): { widget: ScalarWidget; hint: string; example?:
       return { widget: "time", hint: "HH:mm:ss[.fffffff], e.g. 13:45:30" };
     case "datetime-offset":
       return { widget: "datetime-offset", hint: "e.g. 2026-10-02T13:45:30+09:00" };
+    case "datetime":
+      return { widget: "datetime", hint: "ISO date/time; Z = UTC, ±HH:mm = local wire, no suffix = unspecified" };
     case "datetime-utc":
       return { widget: "datetime-utc", hint: "e.g. 2026-10-02T04:45:30Z" };
     case "datetime-local-wire":

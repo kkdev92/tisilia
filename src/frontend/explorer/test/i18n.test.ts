@@ -56,9 +56,11 @@ describe("the Explorer's words in Japanese and English", () => {
     expect(t().fieldError({ message: "range at /body/count: value is outside the int32 range", code: "range" })).toBe("範囲外の値です（value is outside the int32 range）");
     expect(t().fieldError({ message: "invalid JSON: unexpected end of input", code: "invalid-json" })).toBe("JSON として読めません（unexpected end of input）");
     expect(t().fieldError({ message: "something the page does not know" })).toBe("something the page does not know");
+    expect(t().fieldError({ message: "form collection requires 1–1024 items", code: "form-items" })).toBe("項目を 1〜1,024 件追加してください");
     prefs.locale = "en";
     expect(t().fieldError({ message: "required", code: "required" })).toBe("Required — enter a value");
     expect(t().fieldError({ message: "range at /body/count: value is outside the int32 range", code: "range" })).toBe("value is outside the int32 range");
+    expect(t().fieldError({ message: "form collection requires 1–1024 items", code: "form-items" })).toBe("Add 1 to 1,024 items");
   });
 
   it("words the format hints of the inputs", () => {

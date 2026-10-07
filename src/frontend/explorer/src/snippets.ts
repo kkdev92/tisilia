@@ -15,6 +15,8 @@ import {
   TisiliaMap,
   writeJson,
   type JsonValue,
+  type ContractDocument,
+  type ContractFormField,
   type PreparedRequest,
 } from "@kkdev92/tisilia-runtime";
 import type { CredentialShape } from "./auth.js";
@@ -98,7 +100,7 @@ export function tsLiteral(value: unknown, helpers: Set<string>, indent = ""): st
   }
   if (value instanceof Uint8Array) {
     helpers.add("decodeBase64");
-    return `decodeBase64(${JSON.stringify(encodeBase64(value))})`;
+    return `decodeBase64(${JSON.stringify(encodeBase64(value))}, "")`;
   }
   if (isDecimal(value)) {
     helpers.add("decimalFromString");
@@ -132,6 +134,7 @@ export function tsLiteral(value: unknown, helpers: Set<string>, indent = ""): st
 export type SnippetKind = "client" | "fetch" | "curl";
 
 export interface SnippetOptions {
+  readonly document?: ContractDocument;
   readonly apiId: string;
   readonly operationId: string;
   /** Where the API is (the client's baseUrl): the origin plus any PathBase. */
@@ -182,6 +185,8 @@ export function curlSnippet(prepared: PreparedRequest, options: SnippetOptions):
   }
   if (prepared.bodyText !== undefined) {
     lines.push(`  --data-raw ${quoteShell(options.reveal ? prepared.bodyText : hidden)}`);
+  } else if (prepared.bodyBytes !== undefined) {
+    lines.push("  --data-binary '@<file>'");
   }
   return lines.join(" \\\n");
 }
@@ -198,9 +203,34 @@ export function fetchSnippet(prepared: PreparedRequest, options: SnippetOptions)
   if (prepared.bodyText !== undefined) {
     // the exact text the generated encoder wrote: JSON.stringify would round int64 and decimal values
     lines.push(`  body: ${JSON.stringify(options.reveal ? prepared.bodyText : hidden)},`);
+  } else if (prepared.bodyBytes !== undefined) {
+    lines.push(options.reveal ? `  body: new Uint8Array([${[...prepared.bodyBytes].join(", ")}]),` : "  body: fileBytes, // Uint8Array of the selected file");
   }
   lines.push("});");
   return lines.join("\n");
+}
+
+/** Form values carry CLR scalar types even when their JavaScript primitives have no runtime brand. */
+function formLiteral(fields: readonly ContractFormField[], value: unknown, helpers: Set<string>, document: ContractDocument, indent: string): string {
+  const body = value as Record<string, unknown>;
+  const inner = indent + "  ";
+  const lines: string[] = [];
+  for (const field of fields) {
+    const value = body[field.name];
+    if (value === undefined) { continue; }
+    const itemLiteral = (item: unknown, padding: string): string => {
+      if (field.kind === "object") { return formLiteral(field.fields ?? [], item, helpers, document, padding); }
+      const shape = document.types.find(t => t.id === field.use?.typeId)?.shape;
+      const helper = shape?.kind === "primitive" ? ({ "tisilia.int64@0.1": "int64", "tisilia.uint64@0.1": "uint64", "tisilia.guid@0.1": "guid" } as Readonly<Record<string, string>>)[shape.primitiveId] : undefined;
+      if (helper !== undefined) { helpers.add(helper); return `${helper}(${tsLiteral(item, helpers, padding)})`; }
+      return tsLiteral(item, helpers, padding);
+    };
+    const literal = field.repeated && (value as readonly unknown[]).length === 0 ? "[]" : field.repeated
+      ? "[\n" + (value as readonly unknown[]).map(item => inner + "  " + itemLiteral(item, inner + "  ")).join(",\n") + `,\n${inner}]`
+      : itemLiteral(value, inner);
+    lines.push(`${inner}${propertyKey(field.name)}: ${literal}`);
+  }
+  return lines.length === 0 ? "{}" : "{\n" + lines.join(",\n") + `,\n${indent}}`;
 }
 
 /** The call through the generated client (typed mode): the same arguments the Explorer built, as TypeScript. */
@@ -213,7 +243,10 @@ export function clientSnippet(options: SnippetOptions): string {
   if (options.args === undefined) {
     args = "{ /* raw mode: the generated client sends what its encoder writes, not edited text */ }";
   } else if (options.reveal) {
-    args = tsLiteral(options.args, helpers);
+    const body = options.document?.operations.find(op => op.id === options.operationId)?.requestBody;
+    args = body?.kind === "form" && options.args["body"] !== undefined
+      ? "{\n" + Object.keys(options.args).filter(k => options.args![k] !== undefined).map(k => `  ${propertyKey(k)}: ${k === "body" ? formLiteral(body.fields, options.args![k], helpers, options.document!, "  ") : tsLiteral(options.args![k], helpers, "  ")}`).join(",\n") + "\n}"
+      : tsLiteral(options.args, helpers);
   } else {
     const keys = Object.keys(options.args).filter((k) => options.args![k] !== undefined);
     args = keys.length === 0 ? "{}" : "{ " + keys.map((k) => `${propertyKey(k)}: …`).join(", ") + " }";

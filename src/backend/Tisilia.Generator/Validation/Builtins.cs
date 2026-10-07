@@ -50,7 +50,7 @@ public static class Builtins
         "string", "boolean", "char", "guid", "bytes", "json-value",
         "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64",
         "decimal", "float32", "float64",
-        "date-only", "time-only", "datetime-utc", "datetime-unspecified", "datetime-local-wire", "datetime-offset", "duration",
+        "date-only", "time-only", "datetime", "datetime-utc", "datetime-unspecified", "datetime-local-wire", "datetime-offset", "duration",
     ];
 
     public static readonly string[] IntegerScalarNames = ["int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64"];
@@ -125,6 +125,7 @@ public static class Builtins
     public const string ResultBodyless = "tisilia.result.bodyless@0.1";
     public const string ResultTextUtf8 = "tisilia.result.text-utf8@0.1";
     public const string ResultBinaryBuffered = "tisilia.result.binary-buffered@0.1";
+    public const string ResultSse = "tisilia.result.sse@0.1";
     public const string BinderPathSegment = "tisilia.binder.path-segment@0.1";
     public const string BinderQueryComponent = "tisilia.binder.query-component@0.1";
     public const string BinderHeaderText = "tisilia.binder.header-text@0.1";
@@ -227,6 +228,7 @@ public static class Builtins
         Add(ResultBodyless, BuiltinKind.Result, "bodyless");
         Add(ResultTextUtf8, BuiltinKind.Result, "text-utf8");
         Add(ResultBinaryBuffered, BuiltinKind.Result, "binary-buffered");
+        Add(ResultSse, BuiltinKind.Result, "sse");
         Add(BinderPathSegment, BuiltinKind.Binder, "path-segment");
         Add(BinderQueryComponent, BuiltinKind.Binder, "query-component");
         Add(BinderHeaderText, BuiltinKind.Binder, "header-text");

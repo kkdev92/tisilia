@@ -48,10 +48,13 @@ _Built for teams that need consistent value semantics across .NET and TypeScript
 ## Features
 
 - **A Contract From the Application Itself**: `tisilia export` builds and starts the application, records the endpoints it registered for Tisilia and the serializer options each one uses, and stops it again
-- **Exact Values**: `long`, `ulong`, `decimal`, `Guid`, `DateOnly`, `TimeOnly`, `DateTimeOffset` and `TimeSpan` arrive as exact TypeScript values (bigint, scaled decimal, 100 ns ticks), never through a JavaScript `number` that cannot hold them
+- **Exact Values**: `long`, `ulong`, `decimal`, `Guid`, `DateOnly`, `TimeOnly`, `DateTime`, `DateTimeOffset` and `TimeSpan` arrive as exact TypeScript values (bigint, scaled decimal, 100 ns ticks), never through a JavaScript `number` that cannot hold them
 - **Types That Say What the Server Does**: nullability as the serializer writes it, enums by name or number, dictionaries with their key codecs, polymorphic types as tagged unions with literal discriminators, and one result type per declared response case
-- **Fail Closed**: a converter without a binding, a `DateTime` whose kind is undeclared, or a response whose wire format cannot be determined exactly — anything the contract cannot describe exactly is a diagnostic with a fix, checked by 54 semantic rules (SV01–SV54)
+- **Fail Closed**: a converter without a binding, or a response whose wire format cannot be determined exactly — anything the contract cannot describe exactly is a diagnostic with a fix, checked by 54 semantic rules (SV01–SV54)
 - **Calls That Return, Not Throw**: a call gives a declared response case or a named failure — `unexpected-response`, `codec-failure`, `transport-failure`, `timeout`, `limit-failure`, `contract-mismatch` — and never follows a redirect
+- **File Transfers**: finite raw uploads to `Stream` / `PipeReader` endpoints, buffered downloads, and incremental downloads to an asynchronous sink, with byte limits and cancellation
+- **Forms and Events**: URL-encoded and multipart forms with nested models, constructor parameters, enums, exact scalar values, indexed collections and file parts; typed SSE subscriptions with incremental decoding, backpressure and cancellation
+- **Endpoint JSON Options**: `WithTisiliaJsonOptions<T>` exports and enforces the settings used by `TypedResults.Json` and MVC `JsonResult`, with separate request, response and error profiles
 - **Custom Converters Included**: a hand-written `JsonConverter` is paired with a TypeScript codec module, or both sides are generated from a portable codec definition; the contract pins each module by its digest
 - **Conformance You Can Show**: `tisilia conformance` runs a suite derived from the contract through the server's real converters and the generated client, and records the result as evidence that marks operations qualified
 - **Explorer**: a page the application serves that runs every call through the generated client's own codecs — request and response side by side, an Authorize dialog, the API's own documentation, Japanese and English
@@ -183,23 +186,28 @@ as part of development and CI. It generates clients for ASP.NET Core APIs and re
 
 ## Known Limitations
 
-- **Finite downloads are bounded buffers.** Explicit file metadata produces `BufferedFile` (`Uint8Array` bytes, media type,
-  optional safe filename). Uploads, a streaming download API, SSE, XML serialization, multipart and form binding remain unsupported.
-- **Resolved routes:** optional/default parameters, complex optional separators and catch-all routes are supported. An omitted
-  intermediate segment cannot shift later values. `*` accepts a single segment; `**` preserves slash boundaries. Outbound
-  transformers and values that cannot round-trip through URL normalization are diagnosed. Proxy behavior requires separate verification.
+- **Specialized forms, streaming uploads and XML.** Minimal API nested models, complex constructor parameters, indexed collections of models,
+  root lists, DateTime fields, enums and finite file parts are supported. Recursive models, dictionaries, custom binders and
+  culture-dependent MVC numeric/date form fields still need an adapter; MVC string/enum/file fields work.
+  Uploads are bounded in memory. SSE is exported for minimal API endpoints and supports text/JSON events within an explicit connection deadline and byte budget, without automatic reconnection.
+- **URL normalization** still excludes values that cannot reach ASP.NET Core unchanged. Optional/default, complex optional,
+  catch-all and outbound-transformer routes are supported with explicit incoming values. Proxy behavior requires separate verification.
 - **A result the metadata cannot describe is refused** — `Results.Ok(value)` or `IActionResult` without `.Produces<T>()` /
-  `[ProducesResponseType]` — and so is `TypedResults.Json(value, options)`, whose options are chosen at run time
-- **`ReferenceHandler.Preserve`** (`$id`/`$ref` JSON graphs) is not supported (SV20). Unused JSON settings do not block binary/bodyless operations
-- **`DateTime` needs a declared wire**, because System.Text.Json writes it by its runtime `Kind`. `TimeZoneInfo` and
-  `CultureInfo` tie a contract to the zone and culture data of the machine that exported it
+  `[ProducesResponseType]`. `TypedResults.Json` and MVC `JsonResult` work with `WithTisiliaJsonOptions<T>`;
+  undeclared dynamic JSON options remain diagnosed.
+- **`ReferenceHandler.Preserve`** (`$id`/`$ref` JSON graphs) is unsupported for structured JSON (SV20).
+  Builtin scalar-only JSON is supported; unused JSON settings do not block binary/bodyless operations.
+- **Environment-dependent values.** `DateTime` works without declarations in JSON and HTTP parameters, preserving
+  100 ns precision and the wire Kind. Local JSON input is converted to the server zone; HTTP offsets bind as UTC.
+  Multiple dictionary keys including Local still need a zone-aware codec, since conversion/DST can collapse keys.
+  `TimeZoneInfo` and `CultureInfo` tie a contract to the zone and culture data of the machine that exported it
 - **Evidence is about codecs in the recorded runtime matrix.** It does not certify HTTP routing, downloads, CORS, proxies,
   authentication or another host. Binary-only operations with no codec cases are codec-not-applicable and HTTP-unobserved.
 
 Run `tisilia doctor --project ./MyApi --allow-execute-project --format json` for aggregated adoption diagnostics.
 The flag permits application startup, including its side effects; it is not a sandbox. No API handler is probed.
 Use matching 0.1.0-alpha packages to export the contract and generate its client.
-Run `scripts/verify-adoption.ps1` to check routes, bounded downloads and cancellation against Kestrel and Chromium,
+Run `scripts/verify-adoption.ps1` to check routes, mixed DateTime, forms/files/CSRF, raw uploads, SSE, endpoint JSON options, downloads and cancellation against Kestrel and Chromium,
 Firefox and WebKit. These checks do not establish compatibility with every proxy, hosting configuration or browser version.
 
 - **One target.** .NET 10, TypeScript 6, Node 24, the current browsers; no polyfills for older ones

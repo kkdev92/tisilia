@@ -69,13 +69,16 @@ float forms and swaps paired converters for the domain factory. That factory is 
 - `domain-validation:<type>` — `validate-domain` accepts a valid value and rejects every other AST kind / range violation
 - `oracle-discrimination:<type>` — two different values must not compare equal (the oracle has discriminating power)
 
-`datetime-local-wire` is the one scalar whose expectations depend on the environment: System.Text.Json
+`datetime-local-wire` and the Local variant of `datetime` have expectations that depend on the environment: System.Text.Json
 reads an offset form as `DateTimeOffset.LocalDateTime` (Kind Local in the server's zone) and writes that zone's offset
 back. The conformance command therefore builds the suite for the zone the .NET runner reports (`SuiteOptions.TimeZoneId`
 = the evidence context's `dotnet.timeZone`, IANA or Windows id), computes the local-wire round trips with
 `TimeZoneInfo.ConvertTime`, skips instants whose local time is ambiguous there (DST fall-back), and the claim is valid
 for that recorded context only. `datetime-utc` (`Z`) and `datetime-unspecified` (no suffix) round-trip unchanged; the
-forms of the other kinds are server-write negatives (the decoder must refuse what the declared kind never produces).
+forms of the other kinds are server-write negatives for those narrowed declarations. The default `datetime` union accepts
+all three forms. Its corpus interleaves the three Kinds and normalizes offset-bearing values and dictionary keys only;
+UTC and unspecified values remain unchanged. Multi-key DateTime request corpora use UTC/unspecified keys; Local singleton
+keys are also covered. Unknown server-zone collisions are refused by the client rather than silently overwriting an entry.
 
 The suite also derives these from the contract rather than from the code:
 

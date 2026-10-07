@@ -39,7 +39,8 @@ public sealed class TisiliaOptions
 
     /// <summary>
     /// The declared wire of <see cref="DateTime"/> values: System.Text.Json writes a DateTime according to its runtime
-    /// Kind, so the kind each position holds is declared — a default and member exceptions. Undeclared DateTimes are export errors.
+    /// Kind. Undeclared JSON uses the mixed-Kind union; declarations can narrow a default or individual member.
+    /// HTTP offset inputs bind as UTC; fixed Local declarations are unsupported for parameters.
     /// </summary>
     public DateTimeBindingCollection DateTimes { get; } = new();
 

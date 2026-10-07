@@ -29,10 +29,9 @@ internal static class ResolvedRoutes
                 ?? throw new NotSupportedException($"Route parameter '{part.Name}' has no uniquely resolved binder");
             foreach (var policy in part.ParameterPolicies)
             {
-                if (policyFactory.Create(part, policy) is IOutboundParameterTransformer)
-                {
-                    throw new NotSupportedException($"Route parameter '{part.Name}' requires an outbound transformer; incoming-only constraints are supported");
-                }
+                // Resolve policies, but do not call TransformOutbound: the client supplies the incoming route value.
+                // Outbound transformers apply to LinkGenerator, not to binding this explicit parameter in a request.
+                _ = policyFactory.Create(part, policy);
             }
             var hasDefault = pattern.Defaults.TryGetValue(part.Name, out var value);
             if (value is not null && value is not (string or bool or char or byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal or Guid))

@@ -5,6 +5,10 @@ namespace Tisilia.Generator.Validation;
 /// <summary>Route template, media type and header rules shared by validation, generation and the exporter.</summary>
 public static partial class HttpRules
 {
+    public static bool IsRawRequestMediaType(string value) => ParseMediaType(value) is { } media
+        && !media.Type.Contains('*') && !media.Subtype.Contains('*') && !value.Contains(';')
+        && media.Type != "multipart" && media.Essence is not "application/x-www-form-urlencoded" and not "text/event-stream";
+
     /// <summary>Header names a browser fetch cannot set (WHATWG Fetch "forbidden request-header", checked 2026-09-30) plus the Tisilia credential headers.</summary>
     public static readonly HashSet<string> ForbiddenRequestHeaders = new(StringComparer.OrdinalIgnoreCase)
     {

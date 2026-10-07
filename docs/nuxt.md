@@ -10,6 +10,11 @@ new request; imperative `useTisiliaClient` calls can obtain bytes in the browser
 precision and browser-safe envelopes retain their existing behavior. The runtime, module and generator must use matching
 0.1.0-alpha packages. The contract, hydration envelope format and Codec ABI all use version 0.1.
 
+Finite raw uploads take a `Uint8Array` body. Their request identity includes the exact bytes as canonical base64 with
+`bodyKind: "binary"`; different bytes, an empty body and an omitted body get different identities. This identity input
+is hashed, and the raw request bytes are not added to hydration envelopes. Use the runtime's `download` API with an
+application-owned sink for incremental downloads; `useTisiliaOperation` retains its buffered response behavior.
+
 ## Install
 
 ```ts [nuxt.config.ts]
@@ -100,6 +105,12 @@ canonical request without credentials.
 The scope nonce is generated per SSR request, travels in the Nuxt state payload and gates every cache reuse:
 `getCachedData` only returns an envelope whose nonce, contract hash and operation match. `useTisiliaScope().reset()`
 after login/logout/tenant change rotates the nonce and clears the cached envelopes (`sharedCache` is always false).
+
+Form requests use `bodyKind: "binary"` identities over the complete encoded bytes, including deterministic multipart
+boundaries and file parts. Different field/file values produce different keys; credentials remain outside the record.
+SSE responses are server-only for hydration, including finite event arrays. Subscribe explicitly in the consuming
+application and stop the subscription when its scope ends. Endpoint-specific JSON responses retain their response
+profile when decoded after hydration; request encoding continues to use the request profile.
 
 ## Tests
 

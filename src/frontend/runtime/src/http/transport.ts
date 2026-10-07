@@ -21,7 +21,11 @@ export interface TransportResponse {
   readonly mediaType: string | undefined;
   readonly body: Uint8Array;
   readonly metadata: ResponseMetadata;
+  /** The body was delivered to the consumer; body is empty, metadata.bodyBytes is the received size. */
+  readonly streamed?: true;
 }
+
+export type ResponseConsumer = (metadata: ResponseMetadata) => ((chunk: Uint8Array, signal: AbortSignal) => void | Promise<void>) | undefined;
 
 export type TransportOutcome =
   | { readonly kind: "ok"; readonly response: TransportResponse }
@@ -46,7 +50,7 @@ function headerList(headers: Headers): (readonly [string, string])[] {
   return list;
 }
 
-export async function send(request: TransportRequest, options: TransportOptions = {}, sharedBudget?: ExecutionBudget): Promise<TransportOutcome> {
+export async function send(request: TransportRequest, options: TransportOptions = {}, sharedBudget?: ExecutionBudget, consumer?: ResponseConsumer): Promise<TransportOutcome> {
   const limits = resolveLimits(options.limits);
   const fetchImpl = options.fetch ?? globalThis.fetch;
   // the runtime targets the current browsers and Node 24 (no polyfills for older environments); both have these
@@ -87,6 +91,7 @@ export async function send(request: TransportRequest, options: TransportOptions 
     let total = 0;
     const updateMetadata = (): ResponseMetadata => ({ status: response!.status, mediaType, bodyBytes: total, headers });
     metadata = updateMetadata();
+    const consume = consumer?.(metadata);
     const stream: unknown = response.body;
     if (stream !== null) {
       if (typeof (stream as ReadableStream<Uint8Array> | undefined)?.getReader !== "function") {
@@ -103,17 +108,18 @@ export async function send(request: TransportRequest, options: TransportOptions 
           // Fix the primary outcome before attempting cleanup. Cleanup never blocks or replaces it.
           return { kind: "limit-failure", limit: "maxBodyBytes", metadata };
         }
-        chunks.push(chunk.value);
+        if (consume === undefined) { chunks.push(chunk.value); }
+        else { await budget.wait(() => consume(chunk.value, signal)); }
       }
     }
     budget.check();
-    const body = chunks.length === 1 ? chunks[0]! : new Uint8Array(total);
+    const body = consume !== undefined ? new Uint8Array() : chunks.length === 1 ? chunks[0]! : new Uint8Array(total);
     if (chunks.length > 1) {
       let offset = 0;
       for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
     }
     complete = true;
-    return { kind: "ok", response: { status: response.status, headers, mediaType, body, metadata: updateMetadata() } };
+    return { kind: "ok", response: { status: response.status, headers, mediaType, body, metadata: updateMetadata(), ...(consume === undefined ? {} : { streamed: true as const }) } };
   } catch (error) {
     if (error instanceof BudgetEnded) { return { kind: error.kind }; }
     // Node's fetch (undici) names the reason in `cause` ("unexpected redirect", "connect ECONNREFUSED …"). Browsers never say why:

@@ -28,6 +28,7 @@ public sealed class AdoptionPlanTests
     [InlineData(DateTimeWire.Utc)]
     [InlineData(DateTimeWire.Unspecified)]
     [InlineData(DateTimeWire.Local)]
+    [InlineData(DateTimeWire.Mixed)]
     public async Task DX06_DX07_JSON_Kind_and_route_query_header_binders_keep_their_distinct_contracts(DateTimeWire wire)
     {
         await using var json = await App(a => a.MapPost("/time", ([FromBody] UndeclaredTime value) => value).WithTisiliaOperation("time"), options: o => o.DateTimes.Default = wire);
@@ -163,6 +164,48 @@ public sealed class AdoptionPlanTests
     }
 
     [Fact]
+    public async Task Preserve_allows_builtin_scalar_JSON_without_reference_metadata()
+    {
+        await using var app = await App(a =>
+        {
+            a.MapPost("/number", ([FromBody] long value) => TypedResults.Ok(value)).WithTisiliaOperation("number");
+            a.MapPost("/nullable", ([FromBody] long? value) => value).WithTisiliaOperation("nullable");
+            a.MapPost("/text", ([FromBody] string value) => TypedResults.Ok(value)).WithTisiliaOperation("text");
+            a.MapPost("/bytes", ([FromBody] byte[] value) => TypedResults.Ok(value)).WithTisiliaOperation("bytes");
+        }, b => b.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.ReferenceHandler = ReferenceHandler.Preserve));
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        foreach (var (path, json) in new[] { ("/number", "9007199254740993"), ("/nullable", "null"), ("/text", "\"hello\""), ("/bytes", "\"AP8=\"") })
+        {
+            using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            using var response = await client.PostAsync(path, content);
+            response.EnsureSuccessStatusCode();
+            Assert.Equal(json, await response.Content.ReadAsStringAsync());
+        }
+        var exported = Success(app);
+        Assert.Contains("\"referenceHandling\": \"Preserve\"", exported.Text!, StringComparison.Ordinal);
+        Assert.Equal(4, exported.OperationCount);
+    }
+
+    [Fact]
+    public async Task Preserve_still_refuses_structured_JSON_and_custom_reference_handlers()
+    {
+        await using var structured = await App(a =>
+        {
+            a.MapGet("/object", () => new { value = 1 }).WithTisiliaOperation("object");
+            a.MapGet("/array", () => new[] { 1, 2 }).WithTisiliaOperation("array");
+        }, b => b.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.ReferenceHandler = ReferenceHandler.Preserve));
+        Assert.Contains(Export(structured).Diagnostics.Items, d => d.Code == TisiliaCodes.ReferencePreserve);
+        await using var custom = await App(a => a.MapGet("/number", () => 1).WithTisiliaOperation("number"),
+            b => b.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.ReferenceHandler = new UnknownReferenceHandler()));
+        Assert.Contains(Export(custom).Diagnostics.Items, d => d.Code == TisiliaCodes.ReferencePreserve && d.Message.Contains("custom ReferenceHandler", StringComparison.Ordinal));
+    }
+
+    private sealed class UnknownReferenceHandler : ReferenceHandler
+    {
+        public override ReferenceResolver CreateResolver() => throw new NotSupportedException();
+    }
+
+    [Fact]
     public async Task BD30_Bodyless_and_binary_do_not_depend_on_unused_Preserve()
     {
         await using var app = await App(a =>
@@ -218,10 +261,10 @@ public sealed class AdoptionPlanTests
             a.MapGet("/one", () => { calls++; return new UndeclaredTime(DateTime.UtcNow); }).WithTisiliaOperation("one");
             a.MapGet("/two", () => { calls++; return new UndeclaredTime(DateTime.Now); }).WithTisiliaOperation("two");
             a.MapGet("/ok", () => { calls++; return TypedResults.NoContent(); }).WithTisiliaOperation("ok");
-        });
+        }, b => b.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new CustomTimeConverter())));
         var report = app.Services.GetRequiredService<TisiliaContractExporter>().Diagnose();
         Assert.True(report.AnalysisComplete); Assert.Equal(3, report.SelectedCount); Assert.Equal(3, report.AnalyzedCount); Assert.Equal(0, report.UnanalyzedCount);
-        var cause = Assert.Single(report.Causes, c => c.Message.Contains("DateTime wire", StringComparison.Ordinal));
+        var cause = Assert.Single(report.Causes, c => c.Message.Contains("custom converter", StringComparison.Ordinal));
         Assert.Equal(["one", "two"], cause.OperationIds);
         Assert.Equal("supported", report.Operations.Single(o => o.OperationId == "ok").Readiness);
         Assert.All(report.Operations, o => Assert.Equal("unobserved", o.HttpVerification));

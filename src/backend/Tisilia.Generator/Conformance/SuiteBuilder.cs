@@ -498,7 +498,7 @@ public sealed class SuiteBuilder
                 case MapShape mp:
                     return _index.Types.TryGetValue(mp.Key.TypeId, out var kt) && kt.Shape is PrimitiveShape or EnumShape && Reachable(kt, visiting, depth + 1)
                         && _index.Types.TryGetValue(mp.Value.TypeId, out var vt) && Reachable(vt, visiting, depth + 1)
-                        && _index.Comparers.TryGetValue(mp.ComparerId, out var cmp) && _index.Bindings.TryGetValue(cmp.BindingId, out var b) && b.Implementation is BuiltinImpl;
+                        && BuiltinComparer(mp.ComparerId) is not null;
                 case BrandShape br:
                     return _index.Types.TryGetValue(br.Base.TypeId, out var bt) && Reachable(bt, visiting, depth + 1);
                 case UnionShape u:
@@ -753,18 +753,30 @@ public sealed class SuiteBuilder
         return Generate(use with { SemanticNullable = false }, mode, 0, depth + 1, profileId);
     }
 
+    private string? BuiltinComparer(string id)
+    {
+        if (!_index.Comparers.TryGetValue(id, out var comparer)) { return null; }
+        if (Builtins.Is(comparer.BindingId, BuiltinKind.Comparer)) { return comparer.BindingId; }
+        return _index.Bindings.TryGetValue(comparer.BindingId, out var binding) && binding.Implementation is BuiltinImpl b ? b.Id : null;
+    }
+
     private JsonValue MapValue(MapShape m, GenMode mode, int index, int depth, string profileId)
     {
         var keyModel = _index.Types[m.Key.TypeId];
-        var comparer = _index.Bindings[_index.Comparers[m.ComparerId].BindingId].Implementation is BuiltinImpl b ? b.Id : Builtins.ComparerOrdinal;
+        var comparer = BuiltinComparer(m.ComparerId) ?? Builtins.ComparerOrdinal;
         var ignoreCase = comparer == Builtins.ComparerOrdinalIgnoreCase;
         var keyPolicy = _index.Profiles.TryGetValue(profileId, out var prof) && prof.Options.DictionaryKeyPolicyId != Builtins.NamingNone;
-        var count = depth > 3 || keyPolicy ? 0 : index == 0 ? 2 : index == 1 ? 0 : _rng.Next(4);
+        var mixedDateTimeKeys = keyModel.Shape is PrimitiveShape primitive && ScalarName(primitive) == "datetime";
+        var count = depth > 3 || keyPolicy ? 0 : index == 0 ? 2 : index == 1 ? 0 : index == 2 && mixedDateTimeKeys ? 1 : _rng.Next(4);
         var entries = new List<(string, JsonValue)>();
         var seen = new HashSet<string>(ignoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
         for (var k = 0; k < count * 3 && entries.Count < count; k++)
         {
-            var keyAst = Generate(m.Key with { SemanticNullable = false }, GenMode.Key, index + k + 1, depth + 1, profileId);
+            // Multiple mixed DateTime keys must avoid Local: server-zone conversion and DST can collapse distinct instants.
+            var keyAst = index == 2 && mixedDateTimeKeys ? Scalar("datetime-local-wire", 4, GenMode.Key)
+                : count > 1 && mixedDateTimeKeys
+                ? Scalar(k % 2 == 0 ? "datetime-utc" : "datetime-unspecified", index + k + 1, GenMode.Key)
+                : Generate(m.Key with { SemanticNullable = false }, GenMode.Key, index + k + 1, depth + 1, profileId);
             var encoded = KeyText(keyAst, keyModel);
             if (encoded is null || !seen.Add(encoded))
             {
@@ -907,6 +919,9 @@ public sealed class SuiteBuilder
 
                 return DomainAst.String(DomainAst.StjText(v));
             }
+
+            case "datetime":
+                return Scalar(new[] { "datetime-utc", "datetime-unspecified", "datetime-local-wire" }[index % 3], index / 3, mode);
 
             case "datetime-utc":
             case "datetime-unspecified":
@@ -1117,7 +1132,7 @@ public sealed class SuiteBuilder
     /// </summary>
     private JsonValue LocalWireRoundTrip(JsonValue domain)
     {
-        if (domain is not JsonStringValue s)
+        if (domain is not JsonStringValue s || s.Value.Length < 16 || s.Value[^6] is not ('+' or '-'))
         {
             return domain;
         }
@@ -1135,7 +1150,11 @@ public sealed class SuiteBuilder
         return DomainAst.String(DomainAst.StjText(TimeZoneInfo.ConvertTime(parsed, _zone)));
     }
 
-    private JsonValue? KeyExpected(JsonValue key, Model model) => model.Shape is PrimitiveShape p && ScalarName(p) == "datetime-local-wire" ? LocalWireRoundTrip(key) : null;
+    private string ExpectedMapKey(string text, TypeUse use)
+        => _index.Types[use.TypeId].Shape is PrimitiveShape p && ScalarName(p) is "datetime" or "datetime-local-wire"
+            ? ((JsonStringValue)LocalWireRoundTrip(DomainAst.String(text))).Value : text;
+
+    private JsonValue? KeyExpected(JsonValue key, Model model) => model.Shape is PrimitiveShape p && ScalarName(p) is "datetime" or "datetime-local-wire" ? LocalWireRoundTrip(key) : null;
 
     /// <summary>
     /// The behavior projections reachable from a request type: a projection declared on a type is applied where
@@ -1193,7 +1212,7 @@ public sealed class SuiteBuilder
 
         switch (model.Shape)
         {
-            case PrimitiveShape p when ScalarName(p) == "datetime-local-wire":
+            case PrimitiveShape p when ScalarName(p) is "datetime" or "datetime-local-wire":
                 return LocalWireRoundTrip(domain);
             case ObjectShape shape when domain is JsonObjectValue obj:
             {
@@ -1236,7 +1255,7 @@ public sealed class SuiteBuilder
             case ArrayShape a when domain is JsonArrayValue arr:
                 return DomainAst.Array(arr.Items.Select(i => ExpectedAfterWrite(i, a.Element, profileId)));
             case MapShape m when domain is JsonObjectValue mobj:
-                return DomainAst.Object(mobj.Entries.Select(e => (e.Name, ExpectedAfterWrite(e.Value, m.Value, profileId))));
+                return DomainAst.Object(mobj.Entries.Select(e => (ExpectedMapKey(e.Name, m.Key), ExpectedAfterWrite(e.Value, m.Value, profileId))));
             case BrandShape b:
                 return ExpectedAfterWrite(domain, b.Base, profileId);
             case UnionShape u when domain is JsonObjectValue uo:
@@ -1279,7 +1298,7 @@ public sealed class SuiteBuilder
 
         switch (model.Shape)
         {
-            case PrimitiveShape p when ScalarName(p) == "datetime-local-wire":
+            case PrimitiveShape p when ScalarName(p) is "datetime" or "datetime-local-wire":
                 return LocalWireRoundTrip(domain);
             case ObjectShape shape when domain is JsonObjectValue obj:
             {
@@ -1311,7 +1330,7 @@ public sealed class SuiteBuilder
             case ArrayShape a when domain is JsonArrayValue arr:
                 return DomainAst.Array(arr.Items.Select(i => ExpectedAfterRead(i, a.Element, profileId)));
             case MapShape m when domain is JsonObjectValue mobj:
-                return DomainAst.Object(mobj.Entries.Select(e => (e.Name, ExpectedAfterRead(e.Value, m.Value, profileId))));
+                return DomainAst.Object(mobj.Entries.Select(e => (ExpectedMapKey(e.Name, m.Key), ExpectedAfterRead(e.Value, m.Value, profileId))));
             case BrandShape b:
                 return ExpectedAfterRead(domain, b.Base, profileId);
             case UnionShape u when domain is JsonObjectValue uo:
@@ -1439,7 +1458,7 @@ public sealed class SuiteBuilder
 
                     yield return (DomainAst.String("2026-09-30T25:00:00+09:00"), "datetime-hour");
                 }
-                else if (g.Contains("datetime-utc", StringComparison.Ordinal) || g.Contains("datetime-unspecified", StringComparison.Ordinal) || g.Contains("datetime-local-wire", StringComparison.Ordinal))
+                else if (g.Contains(".datetime@", StringComparison.Ordinal) || g.Contains(".datetime-key@", StringComparison.Ordinal) || g.Contains("datetime-utc", StringComparison.Ordinal) || g.Contains("datetime-unspecified", StringComparison.Ordinal) || g.Contains("datetime-local-wire", StringComparison.Ordinal))
                 {
                     yield return (DomainAst.String("2026-13-01T00:00:00Z"), "datetime-month");
                     yield return (DomainAst.String("2026-09-30T25:00:00"), "datetime-hour");
@@ -1458,7 +1477,7 @@ public sealed class SuiteBuilder
                             yield return (DomainAst.String("2026-09-30T15:04:05Z"), "datetime-unspecified-z");
                             yield return (DomainAst.String("2026-09-30T15:04:05+09:00"), "datetime-unspecified-offset");
                         }
-                        else
+                        else if (g.Contains("datetime-local-wire", StringComparison.Ordinal))
                         {
                             yield return (DomainAst.String("2026-09-30T15:04:05Z"), "datetime-local-z");
                             yield return (DomainAst.String("2026-09-30T15:04:05"), "datetime-local-no-offset");
@@ -1651,7 +1670,7 @@ public sealed class SuiteBuilder
         {
             PrimitiveShape p => ScalarName(p) switch
             {
-                "string" or "char" or "guid" or "bytes" or "date-only" or "time-only" or "datetime-utc" or "datetime-unspecified" or "datetime-local-wire" or "datetime-offset" or "duration" => JsonToken.String,
+                "string" or "char" or "guid" or "bytes" or "date-only" or "time-only" or "datetime" or "datetime-utc" or "datetime-unspecified" or "datetime-local-wire" or "datetime-offset" or "duration" => JsonToken.String,
                 "boolean" => JsonToken.Boolean,
                 "json-value" => (JsonToken?)null,
                 _ => JsonToken.Number,
@@ -1708,6 +1727,9 @@ public sealed class SuiteBuilder
                     break;
                 case "datetime-offset":
                     yield return (DomainAst.String("2026-09-30"), "no-time");
+                    break;
+                case "datetime":
+                    yield return (DomainAst.String("2026-02-30T00:00:00Z"), "invalid-day");
                     break;
                 case "datetime-utc":
                     yield return (DomainAst.String("2026-09-30T15:04:05+09:00"), "offset-form");

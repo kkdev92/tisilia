@@ -5,8 +5,8 @@ namespace Tisilia.AspNetCore.Bindings;
 /// <summary>
 /// The wire of a <see cref="DateTime"/>. System.Text.Json writes a DateTime according to its runtime
 /// <see cref="DateTime.Kind"/> — <c>…Z</c> for Utc, the server zone's offset for Local, no suffix for Unspecified — and reads
-/// <c>Z</c> as Utc, an offset as Local (converted to the server's zone) and no suffix as Unspecified. Which kind a member
-/// holds is knowledge of the application, so it is declared; the contract then uses the builtin <c>datetime-utc</c>,
+/// <c>Z</c> as Utc, an offset as Local (converted to the server's zone) and no suffix as Unspecified. The default mixed wire accepts
+/// all three Kinds. Optional declarations narrow a member to the builtin <c>datetime-utc</c>,
 /// <c>datetime-unspecified</c> or <c>datetime-local-wire</c> scalar. A server value of another kind is written in another form,
 /// which the client refuses (a codec failure, never a silently shifted instant).
 /// </summary>
@@ -24,17 +24,20 @@ public enum DateTimeWire
     /// header parameters, which ASP.NET Core parses with <c>DateTimeStyles.AdjustToUniversal</c> (an offset becomes UTC).
     /// </summary>
     Local,
+
+    /// <summary>Any JSON Kind: the tagged datetime union, also used when no JSON wire is declared.</summary>
+    Mixed,
 }
 
 /// <summary>
 /// Declared <see cref="DateTime"/> wires: a default for every DateTime position (members, collection items, dictionary keys,
-/// parameters) and exceptions for single members. A DateTime with no declaration is an export error (SV03).
+/// parameters) and exceptions for single members. Undeclared JSON values use the mixed-Kind union. HTTP parameters accept the mixed wire or Utc/Unspecified, with offset inputs bound as UTC.
 /// </summary>
 public sealed class DateTimeBindingCollection
 {
     private readonly Dictionary<(Type Type, string Member), DateTimeWire> _members = [];
 
-    /// <summary>The wire of every DateTime that no member declaration names; null when none is declared.</summary>
+    /// <summary>The wire of every DateTime that no member declaration names; null selects the mixed wire for JSON and HTTP parameters.</summary>
     public DateTimeWire? Default { get; set; }
 
     internal IReadOnlyList<string> DescribeMembers() => _members.OrderBy(p => p.Key.Type.FullName, StringComparer.Ordinal)

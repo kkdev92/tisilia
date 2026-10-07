@@ -46,11 +46,12 @@ public sealed partial class SemanticValidator
                 Error(TisiliaCodes.IgnoreCondition, "SV18", JsonPointer.Append(op, "defaultIgnoreCondition"), $"profile '{profile.Id}': DefaultIgnoreCondition.Always is rejected by System.Text.Json", [profile.Id]);
             }
 
-            // ReferenceHandling=Preserve is representable but the runtime does not support it.
-            if (o.ReferenceHandling == ReferenceHandling.Preserve)
+            // Builtin scalar converters do not participate in reference preservation. Object/collection/module
+            // codecs still require graph support; never infer this exception from the observed value alone.
+            if (o.ReferenceHandling == ReferenceHandling.Preserve && !ScalarOnlyJsonProfile(profile.Id))
             {
                 Error(TisiliaCodes.ReferencePreserve, "SV20", JsonPointer.Append(op, "referenceHandling"), $"profile '{profile.Id}': ReferenceHandler.Preserve ($id/$ref graphs) is not supported by the runtime", [profile.Id],
-                    "use a profile without reference preservation for operations exported to Tisilia");
+                    "use a profile without reference preservation for structured JSON; builtin scalar-only JSON is supported");
             }
 
             var behaviorsInProfile = profile.Behaviors.ToDictionary(b => b.Id, b => b, StringComparer.Ordinal);
@@ -154,6 +155,27 @@ public sealed partial class SemanticValidator
         }
     }
 
+    private bool ScalarOnlyJsonProfile(string profileId)
+    {
+        bool IsScalar(TypeUse use) => _index.Codecs.TryGetValue(use.CodecId, out var codec)
+            && codec.Origin == CodecOrigin.Builtin && codec.Dependencies.Count == 0
+            && _index.Types.TryGetValue(use.TypeId, out var type) && type.Shape is PrimitiveShape scalar
+            && scalar.PrimitiveId != Builtins.Scalar("json-value");
+        foreach (var operation in _doc.Operations)
+        {
+            if (operation.RequestBody is JsonRequestBody request && request.ProfileId == profileId && !IsScalar(request.Use))
+            {
+                return false;
+            }
+            if (operation.Responses.Any(r => r.Body is JsonResponseBody response && response.ProfileId == profileId && !IsScalar(response.Use)
+                || r.Body is SseResponseBody sse && sse.ProfileId == profileId && !IsScalar(sse.Use)))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // ---------------------------------------------------------------- usage graph (SV05/SV06/SV07/SV08)
 
     private enum Usage
@@ -180,6 +202,13 @@ public sealed partial class SemanticValidator
             {
                 Walk(body.Use, Usage.Request, JsonPointer.Append(JsonPointer.Append(opPath, "requestBody"), "use"), visited, $"operation '{op.Id}' request body");
             }
+            if (op.RequestBody is FormRequestBody form)
+            {
+                foreach (var field in FormField.Descendants(form.Fields))
+                {
+                    if (field.Use is not null) { Walk(field.Use, Usage.Domain, opPath + "/requestBody/fields", visited, $"operation '{op.Id}' form field '{field.Name}'"); }
+                }
+            }
 
             for (var j = 0; j < op.Responses.Count; j++)
             {
@@ -187,6 +216,9 @@ public sealed partial class SemanticValidator
                 var rp = JsonPointer.Append(JsonPointer.Append(JsonPointer.Append(opPath, "responses"), j), "body");
                 switch (r.Body)
                 {
+                    case SseResponseBody sse:
+                        Walk(sse.Use, sse.DataFormat == "json" ? Usage.Response : Usage.Domain, JsonPointer.Append(rp, "use"), visited, $"operation '{op.Id}' case '{r.Id}'");
+                        break;
                     case JsonResponseBody json:
                         Walk(json.Use, Usage.Response, JsonPointer.Append(rp, "use"), visited, $"operation '{op.Id}' case '{r.Id}'");
                         break;

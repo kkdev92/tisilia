@@ -24,6 +24,8 @@ import {
   type ClientOptions,
   type ContractDocument,
   type ContractOperation,
+  type ContractFormField,
+  type CodecContext,
   type ContractRegistry,
   type JsonValue,
   type OperationDescriptor,
@@ -188,6 +190,9 @@ export function parameterInputs(model: ExplorerModel, op: ContractOperation): Pa
 }
 
 export interface TypedInputs {
+  readonly formValues?: Readonly<Record<string, string>>;
+  readonly formFiles?: Readonly<Record<string, readonly import("@kkdev92/tisilia-runtime").UploadFile[]>>;
+  readonly bodyBytes?: Uint8Array;
   /** Raw editor text per parameter; empty string means "not provided"; "null" literal means null for nullable parameters. */
   readonly parameters: Readonly<Record<string, string>>;
   /** JSON text of the body editor (typed mode) or raw body text (raw mode). */
@@ -275,6 +280,46 @@ export function buildArgs(model: ExplorerModel, op: ContractOperation, inputs: T
         errors.push(thrown(info !== undefined && info.path.startsWith("/body") ? info.path : "/body", error));
       }
     }
+  }
+  if (op.requestBody.kind === "binary") {
+    if (inputs.bodyBytes !== undefined) { args["body"] = inputs.bodyBytes; }
+    else if (op.requestBody.presence === "required") { errors.push({ path: "/body", message: "request body is required", code: "body-required" }); }
+  }
+  if (op.requestBody.kind === "form") {
+    const readFields = (fields: readonly ContractFormField[], prefix: string, context: CodecContext): Record<string, unknown> => {
+      const body: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+      for (const field of fields) {
+        const ctx = context.child(field.name);
+        const path = ctx.path;
+        const key = prefix + field.name;
+        if (field.kind === "object") {
+          const marker = inputs.formValues?.[key];
+          if (marker === undefined && field.presence === "optional") { continue; }
+          const count = field.repeated ? Number(marker ?? "0") : 1;
+          if (!Number.isSafeInteger(count) || count < 1 || count > 1024) { errors.push({ path, message: "form collection requires 1–1024 items", code: "form-items" }); continue; }
+          body[field.name] = field.repeated
+            ? Array.from({ length: count }, (_, i) => readFields(field.fields ?? [], key + `[${i}].`, ctx.child(i)))
+            : readFields(field.fields ?? [], key + ".", ctx);
+        } else if (field.kind === "file") {
+          const files = inputs.formFiles?.[key];
+          if (files !== undefined && files.length > 0) { body[field.name] = field.repeated ? files : files[0]; }
+          else if (field.presence === "required") { errors.push({ path, message: "required", code: "required" }); }
+        } else {
+          const text = inputs.formValues?.[key];
+          if (text === undefined) {
+            if (field.presence === "required") { errors.push({ path, message: "required", code: "required" }); }
+            continue;
+          }
+          try {
+            const codec = model.registry.registry.get(field.use!.codecId);
+            if (codec.parseRequestInput === undefined) { throw new Error("form field codec has no request input"); }
+            body[field.name] = field.repeated ? (text === "" ? [] : text.split("\n").map((line, i) => codec.parseRequestInput!(line, ctx.child(i)))) : codec.parseRequestInput(text, ctx);
+          } catch (error) { errors.push(thrown(path, error)); }
+        }
+      }
+      return body;
+    };
+    args["body"] = readFields(op.requestBody.fields, "", context.child("body"));
   }
   return { args, errors };
 }

@@ -7,6 +7,11 @@ import { formatFloat32, formatFloat64, parseFloat32Lexeme, parseFloat64Lexeme } 
 import { formatInteger, integerRanges, isSmallInteger, parseIntegerLexeme, parseIntegerString, validateBigInteger, validateSmallInteger, type IntegerScalarName } from "../primitives/integers.js";
 import { decodeBase64, encodeBase64, parseGuid, validateBytes, validateChar, validateGuid, validateString, checkUtf16Length, type Guid } from "../primitives/text.js";
 import {
+  formatDateTime,
+  parseDateTime,
+  validateDateTime,
+  validateDateTimeRequest,
+  type DateTime,
   formatDateOnly,
   formatDateTimeLocalWire,
   formatDateTimeOffset,
@@ -59,6 +64,7 @@ export type ScalarName =
   | "float64"
   | "date-only"
   | "time-only"
+  | "datetime"
   | "datetime-utc"
   | "datetime-unspecified"
   | "datetime-local-wire"
@@ -231,6 +237,18 @@ export function scalarCodec<T = unknown>(name: ScalarName, options: ScalarOption
       return stringScalar<DateOnly>(base, validateDateOnly, parseDateOnly, formatDateOnly) as Codec<DateOnly> as Codec<T, T>;
     case "time-only":
       return stringScalar<TimeOnly>(base, validateTimeOnly, parseTimeOnly, formatTimeOnly) as Codec<TimeOnly> as Codec<T, T>;
+    case "datetime":
+      return {
+        ...stringScalar<DateTime>(base, validateDateTime, parseDateTime, formatDateTime),
+        encodeRequest: (v, ctx) => ({ kind: "string", value: formatDateTime(validateDateTimeRequest(v, ctx.path)) }),
+        encodeKey: (v, ctx) => formatDateTime(validateDateTimeRequest(v, ctx.path)),
+        keyIdentity: (v, ctx) => validateDateTime(v, ctx.path).ticks.toString(),
+        validateKeySet: (values, ctx) => {
+          if (values.length > 1 && values.some(v => validateDateTime(v, ctx.path).kind === "datetime-local-wire")) {
+            throw new CodecError("unsupported", ctx.path, "multiple DateTime keys including Local require a codec bound to the server time zone; use UTC or unspecified keys");
+          }
+        },
+      } as Codec<DateTime> as Codec<T, T>;
     case "datetime-utc":
       return stringScalar<DateTimeUtc>(base, (v, p) => ({ kind: "datetime-utc", ticks: validateDateTimeTicks(v, p, "utc") }), parseDateTimeUtc, formatDateTimeUtc) as Codec<DateTimeUtc> as Codec<T, T>;
     case "datetime-unspecified":
