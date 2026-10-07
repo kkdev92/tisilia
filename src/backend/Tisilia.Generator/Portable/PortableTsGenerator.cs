@@ -320,6 +320,7 @@ public sealed class PortableTsGenerator
             "json-value" => $"(isJsonValue({v}) ? {v} : (() => {{ throw fail(\"type-mismatch\", {path}, \"lossless JsonValue required\"); }})())",
             "date-only" => $"validateDateOnly({v}, {path})",
             "time-only" => $"validateTimeOnly({v}, {path})",
+            "datetime" => $"validateDateTime({v}, {path})",
             "datetime-utc" or "datetime-unspecified" => $"validateDateTimeTicks({PortableModel.Quote(scalar)}, {v}, {path})",
             "datetime-local-wire" => $"validateDateTimeLocalWire({v}, {path})",
             "datetime-offset" => $"validateDateTimeOffset({v}, {path})",
@@ -337,6 +338,7 @@ public sealed class PortableTsGenerator
         "bytes" => "decodeBase64",
         "date-only" => "parseDateOnly",
         "time-only" => "parseTimeOnly",
+        "datetime" => "parseDateTime",
         "datetime-utc" => "parseDateTimeUtc",
         "datetime-unspecified" => "parseDateTimeUnspecified",
         "datetime-local-wire" => "parseDateTimeLocalWire",
@@ -352,6 +354,7 @@ public sealed class PortableTsGenerator
         "bytes" => $"encodeBase64({v})",
         "date-only" => $"formatDateOnly({v})",
         "time-only" => $"formatTimeOnly({v})",
+        "datetime" => $"formatDateTime(validateDateTimeRequest({v}, path))",
         "datetime-utc" => $"formatDateTimeUtc({v})",
         "datetime-unspecified" => $"formatDateTimeUnspecified({v})",
         "datetime-local-wire" => $"formatDateTimeLocalWire({v})",
@@ -753,6 +756,7 @@ public sealed class PortableTsGenerator
         w.Line("export interface PortableDecimal { readonly kind: \"decimal\"; readonly sign: -1 | 1; readonly coefficient: bigint; readonly scale: number; }");
         w.Line("export interface PortableDateOnly { readonly kind: \"date-only\"; readonly year: number; readonly month: number; readonly day: number; }");
         w.Line("export interface PortableTimeOnly { readonly kind: \"time-only\"; readonly ticks: bigint; }");
+        w.Line("export type PortableDateTime = PortableDateTimeUtc | PortableDateTimeUnspecified | PortableDateTimeLocalWire;");
         w.Line("export interface PortableDateTimeUtc { readonly kind: \"datetime-utc\"; readonly ticks: bigint; }");
         w.Line("export interface PortableDateTimeUnspecified { readonly kind: \"datetime-unspecified\"; readonly ticks: bigint; }");
         w.Line("export interface PortableDateTimeLocalWire { readonly kind: \"datetime-local-wire\"; readonly ticks: bigint; readonly offsetMinutes: number; }");

@@ -13,6 +13,22 @@ namespace Tisilia.Contract.Tests;
 /// </summary>
 public class ContractDiffTests(ITestOutputHelper output)
 {
+    [Fact]
+    public void Form_file_cardinality_changes_are_breaking()
+    {
+        var oldRoot = SampleContracts.UsersApiJson();
+        oldRoot["operations"]![1]!["requestBody"] = new JsonObject
+        {
+            ["kind"] = "form",
+            ["mediaType"] = "multipart/form-data",
+            ["presence"] = "required",
+            ["fields"] = new JsonArray(new JsonObject { ["name"] = "file", ["kind"] = "file", ["repeated"] = false, ["presence"] = "required" }),
+        };
+        var changed = oldRoot.DeepClone().AsObject();
+        changed["operations"]![1]!["requestBody"]!["fields"]![0]!["repeated"] = true;
+        Assert.Contains(Diff(oldRoot, changed).Breaking, d => d.Kind == "body-changed");
+    }
+
     private static string WriteTemp(JsonObject root)
     {
         root["semanticHash"] = TisiliaHash.SemanticHash(root);
@@ -63,6 +79,27 @@ public class ContractDiffTests(ITestOutputHelper output)
         Assert.Empty(result.Breaking);
         Assert.Empty(result.Compatible);
         Assert.Empty(result.ReviewRequired);
+    }
+
+    [Theory]
+    [InlineData("application/pdf", "optional")]
+    [InlineData("application/octet-stream", "required")]
+    public void Raw_upload_media_and_required_presence_changes_are_breaking(string media, string presence)
+    {
+        var oldRoot = SampleContracts.UsersApiJson();
+        var newRoot = SampleContracts.UsersApiJson();
+        Operation(oldRoot, "users.put")["requestBody"] = new JsonObject { ["kind"] = "binary", ["mediaType"] = "application/octet-stream", ["presence"] = "optional" };
+        Operation(newRoot, "users.put")["requestBody"] = new JsonObject { ["kind"] = "binary", ["mediaType"] = media, ["presence"] = presence };
+        Assert.Contains(Diff(oldRoot, newRoot).Breaking, entry => entry.Kind == "body-changed");
+    }
+
+    [Fact]
+    public void Changing_JSON_to_raw_bytes_is_breaking()
+    {
+        var oldRoot = SampleContracts.UsersApiJson();
+        var newRoot = SampleContracts.UsersApiJson();
+        Operation(newRoot, "users.put")["requestBody"] = new JsonObject { ["kind"] = "binary", ["mediaType"] = "application/json", ["presence"] = "required" };
+        Assert.Contains(Diff(oldRoot, newRoot).Breaking, entry => entry.Kind == "body-changed");
     }
 
     [Theory]

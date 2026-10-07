@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { createCodecContext, decimalFromString, parseDateOnly, parseJson, prepareRequest, TisiliaMap, writeJson, type JsonValue } from "@kkdev92/tisilia-runtime";
+import { createCodecContext, decimalFromString, parseDateOnly, parseJson, prepareRequest, TisiliaMap, writeJson, type JsonValue, type ContractOperation, type ContractTypeUse } from "@kkdev92/tisilia-runtime";
 import { credentialHeaders, credentialProblem, parseAuthHints, tokenField } from "../src/auth.js";
 import { buildArgs, documentationOf, filterOperations, loadExplorer, summarize, type ExplorerModel } from "../src/explorer.js";
 import { cyclic, errorsByPath, exampleOf, FormSchema, grammarKind, nowText, prettyJson, sanitize, type InputNode } from "../src/forms.js";
@@ -21,6 +21,49 @@ async function load(): Promise<ExplorerModel> {
 const fixed = { now: new Date(2026, 9, 2, 13, 45, 30), uuid: () => "550e8400-e29b-41d4-a716-446655440000" };
 
 describe("request forms", () => {
+  it("builds complex form rows with exact scalar types, files and typed snippets", async () => {
+    const model = await load();
+    const use = (primitiveId: string): ContractTypeUse => {
+      const type = model.document.types.find(t => t.shape.kind === "primitive" && t.shape.primitiveId === primitiveId)!;
+      return { typeId: type.id, codecId: model.document.codecs.find(c => c.typeId === type.id)!.id, semanticNullable: false };
+    };
+    const op: ContractOperation = { ...model.operations[0]!, id: "forms.complex", parameters: [], requestBody: { kind: "form", mediaType: "multipart/form-data", presence: "required", fields: [
+      { name: "Lines", kind: "object", repeated: true, indexed: true, presence: "required", fields: [
+        { name: "Id", kind: "value", use: use("tisilia.int64@0.1"), repeated: false, presence: "required" },
+        { name: "File", kind: "file", repeated: false, presence: "optional" },
+      ] },
+    ] } };
+    const file = { fileName: "日本.bin", bytes: new Uint8Array([0, 255]) };
+    const built = buildArgs(model, op, { parameters: {}, body: "", formValues: { Lines: "2", "Lines[0].Id": "9007199254740993", "Lines[1].Id": "-9007199254740993" }, formFiles: { "Lines[0].File": [file] } });
+    expect(built.errors).toEqual([]);
+    expect(built.args).toEqual({ body: { Lines: [{ Id: 9007199254740993n, File: file }, { Id: -9007199254740993n }] } });
+    const snippet = clientSnippet({ document: { ...model.document, operations: [op] }, apiId: "example", operationId: op.id, baseUrl: "http://example.test", credentials: [], reveal: true, args: built.args });
+    expect(snippet).toContain("int64(9007199254740993n)");
+    expect(snippet).toContain("int64(-9007199254740993n)");
+    // decodeBase64 takes the diagnostic path as its second argument; without it the copied snippet does not compile
+    expect(snippet).toContain('decodeBase64("AP8=", "")');
+    const invalid = buildArgs(model, op, { parameters: {}, body: "", formValues: { Lines: "1", "Lines[0].Id": "not an integer" } });
+    expect(invalid.errors[0]?.path).toBe("/body/Lines/0/Id");
+    // a required collection without rows names its own error code, so the page can word it in either language
+    const empty = buildArgs(model, op, { parameters: {}, body: "", formValues: {} });
+    expect(empty.errors).toEqual([{ path: "/body/Lines", message: "form collection requires 1–1024 items", code: "form-items" }]);
+  });
+  it("edits mixed DateTime Kinds and generates precise typed snippets", async () => {
+    const text = readFileSync(fixtures + "minimal-api.contract.json", "utf8").replaceAll("datetime-offset", "datetime");
+    const model = await loadExplorer({ baseHref: "http://app.test/__tisilia/", fetchImpl: (async () => new Response(text)) as typeof fetch,
+      importImpl: async (url) => (await import(pathToFileURL(fixtures + (url.includes("demo.money") ? "modules/demo.money/money.js" : "modules/demo.portable/demo.portable.portable.js")).href)) as Record<string, unknown> });
+    const type = model.document.types.find(t => t.shape.kind === "primitive" && t.shape.primitiveId === "tisilia.datetime@0.1")!;
+    const codec = model.document.codecs.find(c => c.typeId === type.id)!;
+    const node = new FormSchema(model.document).body({ typeId: type.id, codecId: codec.id, semanticNullable: false });
+    expect(node).toMatchObject({ kind: "scalar", widget: "datetime" });
+    for (const suffix of ["Z", "", "+09:00"]) {
+      const value = model.registry.registry.get(codec.id).parseRequestInput!("2026-09-30T06:04:05.1234567" + suffix, createCodecContext());
+      const helpers = new Set<string>(); const snippet = tsLiteral(value, helpers);
+      expect(snippet).toContain(".1234567" + suffix);
+      expect(helpers.size).toBe(1);
+    }
+  });
+
   it("builds every operation's form from its request wire, and every example passes the request-input codecs", async () => {
     const model = await load();
     const schema = new FormSchema(model.document);

@@ -28,6 +28,10 @@ export interface ResponseCodec<T> {
 
 export interface RequestKeyCodec<K> {
   encodeKey(value: K, context: CodecContext): string;
+  /** Optional CLR key identity when wire spelling differs from equality (DateTime.Kind is ignored by .NET). */
+  keyIdentity?(value: K, context: CodecContext): string;
+  /** Refuses key combinations whose server-side identity cannot be established from the contract. */
+  validateKeySet?(values: readonly K[], context: CodecContext): void;
 }
 
 export interface ResponseKeyCodec<K> {

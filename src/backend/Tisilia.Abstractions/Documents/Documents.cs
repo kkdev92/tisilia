@@ -282,6 +282,7 @@ public enum BodyKind
 {
     [JsonStringEnumMemberName("none")] None,
     [JsonStringEnumMemberName("json")] Json,
+    [JsonStringEnumMemberName("binary")] Binary,
 }
 
 /// <summary><c>tisilia.request-identity-record</c> 0.1: exact hash input of a Nuxt request identity.</summary>

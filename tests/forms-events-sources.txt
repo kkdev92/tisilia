@@ -1,0 +1,11 @@
+# Primary sources for form, SSE and endpoint JSON support, retrieved with curl.
+https://learn.microsoft.com/en-us/aspnet/core/fundamentals/minimal-apis/parameter-binding?view=aspnetcore-10.0
+https://learn.microsoft.com/en-us/aspnet/core/fundamentals/minimal-apis/responses?view=aspnetcore-10.0
+https://learn.microsoft.com/en-us/aspnet/core/release-notes/aspnetcore-10.0?view=aspnetcore-10.0
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Http/Http.Extensions/src/RequestDelegateFactory.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Http/Http.Results/src/ServerSentEventsResult.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Http/Http.Results/src/JsonHttpResultOfT.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Components/Endpoints/src/FormMapping/Converters/ParsableConverter.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Antiforgery/src/AntiforgeryMiddleware.cs
+https://html.spec.whatwg.org/multipage/server-sent-events.html
+https://www.rfc-editor.org/rfc/rfc7578.html

@@ -1828,6 +1828,58 @@
             "presence"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "binary"
+            },
+            "mediaType": {
+              "type": "string",
+              "minLength": 1
+            },
+            "presence": {
+              "$ref": "#/$defs/presence"
+            }
+          },
+          "required": [
+            "kind",
+            "mediaType",
+            "presence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "form"
+            },
+            "mediaType": {
+              "enum": [
+                "application/x-www-form-urlencoded",
+                "multipart/form-data"
+              ]
+            },
+            "presence": {
+              "$ref": "#/$defs/presence"
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/formField"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "kind",
+            "mediaType",
+            "presence",
+            "fields"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -2574,6 +2626,63 @@
         "program",
         "projectionId",
         "equivalenceId"
+      ],
+      "additionalProperties": false
+    },
+    "formField": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "value",
+            "file",
+            "object"
+          ]
+        },
+        "use": {
+          "$ref": "#/$defs/typeUse"
+        },
+        "repeated": {
+          "type": "boolean"
+        },
+        "presence": {
+          "$ref": "#/$defs/presence"
+        },
+        "rejectBlank": {
+          "type": "boolean"
+        },
+        "indexed": {
+          "type": "boolean"
+        },
+        "enumDefinedOnly": {
+          "type": "boolean"
+        },
+        "serverDefault": {
+          "$ref": "#/$defs/jsonValue"
+        },
+        "hasServerDefault": {
+          "type": "boolean"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/formField"
+          },
+          "minItems": 1
+        },
+        "wireName": {
+          "const": ""
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "repeated",
+        "presence"
       ],
       "additionalProperties": false
     }

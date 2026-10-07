@@ -22,7 +22,7 @@ const responses = computed(() =>
     id: r.id,
     status: r.status,
     mediaType: r.body.kind === "none" ? undefined : r.body.mediaType,
-    type: r.body.kind === "none" ? undefined : r.body.kind === "binary" ? "BufferedFile" : store.schema!.typeLabel(r.body.use.typeId),
+    type: r.body.kind === "none" ? undefined : r.body.kind === "binary" ? "BufferedFile" : r.body.kind === "sse" ? `ServerSentEvent<${store.schema!.typeLabel(r.body.use.typeId)}>[]` : store.schema!.typeLabel(r.body.use.typeId),
     node: r.body.kind === "none" || r.body.kind === "binary" ? undefined : store.schema!.response(r.body.use),
     hydration: r.hydration,
     doc: docOf(store.model!.document, r.id)?.summary,

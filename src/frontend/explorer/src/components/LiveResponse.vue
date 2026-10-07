@@ -92,6 +92,7 @@ const snippetText = computed(() =>
   prepared.value === undefined
     ? ""
     : snippet(code.value, prepared.value, {
+        document: store.model!.document,
         apiId: store.model!.document.apiId,
         operationId: props.op.id,
         baseUrl: store.apiBase,

@@ -1,0 +1,10 @@
+# Primary sources for nested forms, outbound route transformers and MVC JSON results, retrieved with curl.
+https://learn.microsoft.com/en-us/aspnet/core/fundamentals/routing?view=aspnetcore-10.0
+https://learn.microsoft.com/en-us/aspnet/core/fundamentals/minimal-apis/parameter-binding?view=aspnetcore-10.0
+https://learn.microsoft.com/en-us/aspnet/core/mvc/controllers/filters?view=aspnetcore-10.0
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Components/Endpoints/src/FormMapping/Metadata/FormDataMetadataFactory.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Components/Endpoints/src/FormMapping/Metadata/FormDataParameterMetadata.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Components/Endpoints/src/FormMapping/Converters/CollectionConverter.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Components/Endpoints/src/FormMapping/Converters/FileConverter.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Http/Http.Extensions/src/RequestDelegateFactory.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Mvc/Mvc.Core/src/Infrastructure/SystemTextJsonResultExecutor.cs

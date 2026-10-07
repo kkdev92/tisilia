@@ -1,0 +1,8 @@
+# Primary sources for form collections, constructor parameters and file mapping, retrieved with curl on 2026-10-07; source pinned to v10.0.0.
+https://learn.microsoft.com/en-us/aspnet/core/fundamentals/minimal-apis/parameter-binding?view=aspnetcore-10.0
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Http/Http.Extensions/src/RequestDelegateFactory.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Components/Endpoints/src/FormMapping/Converters/CollectionConverter.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Components/Endpoints/src/FormMapping/Factories/CollectionConverterFactory.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Components/Endpoints/src/FormMapping/Metadata/FormDataMetadataFactory.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Components/Endpoints/src/FormMapping/Converters/FileConverter.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Components/Endpoints/src/FormMapping/Factories/FileConverterFactory.cs

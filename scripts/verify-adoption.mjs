@@ -57,10 +57,20 @@ try {
   await writeFile(resolve(out, "tisilia.config.json"), JSON.stringify({ format: "tisilia.config", version: "0.1", apiId: "adoption-api", contract: "adoption.contract.json", output: "generated", target: { typescriptMinimumMajor: 6, ecmaScript: "ES2022", moduleMode: "bundler" }, selection: "explicit", coveragePolicy: "development", modules: [], portableProjects: [], limits: { maxBodyBytes: 16777216, maxDepth: 64, maxTokens: 1000000, maxNumberCharacters: 4096, timeoutMs: 30000, maxDiagnosticBytes: 262144 }, nuxt: { enabled: false, hydration: "browser-safe-only", sharedCache: false } }, null, 2));
   await command(["generate", "--config", resolve(out, "tisilia.config.json")]);
   await command(["check", "--config", resolve(out, "tisilia.config.json")]);
-  await writeFile(resolve(out, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "Bundler", strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, skipLibCheck: true, noEmit: true }, include: ["generated/**/*.ts"] }));
+  const bundle = async (entry, file) => build({ entryPoints: [resolve(root, entry)], outfile: resolve(out, file), bundle: true, format: "esm", platform: "browser", target: "es2022", logLevel: "silent" });
+  await bundle("src/frontend/explorer/src/snippets.ts", "snippets.mjs");
+  const { clientSnippet } = await import(pathToFileURL(resolve(out, "snippets.mjs")));
+  const uploadSnippet = clientSnippet({ apiId: "adoption-api", operationId: "upload.stream", baseUrl, credentials: [], reveal: true, args: { body: new Uint8Array([0, 255, 195, 40]) } }).replace("./api/index.js", "./generated/index.js");
+  await writeFile(resolve(out, "upload-snippet.ts"), uploadSnippet);
+  const formSnippet = clientSnippet({ apiId: "adoption-api", operationId: "forms.files", baseUrl, credentials: [], reveal: true, args: { body: { files: [{ fileName: "sample.bin", bytes: new Uint8Array([0, 255]) }] } } }).replace("./api/index.js", "./generated/index.js");
+  await writeFile(resolve(out, "form-snippet.ts"), formSnippet);
+  const complexFormSnippet = clientSnippet({ document: JSON.parse(await readFile(resolve(out, "adoption.contract.json"), "utf8")), apiId: "adoption-api", operationId: "forms.order", baseUrl, credentials: [], reveal: true, args: { body: { Lines: [{ Id: 9007199254740993n, Details: { Label: "日本", Tags: ["one"], Notes: [{ Text: "note" }] } }] } } }).replace("./api/index.js", "./generated/index.js");
+  await writeFile(resolve(out, "complex-form-snippet.ts"), complexFormSnippet);
+  const dateSnippet = clientSnippet({ apiId: "adoption-api", operationId: "datetime.query", baseUrl, credentials: [], reveal: true, args: { at: { kind: "datetime-local-wire", ticks: 639263774451234567n, offsetMinutes: 540 } } }).replace("./api/index.js", "./generated/index.js");
+  await writeFile(resolve(out, "datetime-snippet.ts"), dateSnippet);
+  await writeFile(resolve(out, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "ESNext", moduleResolution: "Bundler", strict: true, exactOptionalPropertyTypes: true, noUncheckedIndexedAccess: true, skipLibCheck: true, noEmit: true }, include: ["generated/**/*.ts", "upload-snippet.ts", "form-snippet.ts", "complex-form-snippet.ts", "datetime-snippet.ts"] }));
   const checked = await processRun(process.execPath, [resolve(root, "node_modules/typescript/bin/tsc"), "-p", resolve(out, "tsconfig.json")]);
   assert.equal(checked.code, 0, checked.stdout + checked.stderr);
-  const bundle = async (entry, file) => build({ entryPoints: [resolve(root, entry)], outfile: resolve(out, file), bundle: true, format: "esm", platform: "browser", target: "es2022", logLevel: "silent" });
   await bundle("artifacts/adoption-compatibility/generated/index.ts", "generated.mjs");
   await bundle("src/frontend/explorer/src/download.ts", "download.mjs");
   const runtime = await import("../src/frontend/runtime/dist/index.js");
@@ -68,7 +78,7 @@ try {
   const document = JSON.parse(await readFile(resolve(out, "adoption.contract.json"), "utf8"));
   const interpreted = runtime.createContractRegistry(document);
   const operations = new Map(Object.values(generated).filter(x => x && typeof x === "object" && "routePlan" in x).map(x => [x.id, x]));
-  assert.equal(operations.size, 27);
+  assert.equal(operations.size, 58);
   await start("valid", 4178); await start("before", 4180);
   for (const path of ["/v1/optional", "/v1/default", "/v1/stars/a//b/", "/v1/file", "/v1/async", "/v1/auth", "/v1/sse", "/v1/preserve"]) {
     const before = await fetch("http://127.0.0.1:4180/base" + path, { redirect: "manual" });
@@ -161,7 +171,7 @@ try {
           URL.revokeObjectURL = url => { window.__revoked.push(url); revoke(url); };
         });
         await page.goto(baseUrl + "/__tisilia/index.html#/op/file.post");
-        const post = page.locator('article.op[data-method="post"]');
+        const post = page.locator('[id="operation-file.post"]');
         await post.getByRole("button", { name: "Execute", exact: true }).click();
         const save = post.getByRole("button", { name: "Save received file", exact: true });
         await save.waitFor(); assert(await save.isDisabled());
@@ -207,6 +217,78 @@ try {
           assert.equal(download.suggestedFilename(), filename); assert.deepEqual([...await readFile(await download.path())], [0, 255, 1, 195, 40]);
         }
         report.runs.push({ host: name, surface: "Explorer UI PDF/SVG", cases: ["PDF explicit download without preview", "SVG explicit download without preview"] });
+        await page.goto(baseUrl + "/__tisilia/index.html#/op/upload.stream");
+        await page.reload();
+        const upload = page.locator('[id="operation-upload.stream"]');
+        await upload.getByLabel("Upload file", { exact: true }).setInputFiles({ name: "test.bin", mimeType: "application/octet-stream", buffer: Buffer.from([0, 255, 1, 195, 40]) });
+        await upload.locator(".request-line.ok").waitFor();
+        const sent = page.waitForRequest(request => request.method() === "POST" && request.url().endsWith("/v1/upload"));
+        await upload.getByRole("button", { name: "Execute", exact: true }).click();
+        const request = await sent;
+        assert.deepEqual([...request.postDataBuffer()], [0, 255, 1, 195, 40]);
+        assert.equal(request.headers()["content-type"], "application/octet-stream");
+        await upload.getByRole("button", { name: "Save received file", exact: true }).waitFor();
+        await upload.screenshot({ path: resolve(out, "explorer-upload.png") });
+        await upload.getByRole("button", { name: "Reset", exact: true }).click();
+        assert.equal(await upload.locator('input[type="file"]').evaluate(input => input.files.length), 0);
+        await upload.getByRole("button", { name: "Execute", exact: true }).click();
+        await upload.locator(".request-line.invalid").waitFor();
+        report.runs.push({ host: name, surface: "Explorer upload", cases: ["file selection sends exact bytes and declared media", "reset clears file and bytes", "required upload cannot be omitted"] });
+        await page.goto(baseUrl + "/__tisilia/index.html#/op/forms.values"); await page.reload();
+        const form = page.locator('[id="operation-forms.values"]');
+        for (const [field, value] of [["value", "日本😀"], ["id", "9007199254740993"], ["amount", "1234567890.123456789"], ["tags", "1\n2"]]) {
+          await form.locator(`[id="form-forms.values-${field}"]`).fill(value);
+        }
+        await form.locator(".request-line.ok").waitFor();
+        const formResponse = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/v1/form-values"));
+        await form.getByRole("button", { name: "Execute", exact: true }).click();
+        const formReceived = await formResponse; assert.equal(formReceived.status(), 200);
+        assert.equal(new URLSearchParams(formReceived.request().postData()).get("id"), "9007199254740993");
+        await form.locator(".result").waitFor(); await form.screenshot({ path: resolve(out, "explorer-form.png") });
+        await page.goto(baseUrl + "/__tisilia/index.html#/op/forms.files"); await page.reload();
+        const files = page.locator('[id="operation-forms.files"]');
+        await files.locator('input[data-form-file]').setInputFiles([{ name: "first.bin", mimeType: "application/octet-stream", buffer: Buffer.from([0, 255]) }, { name: "empty.bin", mimeType: "application/octet-stream", buffer: Buffer.alloc(0) }]);
+        await files.locator(".request-line.ok").waitFor();
+        const fileResponse = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/v1/form-files"));
+        await files.getByRole("button", { name: "Execute", exact: true }).click();
+        const filesReceived = await fileResponse; assert.equal(filesReceived.status(), 200);
+        assert.deepEqual(await filesReceived.json(), [{ name: "first.bin", bytes: "AP8=" }, { name: "empty.bin", bytes: "" }]);
+        await files.getByRole("button", { name: "Reset", exact: true }).click();
+        assert.equal(await files.locator('input[data-form-file]').evaluate(input => input.files.length), 0);
+        report.runs.push({ host: name, surface: "Explorer forms", cases: ["exact scalar and repeated input", "multiple file selection including empty file", "reset clears form files"] });
+        await page.goto(baseUrl + "/__tisilia/index.html#/op/forms.nested"); await page.reload();
+        const nestedForm = page.locator('[id="operation-forms.nested"]');
+        for (const [field, value] of [["title_text", "日本😀"], ["Details.Id", "9007199254740993"], ["Details.Tags", "one\ntwo"], ["Mode", "9007199254740993"]]) {
+          await nestedForm.locator(`[id="form-forms.nested-${field}"]`).fill(value);
+        }
+        await nestedForm.locator(".request-line.ok").waitFor();
+        const nestedResponse = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/v1/form-nested"));
+        await nestedForm.getByRole("button", { name: "Execute", exact: true }).click();
+        const nestedReceived = await nestedResponse; assert.equal(nestedReceived.status(), 200);
+        const nestedWire = await new Response(nestedReceived.request().postDataBuffer(), { headers: { "content-type": nestedReceived.request().headers()["content-type"] } }).formData();
+        assert.equal(nestedWire.get("Details.Id"), "9007199254740993"); assert.equal(nestedWire.get("Details.Tags[1]"), "two"); assert.equal(nestedWire.get("Mode"), "Large");
+        await nestedForm.locator(".result").waitFor(); await nestedForm.screenshot({ path: resolve(out, "explorer-nested-form.png") });
+        report.runs.push({ host: name, surface: "Explorer nested forms", cases: ["nested names and indexed collection", "exact enum domain writes CLR name"] });
+        await page.goto(baseUrl + "/__tisilia/index.html#/op/forms.order"); await page.reload();
+        const order = page.locator('[id="operation-forms.order"]');
+        await order.getByRole("button", { name: "Add item: Lines", exact: true }).click();
+        await order.getByRole("button", { name: "Add item: Lines[0].Details.Notes", exact: true }).click();
+        for (const [field, value] of [["Lines[0].Id", "9007199254740993"], ["Lines[0].Details.Label", "日本😀"], ["Lines[0].Details.Tags", "one\ntwo"], ["Lines[0].Details.Notes[0].Text", "note"]]) {
+          await order.locator(`[id="form-forms.order-${field}"]`).fill(value);
+        }
+        await order.locator(".request-line.ok").waitFor();
+        assert.equal(await order.locator('[id="form-forms.order-Lines[0].Details.Notes[0].Text"]').evaluate(input => input.getBoundingClientRect().width >= 160), true, "deep form inputs remain readable");
+        const orderResponse = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/v1/form-order"));
+        await order.getByRole("button", { name: "Execute", exact: true }).click();
+        const orderReceived = await orderResponse; assert.equal(orderReceived.status(), 200);
+        const orderWire = await new Response(orderReceived.request().postDataBuffer(), { headers: { "content-type": orderReceived.request().headers()["content-type"] } }).formData();
+        assert.equal(orderWire.get("Lines[0].Id"), "9007199254740993"); assert.equal(orderWire.get("Lines[0].Details.Notes[0].Text"), "note");
+        await order.locator(".result").waitFor(); await order.screenshot({ path: resolve(out, "explorer-complex-form.png") });
+        await order.getByRole("button", { name: "Remove last item: Lines", exact: true }).click();
+        await order.getByRole("button", { name: "Add item: Lines", exact: true }).click();
+        assert.equal(await order.locator('[id="form-forms.order-Lines[0].Id"]').inputValue(), "");
+        report.runs.push({ host: name, surface: "Explorer complex forms", cases: ["constructor models and nested object collections", "removing rows clears values"] });
+
       }
     } finally { await browser.close(); }
   }

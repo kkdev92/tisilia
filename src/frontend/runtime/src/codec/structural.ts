@@ -363,8 +363,10 @@ export function mapCodec<K, V>(d: MapCodecDescriptor): Codec<TisiliaMap<K, V | n
     if (kc.encodeKey === undefined) {
       throw new CodecError("unsupported", ctx.path, `key codec '${kc.id}' has no key capability`, kc.id);
     }
-    const out = new TisiliaMap<K, V | null>(d.comparer, (k) => kc.encodeKey!(k, ctx));
+    const identity = (k: K): string => kc.keyIdentity === undefined ? kc.encodeKey!(k, ctx) : kc.keyIdentity(k, ctx);
+    const out = new TisiliaMap<K, V | null>(d.comparer, identity);
     const vc = resolve(d.value);
+    kc.validateKeySet?.([...value.keys()], ctx);
     for (const [k, v] of value.entries()) {
       const key = kc.validateDomain(k, ctx) as K;
       if (v === undefined) {
@@ -374,7 +376,7 @@ export function mapCodec<K, V>(d: MapCodecDescriptor): Codec<TisiliaMap<K, V | n
         throw new CodecError("null-not-allowed", ctx.path, "map value does not allow null", d.id);
       }
       const encodedKey = kc.encodeKey(key, ctx);
-      if (out.hasEncoded(encodedKey)) {
+      if (out.hasEncoded(identity(key))) {
         throw new CodecError("key-collision", ctx.child(encodedKey).path, "two keys collide after encoding under the map comparer", d.id);
       }
       out.set(key, v === null ? null : (vc.validateDomain(v, ctx.child(encodedKey)) as V));
@@ -413,7 +415,7 @@ export function mapCodec<K, V>(d: MapCodecDescriptor): Codec<TisiliaMap<K, V | n
       if (vc.decodeResponse === undefined) {
         throw new CodecError("unsupported", ctx.path, `codec '${vc.id}' has no response capability`, vc.id);
       }
-      const out = new TisiliaMap<K, V | null>(d.comparer, (k) => kc.encodeKey!(k, ctx));
+      const out = new TisiliaMap<K, V | null>(d.comparer, (k) => kc.keyIdentity === undefined ? kc.encodeKey!(k, ctx) : kc.keyIdentity(k, ctx));
       for (const entry of wire.entries) {
         const key = kc.decodeKey(entry.name, ctx.child(entry.name)) as K;
         if (out.has(key)) {
@@ -444,7 +446,7 @@ export function mapCodec<K, V>(d: MapCodecDescriptor): Codec<TisiliaMap<K, V | n
         throw new CodecError("unsupported", ctx.path, `key codec '${kc.id}' has no key capabilities`, kc.id);
       }
       const vc = resolve(d.value);
-      const out = new TisiliaMap<K, V | null>(d.comparer, (k) => kc.encodeKey!(k, ctx));
+      const out = new TisiliaMap<K, V | null>(d.comparer, (k) => kc.keyIdentity === undefined ? kc.encodeKey!(k, ctx) : kc.keyIdentity(k, ctx));
       for (const entry of input.entries) {
         const key = kc.decodeKey(entry.name, ctx.child(entry.name)) as K;
         if (out.has(key)) {
@@ -820,6 +822,14 @@ export function brandCodec<T>(id: string, typeId: string, base: CodecRef<unknown
     get decodeKey() {
       const b = get();
       return b.decodeKey === undefined ? undefined : (s: string, ctx: CodecContext): T => b.decodeKey!(s, ctx) as T;
+    },
+    get keyIdentity() {
+      const b = get();
+      return b.keyIdentity === undefined ? undefined : (v: T, ctx: CodecContext): string => b.keyIdentity!(v, ctx);
+    },
+    get validateKeySet() {
+      const b = get();
+      return b.validateKeySet === undefined ? undefined : (v: readonly T[], ctx: CodecContext): void => b.validateKeySet!(v, ctx);
     },
     get parseRequestInput() {
       const b = get();

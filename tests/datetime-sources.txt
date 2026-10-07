@@ -1,0 +1,9 @@
+# Primary sources for DateTime JSON, parameter and form binding, retrieved with curl on 2026-10-07; framework sources pinned to v10.0.0.
+https://learn.microsoft.com/en-us/dotnet/standard/datetime/system-text-json-support
+https://learn.microsoft.com/en-us/dotnet/api/system.datetime.equals?view=net-10.0
+https://learn.microsoft.com/en-us/aspnet/core/fundamentals/minimal-apis/parameter-binding?view=aspnetcore-10.0
+https://raw.githubusercontent.com/dotnet/runtime/v10.0.0/src/libraries/System.Text.Json/src/System/Text/Json/JsonHelpers.Date.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Shared/ParameterBindingMethodCache.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Mvc/Mvc.Core/src/ModelBinding/Binders/DateTimeModelBinderProvider.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Components/Endpoints/src/FormMapping/Converters/ParsableConverter.cs
+https://raw.githubusercontent.com/dotnet/aspnetcore/v10.0.0/src/Http/Http.Extensions/src/RequestDelegateFactory.cs

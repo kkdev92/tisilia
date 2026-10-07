@@ -288,6 +288,32 @@ internal static class PortableTsPrelude
           if (typeof value !== "object" || value === null || typeof value.ticks !== "bigint" || value.ticks < 0n || value.ticks >= ticksPerDay) throw fail("type-mismatch", path, "time-only requires ticks within one day");
           return { kind: "time-only", ticks: value.ticks };
         }
+        function parseDateTime(s, path) {
+          const p = parseIsoDateTime(s, path, "datetime");
+          const ticks = checkTicks(ticksOf(p), path, "datetime");
+          if (p.offset === "utc") return { kind: "datetime-utc", ticks };
+          if (p.offset === "none") return { kind: "datetime-unspecified", ticks };
+          return { kind: "datetime-local-wire", ticks, offsetMinutes: p.offset };
+        }
+        function formatDateTime(value) {
+          if (value.kind === "datetime-utc") return formatDateTimeUtc(value);
+          if (value.kind === "datetime-unspecified") return formatDateTimeUnspecified(value);
+          return formatDateTimeLocalWire(value);
+        }
+        function validateDateTime(value, path) {
+          const kind = typeof value === "object" && value !== null ? value.kind : undefined;
+          if (kind === "datetime-utc" || kind === "datetime-unspecified") return validateDateTimeTicks(kind, value, path);
+          if (kind === "datetime-local-wire") return validateDateTimeLocalWire(value, path);
+          throw fail("type-mismatch", path, "datetime requires a UTC, unspecified or local wire tick record");
+        }
+        function validateDateTimeRequest(value, path) {
+          const result = validateDateTime(value, path);
+          if (result.kind === "datetime-local-wire") {
+            const utc = result.ticks - BigInt(result.offsetMinutes) * ticksPerMinute;
+            if (utc < 0n || utc > maxDateTimeTicks) throw fail("range", path, "datetime request UTC instant is outside the DateTime range");
+          }
+          return result;
+        }
         function parseDateTimeUtc(s, path) {
           const p = parseIsoDateTime(s, path, "datetime-utc");
           if (p.offset !== "utc") throw fail("grammar", path, "datetime-utc requires the Z suffix");

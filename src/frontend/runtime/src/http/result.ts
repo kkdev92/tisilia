@@ -83,5 +83,5 @@ export interface BodylessCaseResult<TCaseId extends string, TStatus extends numb
 }
 
 export function isFailure(value: { kind: string }): value is RuntimeFailure {
-  return value.kind !== "response";
+  return value.kind !== "response" && value.kind !== "download" && value.kind !== "subscription";
 }

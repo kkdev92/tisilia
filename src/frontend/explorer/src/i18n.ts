@@ -6,7 +6,7 @@ import { prefs, type Locale, type Theme } from "./prefs.js";
 /** An input error as the Explorer collects it: the message, and a code that says what kind of error it is. */
 export interface FieldErrorInfo {
   readonly message: string;
-  /** "required", "body-required", "invalid-json", "no-request-input", or a codec error code (`range`, `grammar` …). */
+  /** "required", "body-required", "invalid-json", "no-request-input", "form-items", or a codec error code (`range`, `grammar` …). */
   readonly code?: string;
 }
 
@@ -93,6 +93,15 @@ const en = {
   noTypedInputText: "Turn on “send as written” to send the JSON without the generated encoder.",
   jsonDoesNotParse: "The JSON does not parse",
   requestBodyLabel: "Request body (JSON)",
+  sendField: "Send this field",
+  formRepeatedHint: "One value per line.",
+  formAddItem: "Add item",
+  formRemoveItem: "Remove last item",
+  uploadBodyLabel: "Upload file",
+  uploadHint: "Sends the file bytes with the declared content type. Maximum 16 MiB. The filename is not sent.",
+  uploadTooLarge: "The file exceeds the 16 MiB request limit.",
+  uploadReadFailed: "The selected file could not be read.",
+  uploadReading: "Reading the selected file…",
   format: "Format",
   formatTitle: "Lay the JSON out again",
   sendAsWritten: "send as written",
@@ -114,7 +123,7 @@ const en = {
   clearTitle: "Forget this response",
   waiting: "Waiting for the response…",
   executeToSee: "Execute to see the response here.",
-  fieldError: (e: FieldErrorInfo): string => (e.code === "required" ? "Required — enter a value" : shortError(e)),
+  fieldError: (e: FieldErrorInfo): string => (e.code === "required" ? "Required — enter a value" : e.code === "form-items" ? "Add 1 to 1,024 items" : shortError(e)),
   hint: (text: string): string => text,
   numberAsString: (widget: string) => `${widget} as a JSON string`,
 
@@ -375,6 +384,15 @@ const ja: Messages = {
   noTypedInputText: "「書いたとおりに送る」をオンにすると、生成エンコーダーを通さずに JSON を送ります。",
   jsonDoesNotParse: "JSON として読めません",
   requestBodyLabel: "リクエストボディ（JSON）",
+  sendField: "このフィールドを送信",
+  formRepeatedHint: "1 行につき 1 つの値を入力してください。",
+  formAddItem: "項目を追加",
+  formRemoveItem: "最後の項目を削除",
+  uploadBodyLabel: "アップロードするファイル",
+  uploadHint: "宣言された Content-Type でファイルのバイト列を送信します。上限は 16 MiB。ファイル名は送信しません。",
+  uploadTooLarge: "ファイルがリクエストの上限 16 MiB を超えています。",
+  uploadReadFailed: "選択したファイルを読み込めませんでした。",
+  uploadReading: "ファイルを読み込んでいます…",
   format: "整形",
   formatTitle: "JSON を整形し直します",
   sendAsWritten: "書いたとおりに送る",
@@ -406,6 +424,8 @@ const ja: Messages = {
         return `JSON として読めません（${afterColon(e.message)}）`;
       case "no-request-input":
         return "このコーデックには入力の機能がありません。「書いたとおりに送る」で送ってください";
+      case "form-items":
+        return "項目を 1〜1,024 件追加してください";
     }
     const label = e.code === undefined ? undefined : codecErrorsJa[e.code];
     const detail = shortError(e);
@@ -414,6 +434,7 @@ const ja: Messages = {
   hint: (text) =>
     hintsJa[text] ??
     text
+      .replace(/^ISO date\/time; Z = UTC, ±HH:mm = local wire, no suffix = unspecified$/, "ISO 日時：Z = UTC、±HH:mm = ローカル時刻、接尾辞なし = 時差未指定")
       .replace(/^local time with offset, e\.g\. /, "オフセット付きのローカル時刻、例: ")
       .replace(/^a URI, e\.g\. /, "URI、例: ")
       .replace(/^decimal, e\.g\. /, "10 進数、例: ")

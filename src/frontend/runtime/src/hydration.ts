@@ -52,7 +52,7 @@ export function createHydrationEnvelope(operation: OperationDescriptor, raw: Raw
   if (declared === undefined) {
     return failure(ctx, "unexpected-response", "unexpected-response.undeclared-case");
   }
-  if (declared.hydration !== "browser-safe" || declared.body.kind === "binary" || raw.bodyKind === "binary") {
+  if (declared.hydration !== "browser-safe" || declared.body.kind === "binary" || raw.bodyKind === "binary" || declared.body.kind === "sse" || raw.bodyKind === "sse") {
     return failure(ctx, "server-only", "hydration.server-only");
   }
   const base = { format: "tisilia.hydration-envelope" as const, version: "0.1" as const, ...ctx, responseCaseId: raw.caseId, status: raw.status, headers: raw.headers.map(([name, value]) => ({ name, value })) };
@@ -104,7 +104,7 @@ export function checkHydrationEnvelope(operation: OperationDescriptor, envelope:
   if (declared === undefined) {
     return "undeclared-case";
   }
-  if (declared.hydration !== "browser-safe" || declared.body.kind === "binary") {
+  if (declared.hydration !== "browser-safe" || declared.body.kind === "binary" || declared.body.kind === "sse") {
     return "server-only-case";
   }
   if (declared.status !== envelope.status) {

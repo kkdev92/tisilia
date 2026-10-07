@@ -442,7 +442,7 @@ public sealed class ContractBuilder
             "decimal" => new[] { "scale", "negative-zero-sign" },
             "float32" or "float64" => ["nan-payload"],
             "guid" => ["hex-case"],
-            "datetime-utc" or "datetime-unspecified" or "datetime-local-wire" or "datetime-offset" or "time-only" or "duration" => ["fraction-digits-beyond-7"],
+            "datetime" or "datetime-utc" or "datetime-unspecified" or "datetime-local-wire" or "datetime-offset" or "time-only" or "duration" => ["fraction-digits-beyond-7"],
             _ => Array.Empty<string>(),
         };
         foreach (var (suffix, scope) in new[] { ("request", EquivalenceScope.Request), ("response", EquivalenceScope.Response), ("key", EquivalenceScope.Key) })
@@ -486,6 +486,7 @@ public sealed class ContractBuilder
         "float64" => "Float64",
         "date-only" => "DateOnly",
         "time-only" => "TimeOnly",
+        "datetime" => "DateTime",
         "datetime-utc" => "DateTimeUtc",
         "datetime-unspecified" => "DateTimeUnspecified",
         "datetime-local-wire" => "DateTimeLocalWire",
@@ -515,6 +516,7 @@ public sealed class ContractBuilder
         "float64" => "System.Double",
         "date-only" => "System.DateOnly",
         "time-only" => "System.TimeOnly",
+        "datetime" => "System.DateTime",
         "datetime-utc" => "System.DateTime(Utc)",
         "datetime-unspecified" => "System.DateTime(Unspecified)",
         "datetime-local-wire" => "System.DateTime(Local)",
@@ -977,6 +979,7 @@ public sealed class ContractBuilder
             ResultAdapterKind.Bodyless => Builtins.ResultBodyless,
             ResultAdapterKind.Text => Builtins.ResultTextUtf8,
             ResultAdapterKind.Binary => Builtins.ResultBinaryBuffered,
+            ResultAdapterKind.Sse => Builtins.ResultSse,
             _ => throw new ArgumentException("custom adapters need explicit bindings", nameof(kind)),
         };
         var suffix = kind switch
@@ -987,6 +990,7 @@ public sealed class ContractBuilder
             ResultAdapterKind.MvcJson => "mvc-json",
             ResultAdapterKind.Bodyless => "bodyless",
             ResultAdapterKind.Binary => "binary",
+            ResultAdapterKind.Sse => "sse",
             _ => "text",
         };
         var id = StdPrefix + "result." + suffix + (profileIds is { Count: > 0 } ? "." + string.Join("+", profileIds) : "");

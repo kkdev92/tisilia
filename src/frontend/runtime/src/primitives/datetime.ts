@@ -42,6 +42,9 @@ export interface DateTimeLocalWire {
   readonly offsetMinutes: number;
 }
 
+/** System.Text.Json DateTime, with its wire Kind preserved and 100 ns precision. */
+export type DateTime = DateTimeUtc | DateTimeUnspecified | DateTimeLocalWire;
+
 export interface DateTimeOffset {
   readonly kind: "datetime-offset";
   /** Calendar ticks in the offset's local time (DateTimeOffset.Ticks). */
@@ -333,6 +336,43 @@ export function validateTimeOnly(value: unknown, path: string): TimeOnly {
 }
 
 // ---------------------------------------------------------------- DateTime (Utc / Unspecified / Local wire)
+
+/** Reads the suffix without consulting the browser's time zone or coercing a zone-less value to UTC. */
+export function parseDateTime(s: string, path = ""): DateTime {
+  const p = parseIsoDateTime(s, path, "datetime");
+  const ticks = checkTicks(ticksOf(p), path, "datetime");
+  if (p.offset === "utc") return { kind: "datetime-utc", ticks };
+  if (p.offset === "none") return { kind: "datetime-unspecified", ticks };
+  return { kind: "datetime-local-wire", ticks, offsetMinutes: p.offset };
+}
+
+export function formatDateTime(value: DateTime): string {
+  switch (value.kind) {
+    case "datetime-utc": return formatDateTimeUtc(value);
+    case "datetime-unspecified": return formatDateTimeUnspecified(value);
+    case "datetime-local-wire": return formatDateTimeLocalWire(value);
+  }
+}
+
+export function validateDateTime(value: unknown, path: string): DateTime {
+  const kind = typeof value === "object" && value !== null ? (value as { kind?: unknown }).kind : undefined;
+  switch (kind) {
+    case "datetime-utc": return { kind, ticks: validateDateTimeTicks(value, path, "utc") };
+    case "datetime-unspecified": return { kind, ticks: validateDateTimeTicks(value, path, "unspecified") };
+    case "datetime-local-wire": return validateDateTimeLocalWire(value, path);
+    default: throw new CodecError("type-mismatch", path, "datetime requires a UTC, unspecified or local wire tick record");
+  }
+}
+
+/** STJ can write a local extreme that its DateTimeOffset-based reader cannot accept. */
+export function validateDateTimeRequest(value: unknown, path: string): DateTime {
+  const result = validateDateTime(value, path);
+  if (result.kind === "datetime-local-wire") {
+    const utc = result.ticks - BigInt(result.offsetMinutes) * ticksPerMinute;
+    if (utc < 0n || utc > maxDateTimeTicks) throw new CodecError("range", path, "datetime request UTC instant is outside the DateTime range");
+  }
+  return result;
+}
 
 export function parseDateTimeUtc(s: string, path = ""): DateTimeUtc {
   const p = parseIsoDateTime(s, path, "datetime-utc");

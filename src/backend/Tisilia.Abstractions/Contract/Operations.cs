@@ -29,6 +29,8 @@ public sealed record Parameter
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(NoRequestBody), "none")]
 [JsonDerivedType(typeof(JsonRequestBody), "json")]
+[JsonDerivedType(typeof(BinaryRequestBody), "binary")]
+[JsonDerivedType(typeof(FormRequestBody), "form")]
 public abstract record RequestBody
 {
     [JsonIgnore]
@@ -41,6 +43,15 @@ public sealed record NoRequestBody : RequestBody
     public override string Kind => "none";
 }
 
+/// <summary>A finite raw body, sent byte for byte without JSON encoding.</summary>
+public sealed record BinaryRequestBody : RequestBody
+{
+    public required string MediaType { get; init; }
+    public required Presence Presence { get; init; }
+    [JsonIgnore]
+    public override string Kind => "binary";
+}
+
 public sealed record JsonRequestBody : RequestBody
 {
     public required string MediaType { get; init; }
@@ -51,11 +62,49 @@ public sealed record JsonRequestBody : RequestBody
     public override string Kind => "json";
 }
 
+public sealed record FormField
+{
+    public required string Name { get; init; }
+    public required string Kind { get; init; }
+    public TypeUse? Use { get; init; }
+    public required bool Repeated { get; init; }
+    public bool RejectBlank { get; init; }
+    public bool Indexed { get; init; }
+    /// <summary>An empty wire name places a root collection at [0], [1], ... .</summary>
+    public string? WireName { get; init; }
+    public IReadOnlyList<FormField>? Fields { get; init; }
+    public bool EnumDefinedOnly { get; init; }
+    public JsonValue? ServerDefault { get; init; }
+    public bool HasServerDefault { get; init; }
+    public required Presence Presence { get; init; }
+
+    public static IEnumerable<FormField> Descendants(IEnumerable<FormField> fields)
+    {
+        foreach (var field in fields)
+        {
+            yield return field;
+            if (field.Fields is not null) { foreach (var child in Descendants(field.Fields)) { yield return child; } }
+        }
+    }
+
+}
+
+/// <summary>Named form values, object groups, indexed collections and finite file parts; antiforgery remains the application's policy.</summary>
+public sealed record FormRequestBody : RequestBody
+{
+    public required string MediaType { get; init; }
+    public required Presence Presence { get; init; }
+    public required IReadOnlyList<FormField> Fields { get; init; }
+    [JsonIgnore]
+    public override string Kind => "form";
+}
+
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(NoResponseBody), "none")]
 [JsonDerivedType(typeof(JsonResponseBody), "json")]
 [JsonDerivedType(typeof(TextResponseBody), "text")]
 [JsonDerivedType(typeof(BinaryResponseBody), "binary")]
+[JsonDerivedType(typeof(SseResponseBody), "sse")]
 public abstract record ResponseBody
 {
     [JsonIgnore]
@@ -90,6 +139,17 @@ public sealed record BinaryResponseBody : ResponseBody
     public required string MediaType { get; init; }
     [JsonIgnore]
     public override string Kind => "binary";
+}
+
+/// <summary>UTF-8 server-sent events. JSON uses the declared profile for each event's data.</summary>
+public sealed record SseResponseBody : ResponseBody
+{
+    public required string MediaType { get; init; }
+    public required string DataFormat { get; init; }
+    public string? ProfileId { get; init; }
+    public required TypeUse Use { get; init; }
+    [JsonIgnore]
+    public override string Kind => "sse";
 }
 
 public enum Hydration

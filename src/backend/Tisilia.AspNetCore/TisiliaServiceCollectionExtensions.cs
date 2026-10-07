@@ -23,6 +23,7 @@ public static class TisiliaServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(configure);
         services.AddOptions<TisiliaOptions>().Configure(configure).Validate(o => !string.IsNullOrWhiteSpace(o.ApiId), "TisiliaOptions.ApiId is required");
         services.AddEndpointsApiExplorer();
+        services.Configure<Microsoft.AspNetCore.Mvc.MvcOptions>(o => o.Filters.Add(new TisiliaJsonResultFilter()));
         services.TryAddSingleton<TisiliaContractExporter>();
         services.TryAddEnumerable(ServiceDescriptor.Transient<IStartupFilter, SemanticHashHeaderStartupFilter>());
         services.AddHostedService<TisiliaExportHostedService>();

@@ -175,6 +175,36 @@
             "mediaType"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "sse"
+            },
+            "mediaType": {
+              "const": "text/event-stream"
+            },
+            "dataFormat": {
+              "enum": [
+                "text",
+                "json"
+              ]
+            },
+            "profileId": {
+              "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/id"
+            },
+            "use": {
+              "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/typeUse"
+            }
+          },
+          "required": [
+            "kind",
+            "mediaType",
+            "dataFormat",
+            "use"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -238,7 +268,8 @@
             "bodyless",
             "text",
             "custom",
-            "binary"
+            "binary",
+            "sse"
           ]
         },
         "implementation": {

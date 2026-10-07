@@ -93,6 +93,10 @@ public sealed class ContractClosure
             VisitUse(body.Use, WireDirection.ServerRead);
         }
 
+        if (op.RequestBody is FormRequestBody form)
+        {
+            foreach (var field in FormField.Descendants(form.Fields)) { if (field.Use is not null) { VisitUse(field.Use, null); } }
+        }
         foreach (var r in op.Responses)
         {
             _capabilities.Add(ClosureCapability.Result);
@@ -104,6 +108,11 @@ public sealed class ContractClosure
 
             switch (r.Body)
             {
+                case SseResponseBody sse:
+                    _capabilities.Add(ClosureCapability.Response);
+                    if (sse.ProfileId is not null) { VisitProfile(sse.ProfileId); }
+                    VisitUse(sse.Use, sse.DataFormat == "json" ? WireDirection.ServerWrite : null);
+                    break;
                 case JsonResponseBody json:
                     _capabilities.Add(ClosureCapability.Response);
                     VisitProfile(json.ProfileId);

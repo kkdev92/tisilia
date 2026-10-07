@@ -76,7 +76,8 @@
     "bodyKind": {
       "enum": [
         "none",
-        "json"
+        "json",
+        "binary"
       ]
     },
     "bodyText": {

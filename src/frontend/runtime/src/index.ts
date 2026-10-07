@@ -30,12 +30,14 @@ export { parseFloat32Lexeme, parseFloat64Lexeme, formatFloat32, formatFloat64, f
 export type { Guid } from "./primitives/text.js";
 export { guid, parseGuid, encodeBase64, decodeBase64, isWellFormedUnicode } from "./primitives/text.js";
 export { ordinalUpper, ordinalUpperCodePoint, ordinalEqualsIgnoreCase } from "./primitives/ordinalCasing.js";
-export type { DateOnly, TimeOnly, DateTimeUtc, DateTimeUnspecified, DateTimeLocalWire, DateTimeOffset, Duration } from "./primitives/datetime.js";
+export type { DateTime, DateOnly, TimeOnly, DateTimeUtc, DateTimeUnspecified, DateTimeLocalWire, DateTimeOffset, Duration } from "./primitives/datetime.js";
 export {
   parseDateOnly,
   formatDateOnly,
   parseTimeOnly,
   formatTimeOnly,
+  parseDateTime,
+  formatDateTime,
   parseDateTimeUtc,
   formatDateTimeUtc,
   parseDateTimeUnspecified,
@@ -63,14 +65,18 @@ export { buildUrl, encodePathSegment, encodeQueryComponent, validateBaseUrl, val
 export type { BuiltUrl, QueryEntry } from "./http/url.js";
 export { buildPlannedUrl, displayRoute } from "./http/routes.js";
 export type { RoutePlan, RouteParameter, ResolvedRoutePart } from "./http/routes.js";
-export type { BufferedFile } from "./http/client.js";
+export type { BufferedFile, StreamedFile, DownloadSink, DownloadResult } from "./http/client.js";
 export { suggestedFileName, safeFileName } from "./http/filename.js";
 export { standardBinder, codecBinder, enumBinder, formatScalarForBinding } from "./http/binders.js";
 export type { Binder, ParameterLocation, NullPolicy, StandardBinderOptions, EnumBinderOptions } from "./http/binders.js";
 export { send } from "./http/transport.js";
 export type { TransportRequest, TransportResponse, TransportOutcome, TransportOptions } from "./http/transport.js";
-export { execute, executeWithRaw, prepareRequest, fetchResponse, decodeResponse } from "./http/client.js";
-export type { OperationDescriptor, ParameterDescriptor, RequestBodyDescriptor, ResponseBodyDescriptor, ResponseCaseDescriptor, ClientOptions, CredentialProvider, PreparedRequest, OperationResult, HttpMethod, RawOutcome, RawResponse } from "./http/client.js";
+export { execute, executeWithRaw, download, subscribe, prepareRequest, fetchResponse, decodeResponse } from "./http/client.js";
+export type { EventSink, SubscriptionResult } from "./http/client.js";
+export type { ServerSentEvent } from "./http/sse.js";
+export type { UploadFile, FormFieldDescriptor } from "./http/forms.js";
+export type { FormRequestBodyDescriptor } from "./http/client.js";
+export type { OperationDescriptor, ParameterDescriptor, RequestBodyDescriptor, JsonRequestBodyDescriptor, BinaryRequestBodyDescriptor, ResponseBodyDescriptor, ResponseCaseDescriptor, ClientOptions, CredentialProvider, PreparedRequest, OperationResult, HttpMethod, RawOutcome, RawResponse } from "./http/client.js";
 export type { RuntimeFailure, UnexpectedResponse, CodecFailure, TransportFailure, Cancelled, Timeout, LimitFailure, ContractMismatch, ResponseCaseResult, BodylessCaseResult, ResponseMetadata } from "./http/result.js";
 export { isFailure } from "./http/result.js";
 
@@ -82,7 +88,7 @@ export type { EnvelopeContext, EnvelopeCheck, EnvelopeMismatch } from "./hydrati
 export type { HydrationEnvelope, JsonEnvelope, BodylessEnvelope, TextEnvelope, FailureEnvelope, EnvelopeFailureCode } from "./envelope.js";
 
 export { createContractRegistry, numbersOf, contextFor } from "./contract/interpreter.js";
-export type { ContractDocument, ContractRegistry, ContractRegistryOptions, ContractOperation, ContractCodec, ContractModel, ContractWire, ContractModule, ContractTypeUse, ContractWireRef } from "./contract/interpreter.js";
+export type { ContractDocument, ContractRegistry, ContractRegistryOptions, ContractOperation, ContractFormField, ContractCodec, ContractModel, ContractWire, ContractModule, ContractTypeUse, ContractWireRef } from "./contract/interpreter.js";
 
 export const runtimeVersion = "0.1.0-alpha";
 export const abiVersion = "0.1";

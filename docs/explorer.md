@@ -128,6 +128,10 @@ only those two keys), `sessionStorage`, `indexedDB`, cookies, `v-html`, `innerHT
 
 ## Contract guard, cancellation, limits
 
+Raw upload operations offer a file selector. The file stays in page memory, is checked against the 16 MiB default before
+reading, and is sent as bytes with the contract's content type. Its filename is not sent. Reset clears the selected file and
+its bytes. Curl snippets use `--data-binary '@<file>'`; masked fetch snippets leave the bytes as a caller-supplied variable.
+
 Binary cases display media type, byte count and partial-response status without decoding or embedding HTML/SVG/PDF. Reveal
 the response and explicitly confirm Save to download the received buffer. Explicit body masking prevents saving; an explicitly
 hidden Content-Disposition cannot become a filename. Saving never repeats a POST. An object URL belongs to the current result
@@ -167,6 +171,19 @@ The registry's schema is `explorer-registry.schema.json` in `src/backend/Tisilia
   route serves), the optional `contract`, and `tisilia.explorer-bundle.json` — explorer name/version, registry digest,
   bundled modules with artifact digests and the digest of every file, so that evidence can bind to the bundle.
   A non-empty `--output` directory is never overwritten (exit 7).
+
+## Form requests and SSE
+
+Form operations show a field editor for each declared value and file. Repeated values use one value per line;
+optional fields have a send checkbox. Files stay in memory, share the request byte limit and are cleared by Reset.
+The same deterministic form encoder powers the preview, generated client and interpreter. The client snippet preserves
+file bytes; a multipart curl snippet's `--data-binary` file stands for the complete encoded multipart body.
+Nested models display their wire paths, such as `Details.Id`. The encoder adds collection indexes automatically.
+Enum input uses the codec's exact domain and sends the CLR name; 64-bit enum values never pass through a JavaScript number.
+
+Finite SSE calls display the decoded event array and its text/JSON data contract. Live processing uses the generated
+`operationSubscribe` method described in [Getting started](getting-started.md#server-sent-events); the Explorer's finite
+view still applies its byte/time limit and supports Cancel.
 
 ## Tests
 

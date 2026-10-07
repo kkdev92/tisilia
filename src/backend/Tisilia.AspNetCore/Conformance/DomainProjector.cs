@@ -328,6 +328,7 @@ public sealed class DomainProjector(ContractIndex index, RunnerAdapterTable adap
                     return DomainAst.Float64((double)value);
                 case "date-only":
                 case "time-only":
+                case "datetime":
                 case "datetime-utc":
                 case "datetime-unspecified":
                 case "datetime-local-wire":
