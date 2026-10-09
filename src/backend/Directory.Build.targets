@@ -23,18 +23,20 @@
     names it and pack compares the assemblies being built against it, so a binary breaking change fails the pack rather than
     waiting for a reviewer to spot it.
 
-    0.1.0-alpha is the first release and has nothing to compare against, which LastVersionWithoutBaseline records. Moving
+    0.1.0-alpha was the first release and had nothing to compare against, which LastVersionWithoutBaseline records. Moving
     VersionPrefix past it without a baseline stops the build with instructions, so the absence cannot quietly outlive the one
-    release it was meant for. Each release's version bump moves the baseline to the release before it. The tool package is a
-    program, not a library: nothing compiles against it.
+    release it was meant for. Each release's version bump moves the baseline to the release before it. A break the release
+    accepts is listed in the project's CompatibilitySuppressions.xml, which the next bump deletes: against the newer baseline
+    the suppressions match nothing, and pack fails until they go. The tool package is a program, not a library: nothing
+    compiles against it.
   -->
   <PropertyGroup Condition="'$(IsPackable)' == 'true' and '$(PackAsTool)' != 'true'">
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <EnablePackageValidation>true</EnablePackageValidation>
-    <!-- The first release has no published package to use as a binary compatibility baseline. -->
+    <!-- The first release had no published package to use as a binary compatibility baseline. -->
     <LastVersionWithoutBaseline>0.1.0</LastVersionWithoutBaseline>
-    <PackageValidationBaselineVersion></PackageValidationBaselineVersion>
+    <PackageValidationBaselineVersion>0.1.0-alpha</PackageValidationBaselineVersion>
   </PropertyGroup>
 
   <!--

@@ -1,6 +1,6 @@
 {
   "name": "@kkdev92/tisilia-explorer",
-  "version": "0.1.0-alpha",
+  "version": "0.2.0-alpha",
   "description": "The source of the Tisilia Explorer, an API explorer page that runs every call through the generated client's own codecs; `tisilia explorer build` bundles it with an application's trusted codec modules.",
   "license": "MIT",
   "author": {
@@ -44,7 +44,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@kkdev92/tisilia-runtime": "0.1.0-alpha",
+    "@kkdev92/tisilia-runtime": "0.2.0-alpha",
     "@vitejs/plugin-vue": "6.0.9",
     "vite": "8.3.2",
     "vue": "3.5.43"

@@ -32,7 +32,7 @@ public static class ContractLoader
         {
             diagnostics.Error(TisiliaCodes.FormatOrVersion, "SV01", "/format",
                 $"expected format '{TisiliaJson.Formats.Contract}' version '{TisiliaJson.ContractVersion}' but found '{format}' / '{version}'",
-                fix: "re-export with Tisilia 0.1.0-alpha and regenerate using its runtime; other contract versions are not supported. Documents are not silently converted");
+                fix: "re-export with matching Tisilia tooling and regenerate using its runtime; other contract versions are not supported. Documents are not silently converted");
             return null;
         }
 

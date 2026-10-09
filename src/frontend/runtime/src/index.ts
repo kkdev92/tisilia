@@ -1,4 +1,4 @@
-// @kkdev92/tisilia-runtime — Tisilia 0.1.0-alpha runtime (ESM, TypeScript 6+, ES2022).
+// @kkdev92/tisilia-runtime — the Tisilia runtime (ESM, TypeScript 6+, ES2022).
 // Lossless JSON, precision-preserving primitives, Codec ABI 0.1, HTTP transport, request identity, envelopes.
 
 export type { JsonValue, JsonNull, JsonBoolean, JsonString, JsonNumber, JsonArray, JsonObject, JsonEntry, JsonToken } from "./json/ast.js";
@@ -99,6 +99,6 @@ export type { HydrationEnvelope, JsonEnvelope, BodylessEnvelope, TextEnvelope, F
 export { createContractRegistry, numbersOf, contextFor } from "./contract/interpreter.js";
 export type { ContractDocument, ContractRegistry, ContractRegistryOptions, ContractOperation, ContractFormField, ContractCodec, ContractModel, ContractWire, ContractModule, ContractTypeUse, ContractWireRef, ContractXmlMember, ContractXmlName } from "./contract/interpreter.js";
 
-export const runtimeVersion = "0.1.0-alpha";
+export const runtimeVersion = "0.2.0-alpha";
 export const abiVersion = "0.1";
 export const httpDescriptorVersion = "0.1";

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
+<!--
+  Binary breaks against 0.1.0-alpha that 0.2.0-alpha accepts (the changelog's 0.2.0-alpha Compatibility): these members gained
+  optional parameters, so calls compile unchanged, but an assembly compiled against 0.1.0-alpha has to be rebuilt. Delete this
+  file in the version bump that moves PackageValidationBaselineVersion past 0.1.0-alpha: against a newer baseline the
+  suppressions match nothing, and pack fails until they go.
+-->
+<Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Tisilia.Generator.Building.ContractBuilder.ArrayOf(System.String,System.String,System.String,Tisilia.Contract.TypeUse,System.Boolean)</Target>
+    <Left>lib/net10.0/Tisilia.Generator.dll</Left>
+    <Right>lib/net10.0/Tisilia.Generator.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Tisilia.Generator.Building.ContractBuilder.MapOf(System.String,System.String,System.String,Tisilia.Contract.TypeUse,Tisilia.Contract.TypeUse,System.String,System.Boolean)</Target>
+    <Left>lib/net10.0/Tisilia.Generator.dll</Left>
+    <Right>lib/net10.0/Tisilia.Generator.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+  <Suppression>
+    <DiagnosticId>CP0002</DiagnosticId>
+    <Target>M:Tisilia.Generator.Building.ContractBuilder.ObjectOf(System.String,System.String,System.String,System.Collections.Generic.IReadOnlyList{Tisilia.Generator.Building.PropertySpec},System.String,System.String,Tisilia.Contract.AdditionalPolicy,Tisilia.Contract.AdditionalPolicy,Tisilia.Contract.Extension,System.Boolean,System.Boolean,System.Boolean)</Target>
+    <Left>lib/net10.0/Tisilia.Generator.dll</Left>
+    <Right>lib/net10.0/Tisilia.Generator.dll</Right>
+    <IsBaselineSuppression>true</IsBaselineSuppression>
+  </Suppression>
+</Suppressions>

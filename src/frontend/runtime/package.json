@@ -1,6 +1,6 @@
 {
   "name": "@kkdev92/tisilia-runtime",
-  "version": "0.1.0-alpha",
+  "version": "0.2.0-alpha",
   "description": "The runtime of the TypeScript clients Tisilia generates from an ASP.NET Core API: a lossless JSON parser, exact codecs for the .NET values a JavaScript number cannot hold, and an HTTP pipeline that names every failure instead of throwing.",
   "license": "MIT",
   "author": {

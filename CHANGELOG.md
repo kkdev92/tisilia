@@ -8,6 +8,14 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+## [0.2.0-alpha] - 2026-10-09
+
+Many endpoints that 0.1.0-alpha refused to export, or described wrongly, are now described as the server reads and
+writes them: forms and uploads, server-sent events, XML bodies, handlers that return `IResult` or `IActionResult`, custom
+binders and `ReferenceHandler.Preserve` among them. The format versions are unchanged, but contracts exported by this
+version can use variants that 0.1.0-alpha tools reject, and a few public .NET members take new optional parameters (see
+Compatibility).
+
 ### Added
 
 - **Forms** across export, generated clients, the interpreter and Explorer: URL-encoded and multipart contracts for
@@ -92,6 +100,7 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   describe as XML (a DataContractSerializer or custom formatter, or a type with a form XML bodies do not cover), and a
   minimal API string declared with a media type other than JSON, are exported as binary responses with a warning (SV29)
   instead of failing export.
+- `@kkdev92/tisilia-explorer` depends on `vite` 8.3.2 instead of 8.3.1.
 
 ### Fixed
 
@@ -172,6 +181,10 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   `xml-element` and `xml-items`, codecs bound to `tisilia.binding.xml-serializer@0.1`, the result adapter kind `xml`, and
   the runtime's `xml` request and response descriptors; request identities of XML bodies use `bodyKind: "binary"`.
   Validation adds SV55. Older tools reject these variants.
+- `ContractBuilder.ArrayOf`, `MapOf` and `ObjectOf`, the `ClrTypeMapper` constructor and
+  `TisiliaContractExporter.Diagnose` take new optional parameters. Calls compile unchanged, but an assembly compiled
+  against 0.1.0-alpha that calls them has to be rebuilt.
+- Use matching **0.2.0-alpha** NuGet and npm packages when exporting contracts and generating clients.
 
 ## [0.1.0-alpha] - 2026-10-05
 
@@ -216,5 +229,6 @@ The first preview.
 - Custom fetch adapters must expose a Web `ReadableStream` or a native `null` body.
 - The .NET packages and `@kkdev92/tisilia-runtime` have no third-party runtime dependencies.
 
-[Unreleased]: https://github.com/kkdev92/tisilia/compare/v0.1.0-alpha...HEAD
+[Unreleased]: https://github.com/kkdev92/tisilia/compare/v0.2.0-alpha...HEAD
+[0.2.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.2.0-alpha
 [0.1.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.1.0-alpha

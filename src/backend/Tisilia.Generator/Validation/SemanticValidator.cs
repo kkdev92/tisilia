@@ -72,7 +72,7 @@ public sealed partial class SemanticValidator
     {
         if (_doc.Format != TisiliaJson.Formats.Contract || _doc.Version != TisiliaJson.ContractVersion)
         {
-            Error(TisiliaCodes.FormatOrVersion, "SV01", "/format", "format/version must be tisilia.contract 0.1; re-export with Tisilia 0.1.0-alpha");
+            Error(TisiliaCodes.FormatOrVersion, "SV01", "/format", "format/version must be tisilia.contract 0.1; re-export with matching Tisilia tooling");
         }
 
         if (_doc.ApiId.StartsWith(Builtins.Prefix, StringComparison.Ordinal))
