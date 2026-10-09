@@ -16,8 +16,16 @@ export class SseParser {
   private skipLf = false;
   private data: string[] = [];
   private event = "";
-  private id = "";
+  private id: string;
   private retry: string | undefined;
+  private ownId = false;
+  /** Whether the last yielded event named its own id (an `id` field in its block) rather than carrying an earlier one. */
+  lastHadOwnId = false;
+
+  /** A reconnected stream continues the last event ID of the one before (HTML Standard, server-sent events). */
+  constructor(lastEventId = "") {
+    this.id = lastEventId;
+  }
 
   *push(bytes: Uint8Array): Generator<ServerSentEvent<string>> {
     let text: string;
@@ -38,9 +46,11 @@ export class SseParser {
       start = i + 1;
       if (line === "") {
         const event = this.data.length === 0 ? undefined : { data: this.data.join("\n"), event: this.event || "message", id: this.id, ...(this.retry === undefined ? {} : { retryMilliseconds: this.retry }) };
+        const ownId = this.ownId;
         this.data = [];
         this.event = "";
-        if (event !== undefined) { yield event; }
+        this.ownId = false;
+        if (event !== undefined) { this.lastHadOwnId = ownId; yield event; }
       } else {
         const colon = line.indexOf(":");
         const name = colon < 0 ? line : line.slice(0, colon);
@@ -49,7 +59,7 @@ export class SseParser {
         switch (name) {
           case "data": this.data.push(value); break;
           case "event": this.event = value; break;
-          case "id": if (!value.includes("\0")) { this.id = value; } break;
+          case "id": if (!value.includes("\0")) { this.id = value; this.ownId = true; } break;
           case "retry": if (/^[0-9]+$/.test(value)) { this.retry = value; } break;
         }
       }

@@ -163,6 +163,7 @@ public static class TisiliaCodes
     public const string EnumInvalid = "TIS1410";
     public const string LiteralInvalid = "TIS1411";
     public const string StringLengthInvalid = "TIS1412";
+    public const string XmlWireInvalid = "TIS1413";
 
     // TIS1500–1599: generation / names / owned files
     public const string OutputPath = "TIS1501";

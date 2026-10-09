@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { createCodecContext, decimalFromString, parseDateOnly, parseJson, prepareRequest, TisiliaMap, writeJson, type JsonValue, type ContractOperation, type ContractTypeUse } from "@kkdev92/tisilia-runtime";
+import { createCodecContext, decimalFromString, parseDateOnly, parseJson, prepareRequest, TisiliaMap, writeJson, type JsonValue, type ContractModel, type ContractOperation, type ContractTypeUse } from "@kkdev92/tisilia-runtime";
 import { credentialHeaders, credentialProblem, parseAuthHints, tokenField } from "../src/auth.js";
-import { buildArgs, documentationOf, filterOperations, loadExplorer, summarize, type ExplorerModel } from "../src/explorer.js";
+import { buildArgs, documentationOf, filterOperations, loadExplorer, mapEntryKey, summarize, type ExplorerModel } from "../src/explorer.js";
 import { cyclic, errorsByPath, exampleOf, FormSchema, grammarKind, nowText, prettyJson, sanitize, type InputNode } from "../src/forms.js";
 import { highlightJson } from "../src/highlight.js";
 import { clientFactoryName, clientSnippet, curlSnippet, fetchSnippet, operationMethodName, tsLiteral } from "../src/snippets.js";
@@ -47,6 +47,41 @@ describe("request forms", () => {
     // a required collection without rows names its own error code, so the page can word it in either language
     const empty = buildArgs(model, op, { parameters: {}, body: "", formValues: {} });
     expect(empty.errors).toEqual([{ path: "/body/Lines", message: "form collection requires 1–1024 items", code: "form-items" }]);
+  });
+  it("builds form dictionaries from key and value rows and writes them as Maps in the client snippet", async () => {
+    const model = await load();
+    const use = (primitiveId: string): ContractTypeUse => {
+      const type = model.document.types.find(t => t.shape.kind === "primitive" && t.shape.primitiveId === primitiveId)!;
+      return { typeId: type.id, codecId: model.document.codecs.find(c => c.typeId === type.id)!.id, semanticNullable: false };
+    };
+    const op: ContractOperation = { ...model.operations[0]!, id: "forms.maps", parameters: [], requestBody: { kind: "form", mediaType: "application/x-www-form-urlencoded", presence: "required", fields: [
+      { name: "Counts", kind: "map", keyUse: use("tisilia.int64@0.1"), use: use("tisilia.int64@0.1"), repeated: false, presence: "required" },
+    ] } };
+    const rows = (entries: [string, string][]) => ({ Counts: String(entries.length), ...Object.fromEntries(entries.flatMap(([k, v], i) => [[mapEntryKey("Counts", i, "key"), k], [mapEntryKey("Counts", i, "value"), v]])) });
+    const built = buildArgs(model, op, { parameters: {}, body: "", formValues: rows([["-9007199254740993", "1"], ["7", "9007199254740993"]]) });
+    expect(built.errors).toEqual([]);
+    expect(built.args).toEqual({ body: { Counts: new Map([[-9007199254740993n, 1n], [7n, 9007199254740993n]]) } });
+    const snippet = clientSnippet({ document: { ...model.document, operations: [op] }, apiId: "example", operationId: op.id, baseUrl: "http://example.test", credentials: [], reveal: true, args: built.args });
+    expect(snippet).toContain("Counts: new Map([");
+    expect(snippet).toContain("[int64(-9007199254740993n), int64(1n)]");
+    // a key given twice, and a key the codec refuses, are reported at the entry
+    const duplicate = buildArgs(model, op, { parameters: {}, body: "", formValues: rows([["7", "1"], ["7", "2"]]) });
+    expect(duplicate.errors).toEqual([{ path: "/body/Counts/7", message: "duplicate key", code: "duplicate-key" }]);
+    expect(buildArgs(model, op, { parameters: {}, body: "", formValues: rows([["x", "1"]]) }).errors[0]?.path).toBe("/body/Counts/x");
+    expect(buildArgs(model, op, { parameters: {}, body: "", formValues: {} }).errors).toEqual([{ path: "/body/Counts", message: "form dictionary requires 1–1024 entries", code: "form-items" }]);
+  });
+  it("casts a module type's form value to its brand in the client snippet and imports the type", async () => {
+    const model = await load();
+    const base = model.document.types.find(t => t.shape.kind === "primitive" && t.shape.primitiveId === "tisilia.string@0.1")!;
+    const brand: ContractModel = { id: "x.Int128", tsName: "Int128", clrIdentity: "System.Int128", shape: { kind: "brand", brandId: "x.Int128", base: { typeId: base.id, codecId: "tisilia.codec.string@0.1", semanticNullable: false } } };
+    const document = { ...model.document, types: [...model.document.types, brand] };
+    const op: ContractOperation = { ...model.operations[0]!, id: "forms.brand", parameters: [], requestBody: { kind: "form", mediaType: "application/x-www-form-urlencoded", presence: "required", fields: [
+      { name: "Signed", kind: "value", use: { typeId: "x.Int128", codecId: "x.Int128.codec", semanticNullable: false }, grammarId: "x.grammar.int128", repeated: true, presence: "required" },
+    ] } };
+    const snippet = clientSnippet({ document: { ...document, operations: [op] }, apiId: "example", operationId: op.id, baseUrl: "http://example.test", credentials: [], reveal: true, args: { body: { Signed: ["1", "-2"] } } });
+    expect(snippet).toContain('import { createExampleClient, type Int128 } from "./api/index.js";');
+    expect(snippet).toContain('"1" as Int128');
+    expect(snippet).toContain('"-2" as Int128');
   });
   it("edits mixed DateTime Kinds and generates precise typed snippets", async () => {
     const text = readFileSync(fixtures + "minimal-api.contract.json", "utf8").replaceAll("datetime-offset", "datetime");

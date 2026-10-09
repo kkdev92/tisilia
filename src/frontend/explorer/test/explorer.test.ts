@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseJson, type ContractOperation } from "@kkdev92/tisilia-runtime";
 import { credentialShapes } from "../src/auth.js";
 import { apiBaseOf, buildArgs, copyToClipboard, describeValue, execute, executionStatus, filterOperations, loadExplorer, prettyWire, preview, redactHeaders, redactTree, responseOf, summarize, type ExplorerModel } from "../src/explorer.js";
+import { FormSchema } from "../src/forms.js";
 import { curlSnippet, fetchSnippet } from "../src/snippets.js";
 
 const snippetOptions = { apiId: "sample-api", operationId: "users.put", baseUrl: "http://api.test", credentials: [], reveal: false } as const;
@@ -46,6 +47,52 @@ it("previews raw uploads without coercing bytes to JSON and keeps snippets maske
   expect(fetchSnippet(prepared, snippetOptions)).toContain("body: fileBytes");
   expect(fetchSnippet(prepared, snippetOptions)).not.toContain("255");
   expect(fetchSnippet(prepared, { ...snippetOptions, reveal: true })).toContain("new Uint8Array([0, 255, 195, 40])");
+});
+
+it("edits an XML body as its value and previews the XML its codec writes", async () => {
+  // an MVC XmlSerializer body: the XML codecs share the builtin scalar models, a class is an object model of its XML members
+  const document = JSON.parse(contractText) as { operations: ContractOperation[]; wires: unknown[]; codecs: unknown[]; types: unknown[]; equivalences?: unknown[] };
+  const original = document.operations.find(op => op.id === "users.put")!;
+  const read = (wireId: string) => ({ wireId, direction: "server-read" });
+  const text = (scalar: string, grammar: string) => ({
+    id: `std.${scalar}.${grammar}`, typeId: `std.${scalar}`, origin: "builtin", bindingId: "tisilia.binding.xml-serializer@0.1",
+    validateDomain: { kind: "builtin", id: `tisilia.codec.${scalar}.validate@0.1` },
+    capabilities: { request: { wire: read(`std.${scalar}.${grammar}.read`), implementation: { kind: "builtin", id: "tisilia.codec.xml-text.encode@0.1" }, nullBehavior: "reject", equivalenceId: `std.${scalar}.${grammar}.request`, domainRuleId: `tisilia.domain.${scalar}@0.1` },
+      requestInput: { implementation: { kind: "builtin", id: `tisilia.codec.${scalar}.parse-input@0.1` }, inputKind: "text", editorId: "tisilia.editor.text@0.1" } },
+    dependencies: [], profileIds: [],
+  });
+  document.wires.push(
+    { id: "std.int32.xml-integer.read", direction: "server-read", shape: { kind: "xml-text", grammarId: "tisilia.grammar.xml-integer@0.1" } },
+    { id: "std.string.xml-string.read", direction: "server-read", shape: { kind: "xml-text", grammarId: "tisilia.grammar.xml-string@0.1" } },
+    { id: "xml.Item.request.read", direction: "server-read", shape: { kind: "xml-element", attributes: [{ property: "id", name: "id", wire: read("std.int32.xml-integer.read"), presence: "optional" }],
+      elements: [{ property: "Name", name: "Name", namespace: "urn:items", wire: read("std.string.xml-string.read"), presence: "optional", nillable: true }] } },
+  );
+  document.codecs.push(text("int32", "xml-integer"), text("string", "xml-string"), {
+    id: "xml.Item.request.codec", typeId: "xml.Item.request", origin: "builtin", bindingId: "tisilia.binding.xml-serializer@0.1", validateDomain: { kind: "builtin", id: "tisilia.codec.object.validate@0.1" },
+    capabilities: { request: { wire: read("xml.Item.request.read"), implementation: { kind: "builtin", id: "tisilia.codec.xml-element.encode@0.1" }, nullBehavior: "reject", equivalenceId: "xml.Item.request.request", domainRuleId: "tisilia.domain.object@0.1" },
+      requestInput: { implementation: { kind: "builtin", id: "tisilia.codec.object.parse-input@0.1" }, inputKind: "json-value", editorId: "tisilia.editor.json@0.1" } },
+    dependencies: ["std.int32.xml-integer", "std.string.xml-string"], profileIds: [],
+  });
+  document.types.push({ id: "xml.Item.request", tsName: "ItemXmlRequest", clrIdentity: "Item", shape: { kind: "object", extension: { kind: "none" }, properties: [
+    { name: "id", use: { typeId: "std.int32", codecId: "std.int32.xml-integer", semanticNullable: false }, presence: "optional" },
+    { name: "Name", use: { typeId: "std.string", codecId: "std.string.xml-string", semanticNullable: true }, presence: "optional" },
+  ] } });
+  const use = { typeId: "xml.Item.request", codecId: "xml.Item.request.codec", semanticNullable: false };
+  document.operations = [{ ...original, requestBody: { kind: "xml", mediaType: "application/xml", root: { name: "Item", namespace: "urn:items" }, use, presence: "required", maxDepth: 32 } } as ContractOperation];
+  const model = await load(JSON.stringify(document));
+  const op = model.operations[0]!;
+  expect(summarize(model)[0]!.hasRequestInput).toBe(true);
+  // the form edits the value: an integer attribute and a nillable element
+  const node = new FormSchema(model.document).body(use);
+  expect(node.kind === "object" && node.properties.map(p => `${p.name}:${p.node.kind}`)).toEqual(["id:scalar", "Name:nullable"]);
+  const parameters = { id: "550e8400-e29b-41d4-a716-446655440000" };
+  const built = buildArgs(model, op, { parameters, body: '{ "id": 7, "Name": null }' });
+  expect(built.errors).toEqual([]);
+  const prepared = preview(model.registry.operations.get(op.id)!, built.args, { baseUrl: "http://api.test" });
+  expect(prepared.headers).toContainEqual(["content-type", "application/xml"]);
+  expect(prepared.bodyText).toBe('<Item xmlns="urn:items" id="7"><Name xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true"/></Item>');
+  expect(buildArgs(model, op, { parameters, body: "null" }).errors[0]?.path).toBe("/body");
+  expect(buildArgs(model, op, { parameters, body: '{ "id": "seven" }' }).errors[0]?.path).toBe("/body/id");
 });
 
 const sampleDir = fileURLToPath(new URL("../../../../tests/fixtures/", import.meta.url));
@@ -250,7 +297,24 @@ describe("Explorer core", () => {
     expect(redactTree(list, "mask").children![500]!.text).toBe(capped);
     expect(describeValue(new Map(Array.from({ length: 1001 }, (_, i) => [i, i])), "").children![500]).toMatchObject({ kind: "truncated", text: capped });
     expect(describeValue(Object.fromEntries(Array.from({ length: 1001 }, (_, i) => ["k" + i, i])), "").children![500]).toMatchObject({ kind: "truncated", text: capped });
+    // an XML case points to its XML view
+    expect(describeValue(Array.from({ length: 1001 }, (_, i) => i), "", 0, new Map(), "#", "XML").children![500]).toMatchObject({ kind: "truncated", text: "501 more not shown here — the XML view has every item" });
     expect(describeValue([1, 2], "").children).toHaveLength(2);
+  });
+
+  it("shows a value reached again — shared or cyclic, as a Preserve response decodes it — once, then as a reference", () => {
+    const shared = { name: "s" };
+    const root: Record<string, unknown> = { a: shared, b: shared, items: [shared] };
+    root["self"] = root;
+    const tree = describeValue(root, "");
+    expect(tree.children!.find((c) => c.label === "a")).toMatchObject({ kind: "object" });
+    expect(tree.children!.find((c) => c.label === "b")).toMatchObject({ kind: "reference", text: "the same value as #/a" });
+    expect(tree.children!.find((c) => c.label === "items")!.children![0]).toMatchObject({ kind: "reference", text: "the same value as #/a" });
+    expect(tree.children!.find((c) => c.label === "self")).toMatchObject({ kind: "reference", text: "the same value as #" });
+    // a reference names a place, not a value: masking leaves it readable
+    expect(redactTree(tree, "mask").children!.find((c) => c.label === "b")!.text).toBe("the same value as #/a");
+    // equal values that are different objects are each shown
+    expect(describeValue({ a: { n: 1 }, b: { n: 1 } }, "").children!.map((c) => c.kind)).toEqual(["object", "object"]);
   });
 
   it("reports a module without a browser artifact only when the browser needs one of its exports", async () => {

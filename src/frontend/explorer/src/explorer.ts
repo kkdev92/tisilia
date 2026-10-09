@@ -123,7 +123,7 @@ export function summarize(model: ExplorerModel): OperationSummary[] {
   return model.operations.map((op) => {
     const missing: string[] = [];
     let hasRequestInput = true;
-    if (op.requestBody.kind === "json") {
+    if (op.requestBody.kind === "json" || op.requestBody.kind === "xml") {
       const codec = model.document.codecs.find((c) => c.id === op.requestBody.kind && false) ?? model.document.codecs.find((c) => c.id === (op.requestBody as { use: { codecId: string } }).use.codecId);
       if (codec?.capabilities.request === undefined) {
         missing.push("request");
@@ -133,7 +133,7 @@ export function summarize(model: ExplorerModel): OperationSummary[] {
       }
     }
     for (const r of op.responses) {
-      if (r.body.kind === "json") {
+      if (r.body.kind === "json" || r.body.kind === "xml") {
         const codec = model.document.codecs.find((c) => c.id === r.body.kind && false) ?? model.document.codecs.find((c) => c.id === (r.body as { use: { codecId: string } }).use.codecId);
         if (codec?.capabilities.response === undefined) {
           missing.push("response:" + r.id);
@@ -281,6 +281,28 @@ export function buildArgs(model: ExplorerModel, op: ContractOperation, inputs: T
       }
     }
   }
+  if (op.requestBody.kind === "xml") {
+    // the value the XML codec writes, edited as JSON like any body value; an XML body is never null (an optional one is left out)
+    const bodyText = inputs.body;
+    if (inputs.bodyJson === undefined && bodyText.trim().length === 0) {
+      if (op.requestBody.presence === "required") {
+        errors.push({ path: "/body", message: "request body is required", code: "body-required" });
+      }
+    } else {
+      const codec = model.registry.registry.get(op.requestBody.use.codecId);
+      try {
+        const ast = inputs.bodyJson ?? parseJson(bodyText);
+        if (codec.parseRequestInput === undefined) {
+          errors.push({ path: "/body", message: `codec '${codec.id}' has no request-input capability`, code: "no-request-input" });
+        } else {
+          args["body"] = codec.parseRequestInput(ast, context.child("body"));
+        }
+      } catch (error) {
+        const info = codecErrorOf(error);
+        errors.push(thrown(info !== undefined && info.path.startsWith("/body") ? info.path : "/body", error));
+      }
+    }
+  }
   if (op.requestBody.kind === "binary") {
     if (inputs.bodyBytes !== undefined) { args["body"] = inputs.bodyBytes; }
     else if (op.requestBody.presence === "required") { errors.push({ path: "/body", message: "request body is required", code: "body-required" }); }
@@ -300,6 +322,24 @@ export function buildArgs(model: ExplorerModel, op: ContractOperation, inputs: T
           body[field.name] = field.repeated
             ? Array.from({ length: count }, (_, i) => readFields(field.fields ?? [], key + `[${i}].`, ctx.child(i)))
             : readFields(field.fields ?? [], key + ".", ctx);
+        } else if (field.kind === "map") {
+          // rows of a dictionary: the count at the field's key, each row's key and value text under a name no form field can have
+          const marker = inputs.formValues?.[key];
+          if (marker === undefined && field.presence === "optional") { continue; }
+          const count = Number(marker ?? "0");
+          if (!Number.isSafeInteger(count) || count < 1 || count > 1024) { errors.push({ path, message: "form dictionary requires 1–1024 entries", code: "form-items" }); continue; }
+          const entries = new Map<unknown, unknown>();
+          for (let i = 0; i < count; i++) {
+            const keyText = inputs.formValues?.[mapEntryKey(key, i, "key")] ?? "";
+            try {
+              const entryKey = model.registry.registry.get(field.keyUse!.codecId).parseRequestInput!(keyText, ctx.child(keyText));
+              if (entries.has(entryKey)) { errors.push({ path: ctx.child(keyText).path, message: "duplicate key", code: "duplicate-key" }); continue; }
+              const codec = model.registry.registry.get(field.use!.codecId);
+              if (codec.parseRequestInput === undefined) { throw new Error("form field codec has no request input"); }
+              entries.set(entryKey, codec.parseRequestInput(inputs.formValues?.[mapEntryKey(key, i, "value")] ?? "", ctx.child(keyText)));
+            } catch (error) { errors.push(thrown(ctx.child(keyText).path, error)); }
+          }
+          body[field.name] = entries;
         } else if (field.kind === "file") {
           const files = inputs.formFiles?.[key];
           if (files !== undefined && files.length > 0) { body[field.name] = field.repeated ? files : files[0]; }
@@ -322,6 +362,11 @@ export function buildArgs(model: ExplorerModel, op: ContractOperation, inputs: T
     args["body"] = readFields(op.requestBody.fields, "", context.child("body"));
   }
   return { args, errors };
+}
+
+/** The draft key of a dictionary row's key or value: U+0001 cannot occur in a form field name, so it never meets one. */
+export function mapEntryKey(fieldKey: string, row: number, part: "key" | "value"): string {
+  return `${fieldKey}\u0001${row}\u0001${part}`;
 }
 
 /**
@@ -480,21 +525,25 @@ export interface DisplayNode {
 const maxDepth = 24;
 const maxChildren = 500;
 
-/** Up to `maxChildren` children; past that, one marker saying how many were left out (the JSON view shows every item). */
-function childrenOf(entries: Iterable<readonly [string, unknown]>, total: number, depth: number): DisplayNode[] {
+/** Up to `maxChildren` children; past that, one marker saying how many were left out (the body's JSON or XML view shows every item). */
+function childrenOf(entries: Iterable<readonly [string, unknown]>, total: number, depth: number, seen: Map<object, string>, path: string, wire: string): DisplayNode[] {
   const children: DisplayNode[] = [];
   for (const [key, value] of entries) {
     if (children.length >= maxChildren) {
-      children.push({ label: "…", kind: "truncated", text: t().truncated(total - maxChildren) });
+      children.push({ label: "…", kind: "truncated", text: t().truncated(total - maxChildren, wire) });
       break;
     }
-    children.push(describeValue(value, key, depth + 1));
+    children.push(describeValue(value, key, depth + 1, seen, path + "/" + key.replaceAll("~", "~0").replaceAll("/", "~1"), wire));
   }
   return children;
 }
 
-/** A display tree of a decoded public value; BigInt/Decimal/dates keep their exact text. */
-export function describeValue(value: unknown, label = "", depth = 0): DisplayNode {
+/**
+ * A display tree of a decoded public value; BigInt/Decimal/dates keep their exact text. A value reached again — a shared or cyclic value
+ * of a ReferenceHandler.Preserve response — is shown once and then as a reference to where it was (`#/children/0`). `wire` names the
+ * view of the body as written (JSON, or XML for an XML case), which a list too long to show here points to.
+ */
+export function describeValue(value: unknown, label = "", depth = 0, seen = new Map<object, string>(), path = "#", wire = "JSON"): DisplayNode {
   if (depth > maxDepth) {
     return { label, kind: "truncated", text: "…" };
   }
@@ -524,17 +573,24 @@ export function describeValue(value: unknown, label = "", depth = 0): DisplayNod
   if (isDecimal(value)) {
     return { label, kind: "decimal", text: formatDecimal(value) };
   }
+  const first = seen.get(value);
+  if (first !== undefined) {
+    return { label, kind: "reference", text: t().sameValue(first) };
+  }
   if (value instanceof TisiliaMap) {
     const map = value;
-    return { label, kind: "map", children: childrenOf((function* () { for (const [k, v] of map.entries()) yield [describeValue(k).text ?? "?", v] as const; })(), map.size, depth) };
+    seen.set(value, path);
+    return { label, kind: "map", children: childrenOf((function* () { for (const [k, v] of map.entries()) yield [describeValue(k).text ?? "?", v] as const; })(), map.size, depth, seen, path, wire) };
   }
   if (value instanceof Map) {
     const map = value;
-    return { label, kind: "map", children: childrenOf((function* () { for (const [k, v] of map) yield [String(k), v] as const; })(), map.size, depth) };
+    seen.set(value, path);
+    return { label, kind: "map", children: childrenOf((function* () { for (const [k, v] of map) yield [String(k), v] as const; })(), map.size, depth, seen, path, wire) };
   }
   if (Array.isArray(value)) {
     const items = value;
-    return { label, kind: "array", children: childrenOf((function* () { for (let i = 0; i < items.length; i++) yield [String(i), items[i]] as const; })(), items.length, depth) };
+    seen.set(value, path);
+    return { label, kind: "array", children: childrenOf((function* () { for (let i = 0; i < items.length; i++) yield [String(i), items[i]] as const; })(), items.length, depth, seen, path, wire) };
   }
   const record = value as Record<string, unknown>;
   const kind = record["kind"];
@@ -569,7 +625,8 @@ export function describeValue(value: unknown, label = "", depth = 0): DisplayNod
     }
   }
   const members = Object.entries(record);
-  return { label, kind: "object", children: childrenOf(members, members.length, depth) };
+  seen.set(value, path);
+  return { label, kind: "object", children: childrenOf(members, members.length, depth, seen, path, wire) };
 }
 
 // ---------------------------------------------------------------- redaction
@@ -601,7 +658,8 @@ export function redactTree(node: DisplayNode, mode: RedactionMode): DisplayNode 
   if (node.children !== undefined) {
     return { ...node, children: node.children.map((c) => redactTree(c, mode)) };
   }
-  if (node.kind === "null" || node.kind === "absent" || node.kind === "boolean" || node.kind === "truncated") {
+  // a reference names a place in the same tree, not a value
+  if (node.kind === "null" || node.kind === "absent" || node.kind === "boolean" || node.kind === "truncated" || node.kind === "reference") {
     return node;
   }
   return { ...node, text: "•••" };

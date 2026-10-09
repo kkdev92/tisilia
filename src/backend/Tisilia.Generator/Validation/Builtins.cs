@@ -57,6 +57,24 @@ public static class Builtins
 
     public static readonly string[] StructureNames = ["object", "array", "map", "brand", "union", "enum"];
 
+    /// <summary>
+    /// The text grammars of XML wires: the forms MVC's XmlSerializer formatters write and read for a CLR type (XmlCustomFormatter and
+    /// XmlConvert, dotnet/runtime v10.0.0). <c>xml-enum</c> and <c>xml-flags</c> name the constants their wire lists.
+    /// </summary>
+    public static readonly string[] XmlGrammarNames =
+    [
+        "xml-string", "xml-boolean", "xml-integer", "xml-decimal", "xml-float", "xml-datetime", "xml-date", "xml-time-only",
+        "xml-datetime-offset", "xml-duration", "xml-guid", "xml-char", "xml-base64", "xml-hex", "xml-enum", "xml-flags",
+    ];
+
+    /// <summary>The builtin codecs of XML wires: text, the content of a class, and the items of a collection.</summary>
+    public static readonly string[] XmlCodecNames = ["xml-text", "xml-element", "xml-items"];
+
+    /// <summary>The binding of every XML codec: MVC's XmlSerializer formatters, which describe the types with XmlSerializer's own mapping.</summary>
+    public const string BindingXmlSerializer = "tisilia.binding.xml-serializer@0.1";
+
+    public static bool IsXmlGrammar(string id) => id.StartsWith("tisilia.grammar.xml-", StringComparison.Ordinal) && TryGet(id, out var entry) && entry.Kind == BuiltinKind.Grammar;
+
     /// <summary>Scalars whose canonical wire token is a JSON number.</summary>
     public static readonly string[] NumberTokenScalars = ["int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64", "decimal", "float32", "float64"];
 
@@ -106,6 +124,9 @@ public static class Builtins
     public const string ResolverStjSourceGenerated = "tisilia.resolver.stj-source-generated@0.1";
     public const string AcceptCanonical = "tisilia.accept.canonical@0.1";
     public const string AcceptDotnetTryParseInvariant = "tisilia.accept.dotnet-tryparse-invariant@0.1";
+
+    /// <summary>The server reads the text with the parameter type's own parser (TryParse, IParsable&lt;T&gt; or a TypeConverter); the contract does not say which texts it accepts.</summary>
+    public const string AcceptServerParsed = "tisilia.accept.server-parsed@0.1";
     public const string AuthAnonymous = "tisilia.auth.anonymous@0.1";
     public const string AuthAuthenticated = "tisilia.auth.authenticated@0.1";
     public const string CsrfNone = "tisilia.csrf.none@0.1";
@@ -126,6 +147,8 @@ public static class Builtins
     public const string ResultTextUtf8 = "tisilia.result.text-utf8@0.1";
     public const string ResultBinaryBuffered = "tisilia.result.binary-buffered@0.1";
     public const string ResultSse = "tisilia.result.sse@0.1";
+    /// <summary>An MVC object result written by XmlSerializerOutputFormatter.</summary>
+    public const string ResultXmlSerializer = "tisilia.result.xml-serializer@0.1";
     public const string BinderPathSegment = "tisilia.binder.path-segment@0.1";
     public const string BinderQueryComponent = "tisilia.binder.query-component@0.1";
     public const string BinderHeaderText = "tisilia.binder.header-text@0.1";
@@ -182,6 +205,18 @@ public static class Builtins
             Add(Grammar(name + "-string"), BuiltinKind.Grammar, name + "-string");
         }
 
+        foreach (var name in XmlGrammarNames)
+        {
+            Add(Grammar(name), BuiltinKind.Grammar, name);
+        }
+
+        foreach (var name in XmlCodecNames)
+        {
+            Add(CodecImpl(name, "encode"), BuiltinKind.CodecImpl, name);
+            Add(CodecImpl(name, "decode"), BuiltinKind.CodecImpl, name);
+        }
+
+        Add(BindingXmlSerializer, BuiltinKind.Binding, "xml-serializer");
         Add(Grammar("float64-named"), BuiltinKind.Grammar, "float64-named");
         Add(Grammar("float32-named"), BuiltinKind.Grammar, "float32-named");
         Add(Grammar("text"), BuiltinKind.Grammar, "text");
@@ -212,6 +247,7 @@ public static class Builtins
         Add(ResolverStjSourceGenerated, BuiltinKind.Resolver, "stj-source-generated");
         Add(AcceptCanonical, BuiltinKind.ServerAcceptance, "canonical");
         Add(AcceptDotnetTryParseInvariant, BuiltinKind.ServerAcceptance, "dotnet-tryparse-invariant");
+        Add(AcceptServerParsed, BuiltinKind.ServerAcceptance, "server-parsed");
         Add(AuthAnonymous, BuiltinKind.AuthPolicy, "anonymous");
         Add(AuthAuthenticated, BuiltinKind.AuthPolicy, "authenticated");
         Add(CsrfNone, BuiltinKind.CsrfPolicy, "none");
@@ -229,6 +265,7 @@ public static class Builtins
         Add(ResultTextUtf8, BuiltinKind.Result, "text-utf8");
         Add(ResultBinaryBuffered, BuiltinKind.Result, "binary-buffered");
         Add(ResultSse, BuiltinKind.Result, "sse");
+        Add(ResultXmlSerializer, BuiltinKind.Result, "xml-serializer");
         Add(BinderPathSegment, BuiltinKind.Binder, "path-segment");
         Add(BinderQueryComponent, BuiltinKind.Binder, "query-component");
         Add(BinderHeaderText, BuiltinKind.Binder, "header-text");

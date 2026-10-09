@@ -53,6 +53,11 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
         var bag = new DiagnosticBag();
         var opts = options.Value;
         var builder = new ContractBuilder(opts.ApiId);
+        if (opts.DateTimes.ServerTimeZone is { } serverTimeZone)
+        {
+            builder.BindServerTimeZone(ServerTimeZoneTable.Of(serverTimeZone).ToBinding());
+        }
+
         var provider = services.GetRequiredService<IApiDescriptionGroupCollectionProvider>();
         var minimalJson = services.GetService<IOptions<Microsoft.AspNetCore.Http.Json.JsonOptions>>()?.Value.SerializerOptions ?? new JsonSerializerOptions(JsonSerializerDefaults.Web) { TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver() };
         var mvcJson = services.GetService<IOptions<Microsoft.AspNetCore.Mvc.JsonOptions>>()?.Value.JsonSerializerOptions;
@@ -60,6 +65,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
         var mappers = new Dictionary<string, ClrTypeMapper>(StringComparer.Ordinal);
         var adapters = new Conformance.RunnerAdapterTable();
         var documentation = new ApiDocumentation();
+        var xml = new XmlTypeMapper(builder, opts);
         var problemDetails = services.GetService<Microsoft.AspNetCore.Http.IProblemDetailsService>() is not null;
         // [ApiController] maps status code results of 400 and above to ProblemDetails unless ApiBehaviorOptions.SuppressMapClientErrors
         var mapClientErrors = services.GetService<IOptions<ApiBehaviorOptions>>()?.Value.SuppressMapClientErrors != true;
@@ -74,7 +80,11 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
 
             var ctx = ProfileContext.Create(builder, opts.ApiId + ".profile." + suffix, source, opts.Resolvers, bag);
             profiles[source] = ctx;
-            mappers[ctx.Profile.Id] = new ClrTypeMapper(builder, ctx, opts, bag, adapters, suffix.StartsWith("endpoint.", StringComparison.Ordinal) ? ctx.Profile.Id : null);
+            // models are named by CLR type and direction: options that describe types otherwise than the minimal API's (MVC with its own
+            // naming policy, converters …) or an endpoint's own options get their own model scope, so neither profile's description
+            // replaces the other's
+            var ownScope = suffix.StartsWith("endpoint.", StringComparison.Ordinal) || !ReferenceEquals(source, minimalJson) && !ProfileContext.DescribeTypesAlike(source, minimalJson);
+            mappers[ctx.Profile.Id] = new ClrTypeMapper(builder, ctx, opts, bag, adapters, ownScope ? ctx.Profile.Id : null);
             return ctx;
         }
 
@@ -138,7 +148,19 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             }
             ProfileContext ResponseProfile(int status) => responseDeclaration is null || status != responseDeclaration.StatusCode ? Profile() : ProfileFor(responseDeclaration.Options, "endpoint." + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(opId)))[..24]);
             ClrTypeMapper ResponseMapper(int status) => mappers[ResponseProfile(status).Profile.Id];
-            var operation = BuildOperation(description, metadata, isMvc, Profile, Mapper, ResponseProfile, ResponseMapper, opts.DateTimes.Default, matches[0], services.GetRequiredService<ParameterPolicyFactory>(), builder, bag, opPath, problemDetails, mapClientErrors, nullAsNoContent, documentation);
+            // ServerSentEventsResult<T> serializes event data with the minimal API JsonOptions from DI, also when an MVC action
+            // returns it, and whatever an endpoint declares for TypedResults.Json (aspnetcore v10.0.0)
+            ProfileContext EventProfile() => ProfileFor(minimalJson, "minimal");
+            ClrTypeMapper EventMapper() => mappers[EventProfile().Profile.Id];
+            var conflicts = builder.ProfileConflicts.Count;
+            var operation = BuildOperation(description, metadata, isMvc, Profile, Mapper, ResponseProfile, ResponseMapper, EventProfile, EventMapper, opts.DateTimes.Default, matches[0], services.GetRequiredService<ParameterPolicyFactory>(), services.GetService<Microsoft.AspNetCore.Mvc.ModelBinding.IModelMetadataProvider>(), opts.CustomBinding, builder, bag, opPath, problemDetails, mapClientErrors, nullAsNoContent, documentation, services, xml);
+            foreach (var conflict in builder.ProfileConflicts.Skip(conflicts))
+            {
+                var id = conflict.Id.StartsWith("type:", StringComparison.Ordinal) || conflict.Id.StartsWith("wire:", StringComparison.Ordinal) ? conflict.Id[5..] : conflict.Id;
+                var described = builder.GetType(id)?.ClrIdentity ?? id;
+                bag.Error(TisiliaCodes.ProfileResolution, "SV16", opPath, $"operation '{opId}': the JSON options of profiles '{conflict.FirstProfileId}' and '{conflict.SecondProfileId}' describe '{described}' differently under one model id ('{id}'), so one description would be wrong for the other's endpoints", [opId, id],
+                    "give the minimal API and MVC JSON options the same converters with the same settings, or serve the type through one of them; options that differ in naming, number handling, ignore conditions, converter types or resolvers already get their own models");
+            }
             if (operation is not null)
             {
                 builder.AddOperation(operation);
@@ -156,6 +178,8 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
         {
             documentation.Types(mapper.Documented);
         }
+
+        documentation.Types(xml.Documented);
 
         foreach (var (targetId, doc) in opts.Documentation)
         {
@@ -191,7 +215,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
         return bag.HasErrors ? new ExportResult(bag, null, null, count) : new ExportResult(bag, text, root, count, index, adapters);
     }
 
-    private static Operation? BuildOperation(ApiDescription description, TisiliaOperationAttribute metadata, bool isMvc, Func<ProfileContext> profile, Func<ClrTypeMapper> mapper, Func<int, ProfileContext> responseProfile, Func<int, ClrTypeMapper> responseMapper, Bindings.DateTimeWire? dateTimeWire, RouteEndpoint endpoint, ParameterPolicyFactory policyFactory, ContractBuilder builder, DiagnosticBag bag, string opPath, bool problemDetails, bool mapClientErrors, bool nullAsNoContent, ApiDocumentation documentation)
+    private static Operation? BuildOperation(ApiDescription description, TisiliaOperationAttribute metadata, bool isMvc, Func<ProfileContext> profile, Func<ClrTypeMapper> mapper, Func<int, ProfileContext> responseProfile, Func<int, ClrTypeMapper> responseMapper, Func<ProfileContext> eventProfile, Func<ClrTypeMapper> eventMapper, Bindings.DateTimeWire? dateTimeWire, RouteEndpoint endpoint, ParameterPolicyFactory policyFactory, Microsoft.AspNetCore.Mvc.ModelBinding.IModelMetadataProvider? modelMetadata, Bindings.CustomBindingCollection customBinding, ContractBuilder builder, DiagnosticBag bag, string opPath, bool problemDetails, bool mapClientErrors, bool nullAsNoContent, ApiDocumentation documentation, IServiceProvider services, XmlTypeMapper xml)
     {
         // what the documentation is read from, once the operation is known to be exported
         var documentedParameters = new List<(string Id, ApiParameterDescription Description, Type ValueType)>();
@@ -211,14 +235,17 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
         var route = "/" + (template ?? description.RelativePath ?? "").TrimStart('/');
         var parameters = new List<Parameter>();
         var formFields = new List<FormField>();
+        var everyFile = new List<FormField>();
         RequestBody requestBody = new NoRequestBody();
         var np = NumberProfile.Strict;
         var apiController = isMvc && description.ActionDescriptor.EndpointMetadata.OfType<ApiControllerAttribute>().Any();
         var pIndex = 0;
+        var mvcFormModels = new HashSet<Microsoft.AspNetCore.Mvc.Abstractions.ParameterDescriptor>();
         foreach (var p in description.ParameterDescriptions)
         {
             var pPath = opPath + "/parameters/" + pIndex;
             var source = p.Source;
+            var type = ParameterClrType(p, isMvc);
             if (source == BindingSource.Body)
             {
                 if (requestBody is not NoRequestBody)
@@ -227,7 +254,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
                     continue;
                 }
 
-                if (p.Type == typeof(Stream) || p.Type == typeof(System.IO.Pipelines.PipeReader))
+                if (type == typeof(Stream) || type == typeof(System.IO.Pipelines.PipeReader))
                 {
                     var accepts = endpoint.Metadata.GetMetadata<IAcceptsMetadata>();
                     var rawMedia = accepts?.ContentTypes.Distinct(StringComparer.OrdinalIgnoreCase).ToArray() ?? [];
@@ -241,19 +268,65 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
                     continue;
                 }
 
-                var use = mapper().Map(p.Type, WireDirection.ServerRead, pPath, isRoot: true);
+                // The media type the client sends the JSON body with. ApiExplorer's request formats are, for MVC, the media types an input
+                // formatter reads within the declared ones ([Consumes]); for a minimal API, the declared ones (Accepts<T>, application/json
+                // when inferred), of which the request delegate reads application/json and +json types only (HasJsonContentType answers
+                // text/json with 415). Routing answers a content type outside the declared ones with 415 (AcceptsMatcherPolicy), so a
+                // wildcard declared with Accepts<T> admits application/json; [Consumes] refuses wildcards (aspnetcore v10.0.0).
+                static bool IsJson(string media) => HttpRules.ParseMediaType(media) is { } parsed && HttpRules.JsonMediaEssences.Contains(parsed.Essence);
+                static string? MinimalApiJson(string declared) => HttpRules.ParseMediaType(declared) switch
+                {
+                    { Type: "*", Subtype: "*" } or { Type: "application", Subtype: "*" } => "application/json",
+                    { } media when HttpRules.JsonMediaEssences.Contains(media.Essence) && (media.Essence == "application/json" || media.Subtype.EndsWith("+json", StringComparison.Ordinal)) => media.Essence,
+                    _ => null,
+                };
+                var requestFormats = description.SupportedRequestFormats.Select(f => f.MediaType).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                var mediaType = isMvc ? requestFormats.Where(IsJson).Select(m => HttpRules.ParseMediaType(m)!.Essence).FirstOrDefault()
+                    : requestFormats.Length == 0 ? "application/json" : requestFormats.Select(MinimalApiJson).FirstOrDefault(m => m is not null);
+                // MVC: an input formatter reads the body in a declared media type that is not JSON (XmlSerializerInputFormatter, a custom
+                // formatter). The client sends the bytes it is given; the contract does not describe their shape.
+                // (XmlSerializerInputFormatter lists application/xml, text/xml and the application/*+xml pattern: the first concrete one is sent)
+                var readable = requestFormats.Select(HttpRules.ParseMediaType).FirstOrDefault(m => m is not null && !m.Type.Contains('*') && !m.Subtype.Contains('*') && HttpRules.IsRawRequestMediaType(m.Essence));
+                if (mediaType is null && isMvc && readable is not null)
+                {
+                    var presence = p.IsRequired || !IsNullableType(type) ? Presence.Required : Presence.Optional;
+                    // XmlSerializerInputFormatter reads the body with XmlSerializer: the contract describes it with XmlSerializer's own mapping
+                    var xmlReason = XmlInput(description.SupportedRequestFormats, readable.Essence, type, xml, out var xmlBody, out var maxDepth);
+                    if (xmlBody is not null)
+                    {
+                        requestBody = new XmlRequestBody { MediaType = readable.Essence, Root = xmlBody.Root, Use = xmlBody.Use, Presence = presence, MaxDepth = maxDepth };
+                        bodyParameter = (p.ParameterDescriptor as Microsoft.AspNetCore.Mvc.Infrastructure.IParameterInfoParameterDescriptor)?.ParameterInfo;
+                        continue;
+                    }
+
+                    bag.Warning(TisiliaCodes.MediaTypeInvalid, "SV29", pPath, $"operation '{opId}': an input formatter reads the {FriendlyName(type)} body as {string.Join(", ", requestFormats)}{(xmlReason is null ? "" : $" ({xmlReason})")}; the contract does not describe that representation, so the client sends the bytes it is given as {readable.Essence}", [opId],
+                        xmlReason is null ? "accept application/json for this body to have the client encode the value" : "accept application/json for this body, or keep its type to what XmlSerializer writes without xsi:type, choices or xs:any, to have the client encode the value");
+                    requestBody = new BinaryRequestBody { MediaType = readable.Essence, Presence = presence };
+                    continue;
+                }
+
+                if (mediaType is null)
+                {
+                    var accepted = requestFormats.Length > 0 ? requestFormats : endpoint.Metadata.GetMetadata<IAcceptsMetadata>()?.ContentTypes.ToArray() ?? [];
+                    bag.Error(TisiliaCodes.MediaTypeInvalid, "SV29", pPath, accepted.Length > 0
+                            ? $"operation '{opId}': the request body accepts {string.Join(", ", accepted)}; {(isMvc ? "no input formatter reads it as JSON" : "a minimal API reads only application/json and +json types as JSON")}. Only JSON request bodies, raw uploads and forms are supported"
+                            : $"operation '{opId}': no input formatter reads the request body as JSON. Only JSON request bodies, raw uploads and forms are supported", [opId],
+                        "accept application/json for this body, or keep the operation out of the Tisilia operations");
+                    continue;
+                }
+
+                var use = mapper().Map(type, WireDirection.ServerRead, pPath, isRoot: true);
                 if (use is null)
                 {
                     continue;
                 }
 
-                var mediaType = description.SupportedRequestFormats.Select(f => f.MediaType).FirstOrDefault(m => HttpRules.ParseMediaType(m) is { } mt && HttpRules.JsonMediaEssences.Contains(mt.Essence)) ?? "application/json";
                 requestBody = new JsonRequestBody
                 {
-                    MediaType = HttpRules.ParseMediaType(mediaType)!.Essence,
+                    MediaType = mediaType,
                     ProfileId = profile().Profile.Id,
                     Use = use,
-                    Presence = p.IsRequired || !IsNullableType(p.Type) ? Presence.Required : Presence.Optional,
+                    Presence = p.IsRequired || !IsNullableType(type) ? Presence.Required : Presence.Optional,
                 };
                 bodyParameter = (p.ParameterDescriptor as Microsoft.AspNetCore.Mvc.Infrastructure.IParameterInfoParameterDescriptor)?.ParameterInfo;
                 continue;
@@ -263,10 +336,24 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             {
                 if (source == BindingSource.FormFile || source == BindingSource.Form)
                 {
-                    AddFormFields(p, isMvc, apiController, mapper, builder, bag, opId, pPath, formFields);
+                    // MVC's ApiExplorer spreads a complex form model into one description per leaf property (DefaultApiDescriptionProvider,
+                    // aspnetcore v10.0.0): the model is described once, from the first of them
+                    var spread = isMvc && p.ModelMetadata?.MetadataKind == Microsoft.AspNetCore.Mvc.ModelBinding.Metadata.ModelMetadataKind.Property && p.ParameterDescriptor is not null;
+                    if (!spread || mvcFormModels.Add(p.ParameterDescriptor!))
+                    {
+                        AddFormFields(p, isMvc, apiController, endpoint.Metadata.GetOrderedMetadata<IParameterBindingMetadata>(), mapper, modelMetadata, builder, bag, opId, pPath, formFields, everyFile);
+                    }
                 }
 
                 continue; // DI and HttpContext parameters are not part of the HTTP contract
+            }
+
+            // an MVC model binder ([ModelBinder]) reads the request in its own code: the parameter is what its declaration says
+            if (isMvc && (p.BindingInfo?.BinderType ?? p.ModelMetadata?.BinderType) is { } binderType)
+            {
+                AddDeclaredReads(customBinding.ForModelBinder(binderType), $"binds through the model binder {FriendlyName(binderType)}", p.BindingInfo?.BinderModelName ?? p.Name,
+                    $"options.CustomBinding.ModelBinder<{FriendlyName(binderType)}>(reads => reads.Query<string>(RequestReads.ModelName))", pPath);
+                continue;
             }
 
             ParameterLocation location;
@@ -292,7 +379,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             // ParameterInfo.DefaultValue (what minimal APIs report) is DBNull.Value when the parameter declares no default — not a default of
             // its own, and distinct from an explicit null default; MVC reports null then (ProcessParameterDefaultValue)
             var declaredDefault = p.DefaultValue is DBNull or System.Reflection.Missing ? null : p.DefaultValue;
-            var (elementType, repeated) = UnwrapCollection(p.Type);
+            var (elementType, repeated) = UnwrapCollection(type);
             // MVC's ApiExplorer sets IsRequired only for [BindRequired] and route values (DefaultApiDescriptionProvider.ProcessIsRequired,
             // v10.0.0); under [ApiController] a validation-required parameter ([Required], or the implicit one of a non-nullable reference
             // type) that is missing is an automatic 400 (ModelStateInvalidFilter), so the client must always send it. A missing repeated
@@ -387,6 +474,36 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
                 continue;
             }
 
+            if (scalar is null && ReadsOwnText(scalarType, isMvc, repeated ? p.ModelMetadata?.ElementMetadata : p.ModelMetadata))
+            {
+                // The server reads the text with the type's own parser (a minimal API through its TryParse, IParsable<T> included; MVC
+                // through its TypeConverter or TryParse): the client sends it as a string the contract does not check.
+                if (location == ParameterLocation.Path && repeated)
+                {
+                    bag.Error(TisiliaCodes.ParameterRouteMismatch, "SV30", pPath, $"operation '{opId}': path parameter '{p.Name}' cannot be a collection", [opId]);
+                    continue;
+                }
+
+                bag.Warning(TisiliaCodes.ParameterRouteMismatch, "SV30", pPath, $"operation '{opId}': parameter '{p.Name}' is sent as text that the server parses with {FriendlyName(scalarType)}'s own parser; the contract does not describe which texts it accepts, so the client sends any string and the server answers the texts it refuses", [opId],
+                    "take a builtin scalar or an additional codec type to have the client check the value");
+                var parsedRequired = location == ParameterLocation.Path ? pathRequired : (isRequired && !nullable && !repeated && declaredDefault is null);
+                parameters.Add(new Parameter
+                {
+                    Id = ParameterId(opId, p.Name),
+                    Name = p.Name,
+                    HasServerDefault = hasServerDefault,
+                    Location = location,
+                    BinderId = builder.ServerParsedBinder("string", location, repeated ? Cardinality.Repeated : Cardinality.Single, nullable ? NullPolicy.Omit : NullPolicy.Reject),
+                    Use = builder.Scalar("string", NumberProfile.Strict, nullable),
+                    Presence = parsedRequired ? Presence.Required : Presence.Optional,
+                    // a default of the type itself has no text the contract could hold
+                    ServerDefault = hasServerDefault ? new JsonNullValue() : null,
+                });
+                documentedParameters.Add((parameters[^1].Id, p, scalarType));
+                pIndex++;
+                continue;
+            }
+
             if (scalar is null || scalar is "bytes" or "json-value" or "datetime-local-wire")
             {
                 bag.Error(TisiliaCodes.ParameterRouteMismatch, "SV30", pPath, $"operation '{opId}': parameter '{p.Name}' of type '{elementType}' has no standard HTTP string binder; TryParse/BindAsync types need a registered binder binding", [opId]);
@@ -422,6 +539,60 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
         var responseTypes = ResponseMetadata(description, bag, opPath);
         var endpointMetadata = description.ActionDescriptor.EndpointMetadata;
         var handler = HandlerMethod(description);
+        // EndpointMetadataApiDescriptionProvider files a BindAsync parameter under Services and leaves it out of the description
+        // (aspnetcore v10.0.0). The request delegate records how it binds each parameter and [AsParameters] member, so an explicit
+        // [FromBody], [FromQuery] … still wins over the type's BindAsync here as it does at run time. BindAsync code may read the body,
+        // query or headers: nothing the contract can say.
+        foreach (var bound in endpoint.Metadata.GetOrderedMetadata<IParameterBindingMetadata>().Where(p => p.HasBindAsync))
+        {
+            var boundType = Nullable.GetUnderlyingType(bound.ParameterInfo.ParameterType) ?? bound.ParameterInfo.ParameterType;
+            AddDeclaredReads(customBinding.ForBindAsync(boundType), $"binds through {FriendlyName(boundType)}.BindAsync", bound.Name, $"options.CustomBinding.BindAsync<{FriendlyName(boundType)}>(reads => reads.Query<int>(\"page\"))", opPath + "/parameters");
+        }
+
+        // A type's BindAsync or an MVC model binder reads the request in the application's own code, which the contract can describe only
+        // as declared (TisiliaOptions.CustomBinding): each declared value is a parameter whose canonical text that code parses.
+        void AddDeclaredReads(Bindings.RequestReads? reads, string binding, string modelName, string declaration, string at)
+        {
+            if (reads is null)
+            {
+                bag.Error(TisiliaCodes.ParameterRouteMismatch, "SV30", at, $"operation '{opId}': parameter '{modelName}' {binding}, which reads the request in code the contract cannot describe without a declaration", [opId],
+                    $"declare what it reads — {declaration}, or reads.NotFromRequest() for a value of claims or features — or bind request data with [FromRoute], [FromQuery], [FromHeader], [FromBody] or [FromForm]");
+                return;
+            }
+            foreach (var read in reads.Values)
+            {
+                var name = read.Name.Replace(Bindings.RequestReads.ModelName, modelName, StringComparison.Ordinal);
+                var (readElement, readRepeated) = UnwrapCollection(read.Type);
+                var readType = Nullable.GetUnderlyingType(readElement) ?? readElement;
+                var readScalar = readType == typeof(DateTime) ? "datetime" : ClrTypeMapper.ScalarNameOf(readType);
+                if (readScalar is null or "bytes" or "json-value" or "datetime-local-wire")
+                {
+                    bag.Error(TisiliaCodes.ParameterRouteMismatch, "SV30", at, $"operation '{opId}': the declared read '{name}' of parameter '{modelName}' is a {FriendlyName(read.Type)}; declare a builtin scalar, or an array or list of one", [opId]);
+                    continue;
+                }
+                if (read.Location == ParameterLocation.Path && (readRepeated || endpoint.RoutePattern.GetParameter(name) is null))
+                {
+                    bag.Error(TisiliaCodes.ParameterRouteMismatch, "SV30", at, $"operation '{opId}': the declared route value '{name}' of parameter '{modelName}' is not a single parameter of the route '{endpoint.RoutePattern.RawText}'", [opId]);
+                    continue;
+                }
+                if (parameters.Any(other => string.Equals(other.Name, name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    bag.Error(TisiliaCodes.ParameterRouteMismatch, "SV30", at, $"operation '{opId}': the declared read '{name}' of parameter '{modelName}' is also another parameter of the operation", [opId]);
+                    continue;
+                }
+                var optionalRead = read.Location != ParameterLocation.Path && !readRepeated && (read.Optional || Nullable.GetUnderlyingType(readElement) is not null);
+                parameters.Add(new Parameter
+                {
+                    Id = ParameterId(opId, name),
+                    Name = name,
+                    HasServerDefault = false,
+                    Location = read.Location,
+                    BinderId = builder.ServerParsedBinder(readScalar, read.Location, readRepeated ? Cardinality.Repeated : Cardinality.Single, optionalRead ? NullPolicy.Omit : NullPolicy.Reject),
+                    Use = builder.Scalar(readScalar, NumberProfile.Strict, optionalRead),
+                    Presence = optionalRead || readRepeated ? Presence.Optional : Presence.Required,
+                });
+            }
+        }
         var handlerResult = handler is null ? null : UnwrapAwaitable(handler.ReturnType);
         var jsonDeclaration = endpoint.Metadata.GetMetadata<TisiliaJsonOptionsMetadata>();
         if (jsonDeclaration is not null)
@@ -451,11 +622,23 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
         var declaresResponses = endpointMetadata.OfType<IProducesResponseTypeMetadata>().Any() || endpointMetadata.OfType<IApiResponseMetadataProvider>().Any();
         // EndpointMetadataApiDescriptionProvider treats an IResult return type without response metadata as void and still lists a
         // 200 response (aspnetcore v10.0.0): the result decides at run time what it writes, so that 200 describes nothing
+        var inferred = false;
         if (responseTypes.Count == 0 || (!isMvc && handlerResult is not null && typeof(IResult).IsAssignableFrom(handlerResult) && !declaresResponses))
         {
-            bag.Error(TisiliaCodes.PipelineOrResultClosure, "SV34", opPath + "/responses", $"operation '{opId}' declares no response types{(handlerResult is null ? "" : $" (it returns {FriendlyName(handlerResult)})")}; IActionResult/IResult without produces metadata cannot be exported", [opId],
-                "return TypedResults (Ok<T>, Created<T>, Results<…>) or ActionResult<T>, or add [ProducesResponseType]/Produces<T>() metadata");
-            return null;
+            // the responses Tisilia's source generator read from the handler's return paths, which are what the typed declaration
+            // would have said; a path it could not read leaves the operation undescribed
+            var inference = handlerResult == typeof(IResult) || handlerResult == typeof(IActionResult) || handlerResult == typeof(ActionResult)
+                ? ResponseInference.Read(opId, handler, description, services)
+                : null;
+            if (inference?.Responses is not { } read)
+            {
+                bag.Error(TisiliaCodes.PipelineOrResultClosure, "SV34", opPath + "/responses", $"operation '{opId}' declares no response types{(handlerResult is null ? "" : $" (it returns {FriendlyName(handlerResult)})")}; IActionResult/IResult without produces metadata cannot be exported{(inference?.Failure is { } why ? $", and Tisilia could not read them from the source: {why}" : "")}", [opId],
+                    "return TypedResults (Ok<T>, Created<T>, Results<…>) or ActionResult<T>, or add [ProducesResponseType]/Produces<T>() metadata; Tisilia reads the responses itself from handlers whose every path returns a Results, TypedResults or ControllerBase helper");
+                return null;
+            }
+
+            responseTypes = read;
+            inferred = true;
         }
 
         // TypedResults.Json and MVC's JsonResult serialize with the JsonSerializerOptions handed to them at run time, which metadata cannot
@@ -504,9 +687,10 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
 
         if (formFields.Count > 0)
         {
-            if (description.ParameterDescriptions.Any(p => p.Type == typeof(IFormFileCollection)) && formFields.Count(f => f.Kind == "file") > 1)
+            if (everyFile.Count > 0 && FormField.Descendants(formFields).Count(f => f.Kind == "file") > 1)
             {
-                bag.Error(TisiliaCodes.ParameterRouteMismatch, "SV30", opPath + "/requestBody", "IFormFileCollection receives every file in the request and cannot be combined with another file parameter", [opId]);
+                bag.Error(TisiliaCodes.ParameterRouteMismatch, "SV30", opPath + "/requestBody", $"'{everyFile[0].Name}' (IFormFileCollection) receives every file of the request, so it cannot be combined with another file field", [opId],
+                    "make it the operation's only file field, or name the files: IReadOnlyList<IFormFile> on a model, or a controller action, whose IFormFileCollection receives the files of its own name");
             }
             if (requestBody is not NoRequestBody)
             {
@@ -518,6 +702,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             requestBody = new FormRequestBody { MediaType = media, Fields = formFields, Presence = Presence.Required };
         }
 
+        IReadOnlyList<ResponseInference.HelperWrite>? helperWrites = null;
         var rIndex = 0;
         foreach (var r in responseTypes)
         {
@@ -534,7 +719,8 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             }
 
             var isVoid = bodyType is null || bodyType == typeof(void);
-            if (isVoid && status is >= 200 and < 300 && !HttpRules.IsBodylessStatus(status) && method != HttpMethodKind.HEAD
+            // an inferred response without a body was read from a helper that writes none (Ok(), NoContent(), StatusCode(202))
+            if (isVoid && !inferred && status is >= 200 and < 300 && !HttpRules.IsBodylessStatus(status) && method != HttpMethodKind.HEAD
                 && (handlerResult == typeof(IResult) || handlerResult == typeof(IActionResult)))
             {
                 bag.Error(TisiliaCodes.PipelineOrResultClosure, "SV34", rPath, $"operation '{opId}': status {status} has no body type on an opaque result; a bare Produces(status) cannot establish an empty or file body", [opId],
@@ -551,14 +737,8 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             {
                 // ServerSentEventsResult<T> writes strings directly and other data as JSON, except byte[] (raw UTF-8).
                 // Metadata must identify the event data type; a text/event-stream content type alone cannot do so.
-                if (isMvc)
-                {
-                    bag.Error(TisiliaCodes.PipelineOrResultClosure, "SV29", rPath, $"operation '{opId}': server-sent events are exported for minimal API endpoints only", [opId],
-                        "map the stream as a minimal API endpoint returning TypedResults.ServerSentEvents, or serve it outside the Tisilia operations");
-                    continue;
-                }
                 if (bodyType is not { IsGenericType: true } eventType || eventType.GetGenericTypeDefinition() != typeof(System.Net.ServerSentEvents.SseItem<>)
-                    || eventType.GetGenericArguments()[0].IsAssignableFrom(typeof(byte[]))
+                    || eventType.GetGenericArguments()[0] is var declared && declared != typeof(byte[]) && declared != typeof(object) && declared.IsAssignableFrom(typeof(byte[]))
                     || parsedFormats.Count != 1 || parsedFormats[0].Essence != "text/event-stream")
                 {
                     bag.Error(TisiliaCodes.PipelineOrResultClosure, "SV29", rPath, $"operation '{opId}': SSE needs explicit SseItem<T> metadata with a string or JSON data type", [opId],
@@ -566,15 +746,30 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
                     continue;
                 }
                 var dataType = eventType.GetGenericArguments()[0];
-                var textEvents = dataType == typeof(string);
-                var eventUse = textEvents ? builder.Scalar("string") : responseMapper(status).Map(dataType, WireDirection.ServerWrite, rPath + "/body/use", isRoot: true, nullableRoot: !dataType.IsValueType);
+                // byte[] data goes out as its bytes, and object data as JSON unless the value is a byte[] (FormatSseItem, aspnetcore
+                // v10.0.0): the client receives either as the event's text, which the contract does not describe
+                var opaqueEvents = dataType == typeof(byte[]) || dataType == typeof(object);
+                if (opaqueEvents)
+                {
+                    bag.Warning(TisiliaCodes.PipelineOrResultClosure, "SV29", rPath, $"operation '{opId}': the server writes {FriendlyName(dataType)} event data {(dataType == typeof(byte[]) ? "as its bytes" : "as JSON, or as its bytes for a byte[] value")}; the client receives each event's data as text, whose shape the contract does not describe (CR and CRLF become LF, and data that is not UTF-8 fails the subscription)", [opId],
+                        "declare the event data type (SseItem<T> with a string or a JSON type) to have the client decode it");
+                }
+                var textEvents = dataType == typeof(string) || opaqueEvents;
+                var eventUse = textEvents ? builder.Scalar("string") : eventMapper().Map(dataType, WireDirection.ServerWrite, rPath + "/body/use", isRoot: true, nullableRoot: !dataType.IsValueType);
                 if (eventUse is null) { continue; }
                 responses.Add(new Response
                 {
                     Id = caseId,
                     Status = status,
-                    Body = new SseResponseBody { MediaType = "text/event-stream", DataFormat = textEvents ? "text" : "json", ProfileId = textEvents ? null : responseProfile(status).Profile.Id, Use = eventUse },
-                    ResultAdapterId = builder.StandardResultAdapter(ResultAdapterKind.Sse, textEvents ? [] : [responseProfile(status).Profile.Id]),
+                    Body = new SseResponseBody
+                    {
+                        MediaType = "text/event-stream",
+                        DataFormat = textEvents ? "text" : "json",
+                        ProfileId = textEvents ? null : eventProfile().Profile.Id,
+                        Use = eventUse,
+                        Resume = endpointMetadata.OfType<TisiliaEventResumeAttribute>().Any() ? "last-event-id" : null,
+                    },
+                    ResultAdapterId = builder.StandardResultAdapter(ResultAdapterKind.Sse, textEvents ? [] : [eventProfile().Profile.Id]),
                     Hydration = Hydration.ServerOnly,
                     ExposedHeaders = [],
                 });
@@ -642,7 +837,8 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             }
 
             var jsonFormats = parsedFormats.Where(m => HttpRules.JsonMediaEssences.Contains(m.Essence)).ToList();
-            var textFormats = parsedFormats.Where(m => m.Type == "text" && !HttpRules.JsonMediaEssences.Contains(m.Essence)).ToList();
+            // MVC's StringOutputFormatter writes text/plain only: text/xml goes to the XML formatter, which writes a string as <string>…</string>
+            var textFormats = parsedFormats.Where(m => m.Type == "text" && !HttpRules.JsonMediaEssences.Contains(m.Essence) && !(isMvc && HttpRules.IsXmlMediaType(m.Essence))).ToList();
             if (bodyType == typeof(string) && ((isMvc && (formats.Count == 0 || textFormats.Count > 0)) || (!isMvc && textFormats.Count > 0 && jsonFormats.Count == 0)))
             {
                 // MVC StringOutputFormatter: string return types are text/plain (observed); a Minimal API handler returning
@@ -665,6 +861,92 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             // MVC writes every ProblemDetails value as application/problem+json, whatever the Accept header or the declared formats say
             // (ObjectResultExecutor.InferContentTypes adds application/problem+json and application/problem+xml, aspnetcore v10.0.0)
             var mvcProblem = isMvc && jsonDeclaration?.StatusCode != status && typeof(ProblemDetails).IsAssignableFrom(bodyType);
+            // a null return value: minimal APIs write the JSON null (RequestDelegateFactory → WriteAsJsonAsync), MVC writes 204 while
+            // HttpNoContentOutputFormatter (TreatNullValueAsNoContent) comes before the JSON formatter, else the JSON null (aspnetcore v10.0.0)
+            var returnsValue = status == 200 && returnedValue is not null && (Nullable.GetUnderlyingType(returnedValue) ?? returnedValue) == (Nullable.GetUnderlyingType(bodyType!) ?? bodyType);
+            var nullIsNoContent = isMvc && jsonDeclaration?.StatusCode != status && nullAsNoContent && !responseTypes.Any(x => x.StatusCode == 204) && (returnsValue ? returnedValueMayBeNull : status == 200 && !bodyType!.IsValueType);
+            // An MVC output formatter writes the body in a declared media type that is not JSON (XmlSerializerOutputFormatter, a custom
+            // formatter), and a minimal API string goes out as the declared media type it was given (TypedResults.Content): the client
+            // receives the bytes, whose shape the contract does not describe. A minimal API writes any other body as JSON, whatever the
+            // metadata declares.
+            if (formats.Count > 0 && jsonFormats.Count == 0 && !mvcProblem && (isMvc || bodyType == typeof(string))
+                && parsedFormats.Count == formats.Count && parsedFormats.All(m => !m.Type.Contains('*') && !m.Subtype.Contains('*') && m.Essence != "text/event-stream"))
+            {
+                // MVC's XmlSerializerOutputFormatter writes the body with XmlSerializer: the contract describes such a case with XmlSerializer's
+                // own mapping; any other formatter's bytes are what the client receives
+                var xmlCases = new List<(HttpRules.MediaType Format, XmlBody Body)>();
+                var opaqueFormats = new List<HttpRules.MediaType>();
+                string? xmlReason = null;
+                foreach (var format in parsedFormats.DistinctBy(m => m.Essence))
+                {
+                    XmlBody? xmlBody = null;
+                    var reason = isMvc ? XmlOutput(r, format.Essence, bodyType!, xml, out xmlBody) : null;
+                    if (xmlBody is not null)
+                    {
+                        xmlCases.Add((format, xmlBody));
+                    }
+                    else
+                    {
+                        opaqueFormats.Add(format);
+                        xmlReason ??= reason;
+                    }
+                }
+
+                foreach (var (format, xmlBody) in xmlCases)
+                {
+                    var xmlId = xmlCases.Count == 1 && opaqueFormats.Count == 0 ? caseId : "xml." + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(caseId + "\n" + format.Essence)));
+                    // XmlSerializer writes a null root as xsi:nil, when HttpNoContentOutputFormatter does not answer it with 204 first
+                    var nullableRoot = returnsValue && returnedValueMayBeNull && !nullIsNoContent && xmlBody.RootNillable;
+                    responses.Add(new Response
+                    {
+                        Id = xmlId,
+                        Status = status,
+                        Body = new XmlResponseBody { MediaType = format.Essence, Root = xmlBody.Root, Use = xmlBody.Use with { SemanticNullable = nullableRoot } },
+                        ResultAdapterId = builder.StandardResultAdapter(ResultAdapterKind.Xml),
+                        Hydration = Hydration.ServerOnly,
+                        ExposedHeaders = [],
+                    });
+                    documentedResponses.Add((xmlId, status, r.Description, returnsValue));
+                }
+
+                if (xmlCases.Count > 0 && nullIsNoContent)
+                {
+                    responses.Add(new Response
+                    {
+                        Id = opId + ".no-content",
+                        Status = 204,
+                        Body = new NoResponseBody(),
+                        ResultAdapterId = builder.StandardResultAdapter(ResultAdapterKind.Xml),
+                        // no body: hydrated in the browser like the 204 of a JSON operation
+                        Hydration = Hydration.BrowserSafe,
+                        ExposedHeaders = [],
+                    });
+                }
+
+                if (opaqueFormats.Count == 0)
+                {
+                    continue;
+                }
+
+                bag.Warning(TisiliaCodes.PipelineOrResultClosure, "SV29", rPath, $"operation '{opId}': status {status} writes the {FriendlyName(bodyType!)} body as {string.Join(", ", opaqueFormats.Select(m => m.Essence))}{(xmlReason is null ? "" : $" ({xmlReason})")}; the contract does not describe that representation, so the client receives its bytes", [opId],
+                    xmlReason is null ? "declare a JSON media type (Produces<T>() defaults to application/json) to have the client decode the value" : "declare a JSON media type, or keep the type to what XmlSerializer writes without xsi:type, choices or xs:any, to have the client decode the value");
+                foreach (var format in opaqueFormats)
+                {
+                    var opaqueId = "binary." + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(caseId + "\n" + format.Essence)));
+                    responses.Add(new Response
+                    {
+                        Id = opaqueId,
+                        Status = status,
+                        Body = new BinaryResponseBody { MediaType = format.Essence },
+                        ResultAdapterId = builder.StandardResultAdapter(ResultAdapterKind.Binary),
+                        Hydration = Hydration.ServerOnly,
+                        ExposedHeaders = [],
+                    });
+                    documentedResponses.Add((opaqueId, status, r.Description, false));
+                }
+                continue;
+            }
+
             if (formats.Count > 0 && jsonFormats.Count == 0 && !mvcProblem)
             {
                 // Produces<byte[]>(200, "application/octet-stream"), [Produces("application/xml")], a text type for a non-string body: the
@@ -674,10 +956,18 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
                 continue;
             }
 
-            // a null return value: minimal APIs write the JSON null (RequestDelegateFactory → WriteAsJsonAsync), MVC writes 204 while
-            // HttpNoContentOutputFormatter (TreatNullValueAsNoContent) comes before the JSON formatter, else the JSON null (aspnetcore v10.0.0)
-            var returnsValue = status == 200 && returnedValue is not null && (Nullable.GetUnderlyingType(returnedValue) ?? returnedValue) == (Nullable.GetUnderlyingType(bodyType!) ?? bodyType);
-            var nullIsNoContent = isMvc && jsonDeclaration?.StatusCode != status && nullAsNoContent && !responseTypes.Any(x => x.StatusCode == 204) && (returnsValue ? returnedValueMayBeNull : status == 200 && !bodyType!.IsValueType);
+            // MVC writes a value passed to Ok(value), Created…(value), StatusCode(status, value) … with the value's own type, whatever the
+            // action declares (ObjectResult has no DeclaredType: ObjectResultExecutor, aspnetcore v10.0.0): a derived value of a polymorphic
+            // type goes out without the discriminator its union requires, where returning the value itself from ActionResult<T> keeps it.
+            // The source shows which statuses such helpers write.
+            if (isMvc && PolymorphicJson(responseProfile(status).Options, bodyType!)
+                && (helperWrites ??= ResponseInference.HelperWrites(opId, handler) ?? []).FirstOrDefault(w => w.Status is null || w.Status == status) is { } write)
+            {
+                bag.Error(TisiliaCodes.PipelineOrResultClosure, "SV34", rPath, $"operation '{opId}': status {status} is written by {write.Helper}(value), which MVC writes with the value's own type, so a value of a type derived from {FriendlyName(bodyType!)} has no discriminator", [opId],
+                    "return the value itself from an ActionResult<T> action (return value;), which MVC writes with the declared type");
+                continue;
+            }
+
             var mapped = nullIsNoContent ? Nullable.GetUnderlyingType(bodyType!) ?? bodyType!
                 : returnsValue && returnedValueMayBeNull && bodyType!.IsValueType && Nullable.GetUnderlyingType(bodyType) is null ? typeof(Nullable<>).MakeGenericType(bodyType) : bodyType!;
             var use = responseMapper(status).Map(mapped, WireDirection.ServerWrite, rPath, isRoot: true, nullableRoot: returnsValue && returnedValueMayBeNull && !nullIsNoContent);
@@ -689,7 +979,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             // Only declared formats are trusted. Observed on ASP.NET Core 10: TypedResults.NotFound(problemDetails) writes
             // application/json, not application/problem+json — in minimal APIs the CLR type never decides the media type.
             var media = mvcProblem ? "application/problem+json" : jsonFormats.FirstOrDefault()?.Essence ?? "application/json";
-            var adapterKind = isMvc ? ResultAdapterKind.MvcObject : (description.ActionDescriptor.EndpointMetadata.OfType<IProducesResponseTypeMetadata>().Any() ? ResultAdapterKind.MinimalResult : ResultAdapterKind.MinimalJson);
+            var adapterKind = isMvc ? ResultAdapterKind.MvcObject : (inferred || description.ActionDescriptor.EndpointMetadata.OfType<IProducesResponseTypeMetadata>().Any() ? ResultAdapterKind.MinimalResult : ResultAdapterKind.MinimalJson);
             responses.Add(new Response
             {
                 Id = caseId,
@@ -752,6 +1042,12 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             documentation.Response(id, status, text, handler, returned);
         }
 
+        if (endpointMetadata.OfType<TisiliaEventResumeAttribute>().Any() && !responses.Any(r => r.Body is SseResponseBody))
+        {
+            bag.Error(TisiliaCodes.MediaTypeInvalid, "SV29", opPath + "/responses", $"operation '{opId}' declares that its server-sent events resume from Last-Event-ID, but it writes no server-sent events", [opId],
+                "remove TisiliaEventResume, or return TypedResults.ServerSentEvents(...) (SseItem<T> events with ids)");
+        }
+
         RoutePlan routePlan;
         try { routePlan = ResolvedRoutes.Build(endpoint.RoutePattern, parameters, policyFactory); }
         catch (Exception e) when (e is NotSupportedException or InvalidOperationException or ArgumentException)
@@ -802,6 +1098,85 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
     };
 
     private static bool IsNullableType(Type type) => !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
+
+    /// <summary>
+    /// The XML body XmlSerializerInputFormatter reads in <paramref name="essence"/> (the first input formatter of that media type is the one
+    /// MVC reads the body with), or the reason it is not described. Only the formatter itself, with its own wrapper providers, reads with
+    /// <c>new XmlSerializer(type)</c>: a derived formatter can read otherwise.
+    /// </summary>
+    private static string? XmlInput(IList<ApiRequestFormat> formats, string essence, Type type, XmlTypeMapper xml, out XmlBody? body, out int maxDepth)
+    {
+        body = null;
+        maxDepth = 0;
+        var formatter = formats.FirstOrDefault(f => HttpRules.ParseMediaType(f.MediaType)?.Essence == essence)?.Formatter;
+        if (formatter is null || !HttpRules.IsXmlMediaType(essence))
+        {
+            return null;
+        }
+
+        if (formatter.GetType() != typeof(Microsoft.AspNetCore.Mvc.Formatters.XmlSerializerInputFormatter))
+        {
+            return $"{formatter.GetType().Name} reads it, not XmlSerializerInputFormatter";
+        }
+
+        var input = (Microsoft.AspNetCore.Mvc.Formatters.XmlSerializerInputFormatter)formatter;
+        if (!DefaultXmlWrappers(input.WrapperProviderFactories, output: false) || XmlWrapped(type))
+        {
+            return $"MVC reads {FriendlyName(type)} through a wrapper type";
+        }
+
+        body = xml.Map(type, WireDirection.ServerRead, out var reason);
+        maxDepth = input.MaxDepth;
+        return reason;
+    }
+
+    /// <summary>The XML body XmlSerializerOutputFormatter writes in <paramref name="essence"/>, or the reason it is not described.</summary>
+    private static string? XmlOutput(ApiResponseType response, string essence, Type type, XmlTypeMapper xml, out XmlBody? body)
+    {
+        body = null;
+        var formatter = response.ApiResponseFormats.FirstOrDefault(f => HttpRules.ParseMediaType(f.MediaType)?.Essence == essence)?.Formatter;
+        if (formatter is null || !HttpRules.IsXmlMediaType(essence))
+        {
+            return null;
+        }
+
+        if (formatter.GetType() != typeof(Microsoft.AspNetCore.Mvc.Formatters.XmlSerializerOutputFormatter))
+        {
+            return $"{formatter.GetType().Name} writes it, not XmlSerializerOutputFormatter";
+        }
+
+        var output = (Microsoft.AspNetCore.Mvc.Formatters.XmlSerializerOutputFormatter)formatter;
+        if (!DefaultXmlWrappers(output.WrapperProviderFactories, output: true) || XmlWrapped(type))
+        {
+            return $"MVC writes {FriendlyName(type)} through a wrapper type";
+        }
+
+        // an interface collection is written through DelegatingEnumerable<T, T>, whose items are T (EnumerableWrapperProviderFactory)
+        var serialized = type;
+        if (type.IsInterface && type.IsGenericType && output.WrapperProviderFactories.Any(f => f is Microsoft.AspNetCore.Mvc.Formatters.Xml.EnumerableWrapperProviderFactory)
+            && (type.GetGenericTypeDefinition() == typeof(IEnumerable<>) ? type : type.GetInterfaces().FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))) is { } enumerable)
+        {
+            var element = enumerable.GenericTypeArguments[0];
+            if (XmlWrapped(element))
+            {
+                return $"MVC writes the items of {FriendlyName(type)} through a wrapper type";
+            }
+
+            serialized = typeof(Microsoft.AspNetCore.Mvc.Formatters.Xml.DelegatingEnumerable<,>).MakeGenericType(element, element);
+        }
+
+        body = xml.Map(serialized, WireDirection.ServerWrite, out var reason);
+        return reason;
+    }
+
+    /// <summary>SerializableError, ProblemDetails and ValidationProblemDetails are read and written through IXmlSerializable wrappers.</summary>
+    private static bool XmlWrapped(Type type) => type == typeof(SerializableError) || type == typeof(ProblemDetails) || type == typeof(ValidationProblemDetails);
+
+    /// <summary>The wrapper providers AddXmlSerializerFormatters gives the formatters (and the formatter's constructor its own): no other.</summary>
+    private static bool DefaultXmlWrappers(IList<Microsoft.AspNetCore.Mvc.Formatters.Xml.IWrapperProviderFactory> factories, bool output)
+        => factories.Select(f => f.GetType()).Distinct().Count() == factories.Count && factories.All(f => f.GetType() == typeof(Microsoft.AspNetCore.Mvc.Formatters.Xml.SerializableErrorWrapperProviderFactory)
+            || f.GetType().FullName == "Microsoft.AspNetCore.Mvc.Formatters.Xml.ProblemDetailsWrapperProviderFactory"
+            || (output && f.GetType() == typeof(Microsoft.AspNetCore.Mvc.Formatters.Xml.EnumerableWrapperProviderFactory)));
 
     /// <summary>
     /// Members of a <c>Results&lt;…&gt;</c> return type that describe no response: UnauthorizedHttpResult implements no
@@ -1006,6 +1381,20 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
 
     private static bool IsResultsUnion(Type? type) => type is { IsGenericType: true } && type.GetGenericTypeDefinition().FullName?.StartsWith("Microsoft.AspNetCore.Http.HttpResults.Results`", StringComparison.Ordinal) == true;
 
+    /// <summary>Whether System.Text.Json writes the type through a polymorphic contract, with a discriminator for its derived types.</summary>
+    private static bool PolymorphicJson(JsonSerializerOptions options, Type type)
+    {
+        try
+        {
+            return options.GetTypeInfo(type).PolymorphismOptions is not null;
+        }
+        catch (Exception e) when (e is NotSupportedException or InvalidOperationException or ArgumentException)
+        {
+            // a type System.Text.Json cannot describe: the mapper reports it
+            return false;
+        }
+    }
+
     /// <summary>JsonHttpResult&lt;T&gt; (TypedResults.Json) and MVC's JsonResult in a handler's result type, directly or as a member of Results&lt;…&gt;.</summary>
     private static List<Type> OpaqueJsonResults(Type? result)
     {
@@ -1036,6 +1425,25 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
 
         return null;
     }
+
+    /// <summary>
+    /// The CLR type a parameter binds to. MVC's ApiExplorer reports string for a parseable or convertible type other than a primitive,
+    /// an enum, decimal, the date and time types, Guid and Uri — Int128, Version, IPAddress, a type with its own TryParse
+    /// (DefaultApiDescriptionProvider.GetModelType → EndpointModelMetadata.GetDisplayType, aspnetcore v10.0.0) — and keeps the type in
+    /// the model metadata. A minimal API reports the parameter's own type, and the display type in its model metadata.
+    /// </summary>
+    private static Type ParameterClrType(ApiParameterDescription p, bool mvc) => mvc && p.ModelMetadata is { } metadata ? metadata.ModelType : p.Type;
+
+    /// <summary>
+    /// Whether the server reads a value of this type from one text with the type's own parser: a minimal API when the type has a TryParse
+    /// (IParsable&lt;T&gt;, TryParse(string, IFormatProvider, out T) or TryParse(string, out T), as ParameterBindingMethodCache finds them),
+    /// MVC when its model metadata is not complex (a TypeConverter from string or a TryParse; aspnetcore v10.0.0).
+    /// </summary>
+    private static bool ReadsOwnText(Type type, bool mvc, Microsoft.AspNetCore.Mvc.ModelBinding.ModelMetadata? metadata) => mvc
+        ? metadata is { IsComplexType: false }
+        : type.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IParsable<>) && i.GetGenericArguments()[0] == type)
+            || new[] { new[] { typeof(string), typeof(IFormatProvider), type.MakeByRefType() }, new[] { typeof(string), type.MakeByRefType() } }
+                .Any(signature => type.GetMethod("TryParse", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.FlattenHierarchy, signature)?.ReturnType == typeof(bool));
 
     /// <summary>C#-like type names for diagnostics (<c>Results&lt;Ok&lt;Item&gt;, NotFound&gt;</c> instead of <c>Results`2</c>).</summary>
     private static string FriendlyName(Type type)

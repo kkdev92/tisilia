@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.tisilia.invalid/0.1/generation-manifest.schema.json",
   "title": "Tisilia Generation Ownership and Coverage Manifest 0.1",
-  "$comment": "Format 0.1. Structure only: semantic validation (SV01–SV54) runs after it.",
+  "$comment": "Format 0.1. Structure only: semantic validation (SV01–SV55) runs after it.",
   "type": "object",
   "properties": {
     "format": {

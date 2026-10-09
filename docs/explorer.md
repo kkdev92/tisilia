@@ -59,8 +59,8 @@ to them, and the search and *Authorize* stay in the top bar while scrolling.
   values change (or how many fields need attention), and *Headers and body this request sends* shows what the generated
   request encoder writes. The response appears beside the inputs on wide screens and below them on
   narrow ones (brought into view when it is out of sight): the status coloured by class, the declared case it decoded as
-  (its row among the declared responses is marked), time and size, then the body as JSON or decoded (each value with its
-  kind). Folded below are the response headers and the request: its URL and the call as code — through the generated
+  (its row among the declared responses is marked), time and size, then the body as JSON (as XML for an XML case) or
+  decoded (each value with its kind). Folded below are the response headers and the request: its URL and the call as code — through the generated
   client (`createXxxClient(...).operation({...})`, with the runtime helpers its values need), as `fetch`, or as `curl`, with
   the credentials that call went with named as placeholders. A failure says what it means and what to do (a 401/403
   offers *Authorize*, a 404 points to route constraints, a browser `Failed to fetch` to the console).
@@ -87,8 +87,14 @@ to them, and the search and *Authorize* stay in the top bar while scrolling.
   same case codecs but the UI marks "generated request encoder not used" and makes no G2 claim (see
   [grades](conformance.md#grades)).
 
+An XML body ([XML bodies](getting-started.md#xml-bodies)) is edited as its value in the same JSON editor or form, and the
+request encoder writes the XML document from it — the preview shows that document; raw mode is for JSON bodies only. An
+XML response shows the XML the server wrote next to its decoded value.
+
 Decoded values are displayed as a tree that keeps int64, decimal (scale), 100 ns ticks and offsets as text; nothing
-is rounded to a JavaScript number for display.
+is rounded to a JavaScript number for display. A value reached again — a shared or cyclic value of a
+`ReferenceHandler.Preserve` response — is shown once, then as a reference to where it was
+(`the same value as #/lines/0/product`); a reference names a place, not a value, so masking leaves it readable.
 
 ## Authorize
 

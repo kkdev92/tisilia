@@ -352,27 +352,48 @@ public sealed class SuiteBuilder
             _rng = new SplitMix64(_options.Seed ^ Fnv1a64(codecId));
 
             var profileId = codec.ProfileIds.FirstOrDefault(profileIds.Contains) ?? profileIds.FirstOrDefault() ?? "";
+            // ReferenceHandler.Preserve reads plain trees but writes structured values with $id/$values/$ref metadata, which the expected
+            // wires of these cases do not model: a structured response round trip runs under another profile of the codec, or not at all
+            bool Preserves(string id) => _index.Profiles.TryGetValue(id, out var preserving) && preserving.Options.ReferenceHandling == ReferenceHandling.Preserve;
+            var responseProfileId = model.Shape is PrimitiveShape || !Preserves(profileId) ? profileId
+                : codec.ProfileIds.Where(profileIds.Contains).FirstOrDefault(p => !Preserves(p));
             var tag = TypeTag(model, codec);
-            // System.Text.Json applies DictionaryKeyPolicy on write only; the TypeScript key codecs do not model it, so key
-            // cases are only meaningful (and generated) for profiles without a key policy.
-            var keyPolicyNone = !_index.Profiles.TryGetValue(profileId, out var keyProfile) || keyProfile.Options.DictionaryKeyPolicyId == Builtins.NamingNone;
+            // Key round trips run under a profile whose JSON carries the codec as a dictionary key; a key round trip writes the
+            // dictionary, which ReferenceHandler.Preserve wraps in $id metadata. System.Text.Json applies DictionaryKeyPolicy on write
+            // only and the TypeScript key codecs do not model it, so that profile has no key policy.
+            var keyProfileId = _closure.JsonKeyProfileIds(codecId)
+                .FirstOrDefault(p => !_index.Profiles.TryGetValue(p, out var keyProfile) || keyProfile.Options.DictionaryKeyPolicyId == Builtins.NamingNone && keyProfile.Options.ReferenceHandling != ReferenceHandling.Preserve);
             var use = new TypeUse { TypeId = codec.TypeId, CodecId = codecId, SemanticNullable = codecId.EndsWith(".nullable", StringComparison.Ordinal) };
-            var caps = codec.Capabilities;
+            // A codec only reached from parameters, form fields or text bodies never meets the server's JSON converters, and the
+            // .NET runner has no profile adapter for it: only its domain validation applies.
+            var caps = _closure.JsonCodecIds.Contains(codecId) ? codec.Capabilities : new Capabilities();
+            // The runner does not observe XML bodies (MVC's XmlSerializer formatters): an XML codec gets domain validation only, and the
+            // round trips it would need are listed rather than left out silently
+            if (codec.BindingId == Builtins.BindingXmlSerializer)
+            {
+                foreach (var cap in new[] { codec.Capabilities.Request, codec.Capabilities.Response })
+                {
+                    if (cap is not null)
+                    {
+                        _notApplicable.Add(new NotApplicableEntry(codecId, cap.EquivalenceId, "xml-not-observed"));
+                    }
+                }
+            }
             if (caps.Response is { } response)
             {
-                if (ClaimsRoundTrip(codecId, response.EquivalenceId))
+                if (responseProfileId is not null && ClaimsRoundTrip(codecId, response.EquivalenceId))
                 {
                     var samples = new List<JsonValue>();
                     var responseProjections = ProjectionSteps(use);
                     for (var i = 0; i < _options.CasesPerCodec; i++)
                     {
-                        var domain = Generate(use, GenMode.Response, i, 0, profileId);
-                        var expected = ExpectedAfterWrite(domain, use, profileId);
+                        var domain = Generate(use, GenMode.Response, i, 0, responseProfileId);
+                        var expected = ExpectedAfterWrite(domain, use, responseProfileId);
                         samples.Add(expected);
-                        Add(new ResponseRoundTripCase { Id = $"response.{codecId}.{i}", Category = (responseProjections is null ? "response-round-trip:" : "response-round-trip-projected:") + tag, ProfileId = profileId, CodecId = codecId, EquivalenceId = response.EquivalenceId, Domain = domain, Expected = expected, Projections = responseProjections });
+                        Add(new ResponseRoundTripCase { Id = $"response.{codecId}.{i}", Category = (responseProjections is null ? "response-round-trip:" : "response-round-trip-projected:") + tag, ProfileId = responseProfileId, CodecId = codecId, EquivalenceId = response.EquivalenceId, Domain = domain, Expected = expected, Projections = responseProjections });
                     }
 
-                    AddDiscrimination(response.EquivalenceId, profileId, tag, samples);
+                    AddDiscrimination(response.EquivalenceId, responseProfileId, tag, samples);
                 }
 
                 foreach (var (wire, reason) in NegativeWires(response.Wire, 0))
@@ -404,21 +425,21 @@ public sealed class SuiteBuilder
                 }
             }
 
-            if (caps.RequestKey is { } requestKey && keyPolicyNone && IsKeyShape(model))
+            if (caps.RequestKey is { } requestKey && keyProfileId is not null && IsKeyShape(model))
             {
                 for (var i = 0; i < _options.KeyCasesPerCodec; i++)
                 {
-                    var key = Generate(use with { SemanticNullable = false }, GenMode.Key, i, 0, profileId);
-                    Add(new KeyRoundTripCase { Id = $"key.request.{codecId}.{i}", Category = "key-round-trip:" + tag, ProfileId = profileId, CodecId = codecId, EquivalenceId = requestKey.EquivalenceId, Key = key, Expected = KeyExpected(key, model), RequestDirection = true });
+                    var key = Generate(use with { SemanticNullable = false }, GenMode.Key, i, 0, keyProfileId);
+                    Add(new KeyRoundTripCase { Id = $"key.request.{codecId}.{i}", Category = "key-round-trip:" + tag, ProfileId = keyProfileId, CodecId = codecId, EquivalenceId = requestKey.EquivalenceId, Key = key, Expected = KeyExpected(key, model), RequestDirection = true });
                 }
             }
 
-            if (caps.ResponseKey is { } responseKey && keyPolicyNone && IsKeyShape(model))
+            if (caps.ResponseKey is { } responseKey && keyProfileId is not null && IsKeyShape(model))
             {
                 for (var i = 0; i < _options.KeyCasesPerCodec; i++)
                 {
-                    var key = Generate(use with { SemanticNullable = false }, GenMode.Key, i, 0, profileId);
-                    Add(new KeyRoundTripCase { Id = $"key.response.{codecId}.{i}", Category = "key-round-trip:" + tag, ProfileId = profileId, CodecId = codecId, EquivalenceId = responseKey.EquivalenceId, Key = key, Expected = KeyExpected(key, model), RequestDirection = false });
+                    var key = Generate(use with { SemanticNullable = false }, GenMode.Key, i, 0, keyProfileId);
+                    Add(new KeyRoundTripCase { Id = $"key.response.{codecId}.{i}", Category = "key-round-trip:" + tag, ProfileId = keyProfileId, CodecId = codecId, EquivalenceId = responseKey.EquivalenceId, Key = key, Expected = KeyExpected(key, model), RequestDirection = false });
                 }
             }
 
@@ -767,9 +788,11 @@ public sealed class SuiteBuilder
         var ignoreCase = comparer == Builtins.ComparerOrdinalIgnoreCase;
         var keyPolicy = _index.Profiles.TryGetValue(profileId, out var prof) && prof.Options.DictionaryKeyPolicyId != Builtins.NamingNone;
         var mixedDateTimeKeys = keyModel.Shape is PrimitiveShape primitive && ScalarName(primitive) == "datetime";
+        var localWireKeys = keyModel.Shape is PrimitiveShape localPrimitive && ScalarName(localPrimitive) == "datetime-local-wire";
         var count = depth > 3 || keyPolicy ? 0 : index == 0 ? 2 : index == 1 ? 0 : index == 2 && mixedDateTimeKeys ? 1 : _rng.Next(4);
         var entries = new List<(string, JsonValue)>();
         var seen = new HashSet<string>(ignoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        var instants = new List<long>();
         for (var k = 0; k < count * 3 && entries.Count < count; k++)
         {
             // Multiple mixed DateTime keys must avoid Local: server-zone conversion and DST can collapse distinct instants.
@@ -781,6 +804,19 @@ public sealed class SuiteBuilder
             if (encoded is null || !seen.Add(encoded))
             {
                 continue;
+            }
+
+            // Local keys more than 28 hours apart are distinct in every time zone (offsets are at most 14 hours), so the client sends them
+            // whether or not the contract declares the server's zone
+            if (localWireKeys)
+            {
+                var instant = DateTimeOffset.Parse(encoded, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind).UtcTicks;
+                if (instants.Any(other => Math.Abs(other - instant) <= 28 * TimeSpan.TicksPerHour))
+                {
+                    continue;
+                }
+
+                instants.Add(instant);
             }
 
             entries.Add((encoded, Generate(m.Value, mode, index + k + 1, depth + 1, profileId)));

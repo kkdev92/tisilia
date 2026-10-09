@@ -175,6 +175,12 @@ null element. A handler's own return value follows its annotation: `Item? (…) 
 and code without annotations (`#nullable disable`) counts as nullable. A lambda whose return type is inferred carries no
 annotation at all, so its value counts as not null — declare the return type when it can return null.
 
+**Controllers and minimal APIs.** Controllers serialize with MVC's options (`AddJsonOptions`), minimal APIs with
+`ConfigureHttpJsonOptions`. When the two describe types otherwise — another naming policy, other converters — a type both
+serve is a model on each side, and its TypeScript name gets a number on one of them. One converter type with other
+settings on each side (two `JsonStringEnumConverter`s with different naming policies) is reported (SV16): give both sides
+the same converter settings.
+
 **DateTime.** No declaration is required. The builtin `datetime` scalar generates
 `DateTime = DateTimeUtc | DateTimeUnspecified | DateTimeLocalWire`. `parseDateTime(text)` reads `Z`, a numeric offset,
 or no suffix into the corresponding tagged record, retaining all seven fractional digits in `bigint` ticks.
@@ -187,23 +193,74 @@ input (including `Z`) to the server local zone. Form mapping is independent of J
 `o.DateTimes.Default` and `o.DateTimes.Add(typeof(T), "Member", …)` optionally narrow the wire to `Utc`, `Unspecified` or
 `Local`; `Mixed` restores the union for a member under a narrowed default. A fixed `Local` HTTP declaration remains invalid.
 These settings never change application values or serializer settings. Custom converters still need their own binding.
-DateTime dictionary equality ignores Kind; the client rejects equal-tick keys and refuses multi-key requests containing Local
-because zone conversion and DST can create collisions. A singleton Local key is supported. Server-written local range extremes
-can be read, but values whose UTC instant is outside years 1–9999 cannot be sent back through the STJ reader.
+Server-written local range extremes can be read, but values whose UTC instant is outside years 1–9999 cannot be sent back
+through the STJ reader.
+
+**DateTime dictionary keys.** A server's dictionary compares DateTime keys by their ticks, ignoring Kind, and System.Text.Json
+converts a key written with an offset to the server's own time. Keys the client writes differently can therefore be one key
+on the server, which then keeps the last value without an error. The client refuses keys with the same ticks, and two keys of
+one instant written with different offsets. For the other keys with an offset, declare the time zone the server runs in:
+
+```csharp
+builder.Services.AddTisilia(o =>
+{
+    o.ApiId = "orders";
+    o.DateTimes.ServerTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Europe/Berlin");
+});
+```
+
+The contract then carries the zone's UTC offsets for the instants from 1900 to 2199, read from .NET itself, and the client
+refuses exactly the keys that the server reads as one: the repeated hour when daylight saving time ends turns
+`2026-10-25T02:30:00+02:00` and `2026-10-25T02:30:00+01:00` into one key in Berlin. Without the declaration, and for keys
+outside those years, the client sends several keys that include one with an offset only when no time zone can make two of
+them one key — such keys more than 28 hours apart, and more than 14 hours from the keys without an offset, since .NET
+offsets are at most 14 hours. A single key is always sent. The offsets come from the zone data of the machine that exports
+the contract, and Windows and Linux describe the history of some zones differently: export with the zone data production
+uses, and export again when it changes. Outside Development the application logs a warning when its own zone has other
+offsets than the declared one, and `tisilia doctor` reports both zones.
 
 ## 7. What is not supported, and how it is reported
 
-Finite raw/file uploads, scalar/complex form binding, buffered/incremental downloads and typed SSE are supported (examples below).
-Streaming uploads, XML serialization, recursive forms, form dictionaries and custom form binders remain unsupported.
-MVC form strings and files are supported; culture-dependent MVC numeric form fields need an explicit binding. Export also diagnoses a result
-whose response the metadata cannot describe: `Results.Ok(value)` / `IActionResult` without `.Produces<T>()` /
-`[ProducesResponseType]` (use `TypedResults.Ok(value)` or `Results<Ok<T>, NotFound>`). `TypedResults.Json(value, options)`
-is supported with `WithTisiliaJsonOptions<T>`; undeclared dynamic options remain diagnosed.
+Finite raw/file uploads, scalar/complex form binding, buffered/incremental downloads, typed SSE and the XML bodies of MVC's
+XmlSerializer formatters are supported (examples below). A body that another MVC input or output formatter reads or writes
+in a format other than JSON (DataContractSerializer, a custom formatter), or an XmlSerializer body whose type has a form the
+client does not write or read ([XML bodies](#xml-bodies)), is exported as binary content of that media type with a warning
+that names the reason: the client sends the bytes it is given and receives the bytes the server writes, and the contract
+does not describe their shape. A minimal API reads and writes models as JSON only, so a model body declared with another
+format there is diagnosed, as is a body no formatter reads.
 
-`ReferenceHandler.Preserve` is accepted for JSON bodies consisting only of builtin scalars (including nullable scalars
-and base64 bytes), whose converters emit no reference metadata. Structured JSON, arbitrary JSON values, module codecs and
-custom reference handlers still require support for their reference semantics and are refused under SV20. The original
-serializer setting remains recorded in the contract; exporting never changes it.
+Recursive forms, and form dictionaries of models or with keys other than strings, integers and Guids are diagnosed. A parameter bound by custom code — an MVC `[ModelBinder]`, or a minimal API parameter bound by its type's
+`BindAsync` (`IBindableFromHttpContext<T>`) — is exported as declared (below) and diagnosed without a declaration. MVC form models, strings, enums, numbers, dates and times, Guids, booleans and
+files are supported. A route, query, header or form value of a type the server reads with its own `TryParse`, `IParsable<T>` or (MVC)
+`TypeConverter`, which no codec describes, is exported as text with a warning (SV30): the client sends any string, and the
+server answers the texts its parser refuses. MVC's ApiExplorer describes such a controller parameter as a string; export
+reads its own type. A handler that returns `Results.Ok(value)` or an `IActionResult` without response metadata is
+described from its return paths ([below](#responses-read-from-the-handler)); a path the source does not fix is diagnosed
+with its place. `TypedResults.Json(value, options)` is supported with `WithTisiliaJsonOptions<T>`; undeclared dynamic
+options remain diagnosed.
+
+`ReferenceHandler.Preserve` works for JSON requests and responses, shared and cyclic values included. In responses,
+System.Text.Json writes `$id` first on objects and dictionaries and wraps mutable collections (`List<T>`, `HashSet<T>`, a
+collection declared as an interface) in `{"$id": …, "$values": […]}`; arrays, immutable collections, structs and
+`JsonObject`/`JsonElement` values carry no metadata. The contract marks each position (`referenceMetadata` on its
+server-write wire), and the client reads the metadata only there: a dictionary key, a struct member or a JSON value named
+`$id` is data. A value the server writes a second time in the same response — a shared object or a cycle — arrives as
+`{"$ref": …}` and decodes as the value already decoded, so `order.lines[0].product === order.lines[1].product`, and a node
+whose `parent` is an ancestor is that ancestor. A reference to a value the server first wrote at a position of another type
+— a derived type written through its polymorphic base and then directly — fails with a codec failure (`unsupported`) at
+that path: the base's position carries the discriminator, so the value has another shape there.
+
+Requests follow what the server reads. Where System.Text.Json reads `$id`/`$ref` and makes the value before reading its
+members — a class with a parameterless constructor, a mutable collection, a dictionary — the contract marks the
+server-read wire, and the client writes a value it reaches again once with `$id` and then as `{"$ref": …}`, also inside the
+value itself; a value reached once carries no metadata. Elsewhere — an array, an immutable collection, a struct, or a type
+built through a constructor with parameters, which System.Text.Json makes only after its members and which refuses
+metadata while it waits for them — a value reached again is written again, and a value that contains itself there is
+refused before sending; without Preserve the server reads trees only, so this holds for every position. Under Preserve
+System.Text.Json refuses a property name or dictionary key that starts with `$`, so such a request property is diagnosed
+and such a key gets 400. Custom reference handlers are refused under SV20. MVC
+options without Preserve next to minimal API options with it (or the other way round) give each side its own models. The
+original serializer setting remains recorded in the contract; exporting never changes it.
 
 Routes come from the mapped endpoint's resolved RoutePattern, including MapGroup/MVC prefixes and defaults. Optional
 `{id?}`, defaulted `{page=1}` and `{filename}.{ext?}` routes omit only structurally optional values. Explicit defaults are sent;
@@ -279,8 +336,91 @@ await client.uploadsCreate({ body: new Uint8Array([0, 255, 195, 40]) });
 and no filename header. `byte[]` JSON bodies keep their existing base64 semantics. Required bodies accept an empty
 `Uint8Array`; only `Accepts<Stream>(isOptional: true, "application/octet-stream")` allows omission. The client validates
 `maxBodyBytes` before requesting credentials or sending, and copies the selected byte view before asynchronous work.
-The server must configure its own request-size policy. Multipart/form media types, multiple media alternatives, MVC raw
+The server must configure its own request-size policy.
+
+From Node (server code, SSR), the body can also be a `ReadableStream<Uint8Array>`: it is sent chunked as it is read
+(`duplex: "half"`), without being buffered first. `maxBodyBytes` is counted while it is sent — past it the call ends with a
+`limit-failure`, after part of the body has left — and a stream that fails or yields something other than bytes fails the call.
+Browsers never get a streamed body from the runtime: Firefox 155 sends a stream as the text `[object ReadableStream]`,
+WebKit 26.6 sends an empty body — both answered as successful requests — and Chromium refuses it over HTTP/1.1, so outside
+Node the call is refused before anything is sent (`supportsRequestStreams()` tells which applies). A streamed body has no
+request identity, so a hydrated Nuxt operation refuses it; a custom `transport.fetch` must accept a stream body with
+`duplex: "half"`. Multipart/form media types, multiple media alternatives, MVC raw
 body binding and GET/HEAD bodies are diagnosed.
+
+### Responses read from the handler
+
+A minimal API handler that returns `IResult` and an MVC action that returns `IActionResult` or `ActionResult` declare no
+response types: the result they return decides at run time what is written. Kkdev92.Tisilia.AspNetCore carries a source
+generator that reads, at build time, the handlers of the operations a project registers, and export describes each return
+path the way the typed declaration would:
+
+```csharp
+app.MapGet("/todos/{id}", async (int id, TodoDb db) =>
+        await db.Todos.FindAsync(id) is { } todo ? Results.Ok(todo) : Results.NotFound())
+    .WithTisiliaOperation("todos.get");     // 200 with a Todo, and 404 without a body
+```
+
+- **Minimal APIs.** A path is the TypedResults type its call creates — `Results.Ok(todo)` creates `Ok<Todo>`, as
+  `TypedResults.Ok(todo)` does, and `Results.Ok(null)` creates `Ok` — described by that type's own metadata. The results
+  that publish none are described by what they write: `Unauthorized()`, `StatusCode(…)` with a constant, `Problem(…)` and
+  `ValidationProblem(…)` (application/problem+json; 500 and 400 unless a constant status code says otherwise),
+  `Text(…)`/`Content(…)` (text/plain unless a constant content type says otherwise), `Json(value)` without options (the
+  endpoint's JSON options) and `Empty`.
+- **Controllers.** A path is what `[ProducesResponseType(typeof(T), status)]` declares, with the static type of the value
+  the helper receives: `Ok(todo)`, `NotFound()`, `CreatedAtAction(…, todo)`, `StatusCode(…)`, `Problem(…)`,
+  `ValidationProblem(…)`, `Content(…)` and the others of `ControllerBase`. Under `[ApiController]` a bodyless 4xx is a
+  ProblemDetails, as for a declared one.
+- **Return paths.** Every return statement counts, through `?:`, switch expressions and `async` bodies; a `throw` writes
+  no response of its own, and a lambda or local function written inside the handler returns from itself. The order of the
+  paths is the order of the responses.
+
+As with a declared type, the body is described by its static type: System.Text.Json writes an instance of a derived class
+with its own members, which the client ignores. MVC writes a value passed to `Ok(value)`, `CreatedAtAction(…, value)` or
+`StatusCode(status, value)` with the value's own type, whatever the action declares — also `ActionResult<Shape>` and
+`[ProducesResponseType<Shape>]` — so a polymorphic type loses its discriminator there: export refuses such a response
+wherever it reads the source. Return the value itself from an `ActionResult<T>` action (`return shape;`), which MVC writes
+with the declared type. The handler is found by
+the operation id written as a constant — `WithTisiliaOperation("id")` on the Map call, or `[TisiliaOperation("id")]` on
+the action, method or lambda — and export checks that the endpoint runs the handler the source declares it for.
+
+A path the generator cannot read leaves the operation undescribed, and SV34 names it with its place
+(`Endpoints/Todos.cs(14,9)`): a result held in a variable or returned by a method of the application, a value passed as
+`object`, an anonymous type or a tuple, a status code or content type that is not a constant, `Json(value, options)`, a
+file, a redirect, an authentication result, `Ok(null)` in MVC (written as 204), a `ControllerBase` helper the controller
+overrides, and a builder the Map call does not create in the same expression. Declare those responses with
+`.Produces<T>()` / `[ProducesResponseType]`, or return a typed result. Declared metadata is always used as it is: the
+generator only describes endpoints that declare nothing.
+
+The generator runs in the compiler of each project that references the package itself, reads only the handlers of
+registered operations, executes nothing, and adds one internal class, `Tisilia.Generated.TisiliaResponseInference`, with
+what it read; the source positions in it are relative to the project. Handlers in a project that references only
+Kkdev92.Tisilia.Abstractions are not read, and the diagnostic says so.
+
+### Custom binding declarations
+
+Tisilia cannot see what a type's `BindAsync` or an MVC model binder reads, so it exports such a parameter as you declare it:
+
+```csharp
+builder.Services.AddTisilia(o =>
+{
+    o.CustomBinding
+        .BindAsync<PageRequest>(reads => reads.Query<int>("page").Query<int>("size", optional: true))
+        .BindAsync<Tenant>(reads => reads.Header<string>("X-Tenant"))
+        .BindAsync<CurrentUser>(reads => reads.NotFromRequest())          // claims, features: not part of the contract
+        .ModelBinder<CsvBinder>(reads => reads.Query<string>(RequestReads.ModelName));
+});
+```
+
+Each declared value is a route, query or header parameter of a builtin scalar type (or an array or list of one). The client
+writes the scalar's canonical text; the application's code parses it, so its binder carries the server acceptance
+`server-parsed`. `RequestReads.ModelName` (namespace `Tisilia.AspNetCore.Bindings`) stands for the name a model binder binds
+under (the parameter name, or `[ModelBinder(Name)]`). A declared route value must be a single parameter of the route.
+
+`tisilia doctor` (below) with `--allow-execute-binders` calls every declared binding with a request that records
+the query values, headers, cookies, body and form it reads (and, for a model binder, the names it asks its value provider for),
+and reports a read outside the declaration as a blocker; the declared route values are supplied, not recorded. This runs the
+binding code, which may use the application's services: run it with isolated settings.
 
 ### Form fields and files
 
@@ -299,8 +439,9 @@ await client.filesCreate({ body: { file: { fileName: "report.bin", bytes: new Ui
 
 Keep the application's antiforgery middleware. Supply its configured token header through `credentialProvider` and the
 matching cookie through Fetch credentials (browser) or the server credential provider. Tisilia never disables antiforgery.
-Use `IFormFileCollection` for multiple files; it receives all file parts, so it cannot share an operation with another file
-parameter. Files require a non-empty filename without quotes, control characters or path separators. Optional fields use
+Use `IFormFileCollection` for multiple files. In a minimal API it receives every file part of the request, whatever its
+name — as a parameter and as a model member alike — so it must be the operation's only file field (including files inside
+nested models); in a controller action it receives the files of its own name, ignoring case. Files require a non-empty filename without quotes, control characters or path separators. Optional fields use
 omission, not null; repeated scalar fields use arrays. MVC's blank-to-null string binding rejects blank strings before sending.
 The complete encoded request, including multipart headers/boundaries, is bounded by `maxBodyBytes`; file bytes are copied before
 credentials are awaited. Forms use deterministic encoding so previews and Nuxt identities describe the actual request.
@@ -319,18 +460,66 @@ await client.formsCreate({ body: {
 } });
 ```
 
-Here `[DataMember(Name = "title_text")]` renames the form member. `[IgnoreDataMember]` excludes ordinary properties;
+Here `[DataMember(Name = "title_text")]` renames the form member. A form name may contain `.`, `[` or `]`; it is sent as
+exactly that key. `[IgnoreDataMember]` excludes ordinary properties;
 JSON naming policies and JSON ignore attributes do not change form names. Nested models must have one public constructor.
 Writable properties and constructor parameters can nest finite models and collections of models.
 Constructor parameters are required by the framework even when a C# default exists. Nested required leaves are required by the
-client even when their containing property is nullable. Recursion, dictionaries, ambiguous member names and
-custom parsers are diagnosed. Generation does not execute constructors or setters.
+client even when their containing property is nullable. Recursion, two members that produce the same key
+(a member named `A.B` next to member `A`'s `B`) and custom parsers are diagnosed.
+Generation does not execute constructors or setters.
+
+A `Dictionary<TKey, TValue>`, `IDictionary<TKey, TValue>` or `IReadOnlyDictionary<TKey, TValue>` with a string, integer or
+Guid key and a scalar, enum or additional-codec value is a `ReadonlyMap` in the generated body, written as `Labels[key]`
+(a root dictionary parameter as `[key]`):
+
+```ts
+await client.formsCreate({ body: { Labels: new Map([["color", "blue"], ["size.cm", "42"]]) } });
+// Labels[color]=blue&Labels[size.cm]=42
+```
+
+ASP.NET Core reads a key up to its first `]` and gathers keys ignoring case, merging the values of keys that differ only
+in case, so the client refuses a key with `]` and keys that differ only in case before sending. A dictionary must have at
+least one entry; omit an optional one instead. A form with a dictionary cannot have a field name with a `[` that no `]`
+follows: ASP.NET Core before 10.0.12 does not answer such a request.
 
 Model collection properties use indexed keys such as `Details.Tags[0]`. This also supports string arrays inside models.
 An indexed collection must contain at least one item: an empty array would vanish from the form and change its meaning;
 omit an optional property to use the server's omission behavior. Enum fields use their exact integer domain in TypeScript,
 write CLR member names (independent of JSON aliases), and preserve 64-bit values. MVC refuses undefined enum values before sending;
-defined flags combinations work. MVC numeric/date fields remain diagnosed because their binder depends on request culture.
+defined flags combinations work.
+
+MVC reads form values with the request culture (`FormValueProviderFactory`), so a client cannot know which decimal
+separator or calendar the server applies. Tisilia writes MVC numbers and dates in a form that every culture reads as the same
+value or refuses: digits with a leading `-`, a fraction as an integer mantissa with a negative exponent (`1.5` → `15E-1`,
+`1.50` → `150E-2`), a whole `double` written out in full, ISO date-times, and a `DateOnly` with a time
+(`2026-10-08T00:00:00`, which no non-Gregorian calendar reads as one of its own dates). A culture whose signs carry a
+direction mark (Arabic, Persian, Hebrew and others; 57 cultures on .NET 10) refuses negative numbers and fractions with 400;
+no culture binds another value. Minimal APIs read form values with the invariant culture and get the usual canonical text.
+Minimal API form values of the additional codec types (`Int128`, `Uri`, `IPAddress`, …) are written as the same text as
+those types' route and query parameters; see [Additional codecs](additional-codecs.md).
+
+An MVC `[FromForm]` model is one object in the generated body, named by the model's prefix — `[FromForm(Name)]` or
+`[Bind(Prefix)]` when set, else the parameter name:
+
+```csharp
+[HttpPost("/orders")]
+[TisiliaOperation("orders.create")]
+public ActionResult<string> Create([FromForm] Order order, [FromForm] string note) => order.Name;
+```
+
+```ts
+await client.ordersCreate({ body: { order: { Name: "日本語", Lines: [{ Id: int64("1") }] }, note: "n" } });
+// order.Name=…&order.Lines[0].Id=1&note=n
+```
+
+MVC reads a model under its explicit prefix, else under the parameter name when some key starts with it, else at the root;
+the client always writes the prefix, so the model never reads a sibling field's keys. Its members follow MVC's model metadata:
+a record's constructor parameters, the bindable properties under their `[FromForm(Name)]` or `[ModelBinder(Name)]` names,
+without `[BindNever]` members or those outside `[Bind("…")]`. `[BindRequired]` members, and under `[ApiController]`
+validation-required ones, are required. Collections of models use indexed names; collections of values repeat the name. A
+member with another request binding source, such as `[FromQuery]`, is diagnosed: MVC reads it under the model's prefix
+(`order.Page` in the query), which is not the name its API description gives. So is a member with its own `[ModelBinder]`.
 
 Complex collections group each item's fields under an array. Constructor-bound complex arguments group their own fields:
 
@@ -358,9 +547,100 @@ credentials or network access because ASP.NET Core stops at the first missing co
 The request uses one byte budget across all nested fields and files. Explorer can add/remove nested rows, choose files and
 copy a client snippet with typed scalar constructors. Keep the application's antiforgery and form-size policies configured.
 
-Single `IFormFile` properties work inside model collections. Use `IFormFileCollection` for all files at the endpoint root;
-use `IReadOnlyList<IFormFile>` for named file collections on a non-collection model. File-list members inside model collections are also diagnosed: the .NET converter reports an empty list as found,
+Single `IFormFile` properties work inside model collections. Use `IFormFileCollection` for all files (at the endpoint root or
+on a model, as the only file field); use `IReadOnlyList<IFormFile>` for named file collections on a non-collection model.
+An `IFormFileCollection` inside a model collection is diagnosed: each item would receive every file. File-list members inside model collections are also diagnosed: the .NET converter reports an empty list as found,
 so the surrounding collection cannot terminate. Other file collection shapes remain diagnosed instead of silently submitting files under names the framework does not bind.
+
+### XML bodies
+
+MVC reads and writes XML with XmlSerializer once the application adds its formatters. An action that accepts or produces
+only XML has XML bodies in the contract, described with XmlSerializer's own mapping of the type:
+
+```csharp
+builder.Services.AddControllers().AddXmlSerializerFormatters();
+
+[ApiController]
+public sealed class OrdersController : ControllerBase
+{
+    [HttpPost("/orders")]
+    [Consumes("application/xml")]
+    [Produces("application/xml")]
+    [TisiliaOperation("orders.create")]
+    public ActionResult<Order> Create(Order order) => order;
+}
+
+[XmlRoot("order", Namespace = "urn:shop")]
+public sealed class Order
+{
+    [XmlAttribute("id")] public int Id { get; set; }
+    public string? Customer { get; set; }
+    [XmlElement(IsNullable = true)] public string? Note { get; set; }
+    public Priority Priority { get; set; }
+    public DateTimeOffset PlacedAt { get; set; }
+    [XmlArrayItem("line")] public List<Line> Lines { get; set; } = [];
+}
+
+public enum Priority { Low, [XmlEnum("urgent")] High }
+
+public sealed class Line
+{
+    [XmlAttribute("sku")] public string? Sku { get; set; }
+    [XmlAttribute("qty")] public int Quantity { get; set; }
+}
+```
+
+```ts
+import { parseDateTimeOffset } from "@kkdev92/tisilia-runtime";
+import { PriorityXml } from "./api/index.js";
+
+const result = await client.ordersCreate({
+  body: { id: 7, Customer: "Ada", Note: null, Priority: PriorityXml.High,
+    PlacedAt: parseDateTimeOffset("2026-10-09T10:30:00+09:00"), Lines: [{ sku: "a-1", qty: 2 }] },
+});
+// sends <order xmlns="urn:shop" id="7"><Customer>Ada</Customer><Note xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+// xsi:nil="true"/><Priority>urgent</Priority><PlacedAt>2026-10-09T10:30:00+09:00</PlacedAt><Lines><line sku="a-1" qty="2"/></Lines></order>
+```
+
+A model's members carry their XML names — attributes and elements as XmlSerializer names them (`id`, `sku`), character
+content (`[XmlText]`) the C# member's name — and an XML model is a TypeScript type of its own, apart from the class's
+JSON model: `OrderXmlRequest` for what the server reads, `OrderXmlResponse` for what it writes, `PriorityXml`.
+XmlSerializer maps a class once per namespace, so a class used in two namespaces has a model for each
+(`LineXmlResponse2`). The root element, namespaces, the order of attributes and elements, `[XmlArray]`/`[XmlArrayItem]`
+wrappers and `[XmlElement]` collections that repeat without one are XmlSerializer's; an action that returns an interface
+collection (`IEnumerable<Line>`) is written as `ArrayOfLine`, and a `string` declared as XML as `<string>…</string>`.
+
+XmlSerializer requires no member when it reads: an absent one keeps the value the class's constructor gave it. Every
+member of a request model is therefore optional, and null is a value only where XmlSerializer reads one — a nillable
+element (`[XmlElement(IsNullable = true)]`, a `Nullable<T>` element), which the client writes as `xsi:nil`; elsewhere
+the member is left out. In a response model, a member XmlSerializer always writes is required; one with a `Specified`
+property or a `ShouldSerialize` method is optional; a nillable one may be null; a reference the server leaves out when
+it is null reads as null when it is absent; and a member with `[DefaultValue]`, which the server leaves out when it has
+that value, decodes to the default. An enum is a number in TypeScript, with a constant object that names its members
+(`PriorityXml.High`), and travels as the member's XML name (`[XmlEnum]`), a `[Flags]` value as the names separated by
+spaces; a value that is not a member is refused before sending, because XmlSerializer can neither write nor read it.
+Dates, times, durations (`xs:duration`), Guids, `byte[]` (base64, or `DataType = "hexBinary"`) and the floating-point
+specials (`INF`, `NaN`) use XmlSerializer's forms.
+
+The client writes UTF-8 without an XML declaration, as one document no deeper than the formatter's `MaxDepth` (32), and
+refuses a deeper one before sending. It writes a carriage return, control characters, and a tab or line feed in an
+attribute as character references, which the server reads as those characters, and refuses a string with an unpaired
+surrogate. It reads a response as UTF-8 XML 1.0 with namespaces and refuses a document type declaration, processing
+instructions and entities other than the predefined ones, none of which XmlSerializer writes. XmlSerializer writes a
+carriage return in text as a line break, which XML reads as a line feed: `\r` and `\r\n` in a string the server writes
+arrive as `\n` (in an attribute they arrive as written). The XML equivalences are G1, and `tisilia conformance`
+does not observe XML bodies — it lists them as `xml-not-observed`. An XML response is server-only for Nuxt hydration.
+
+A type with a form the client does not write or read keeps the body as bytes with a warning (SV29) that names the form:
+derived types (`[XmlInclude]`) and abstract types; `object` members, which XmlSerializer writes with `xsi:type`; a choice
+of elements (`[XmlElement]` or `[XmlArrayItem]` with several types, `[XmlChoiceIdentifier]`); `[XmlAnyElement]` and
+`[XmlAnyAttribute]`; character content next to child elements or of a collection; `IXmlSerializable` and `XmlNode` values;
+an attribute that lists values and `xml:` attributes; string data types whose white space XmlSerializer collapses
+(`token`, `anyURI` …); a time of day with an offset (`DataType = "time"`), qualified and encoded names; a `[DefaultValue]`
+on a member that can be null or has a `Specified`/`ShouldSerialize` condition; and two members with the same XML name. A
+body is also kept as bytes when a formatter derived from XmlSerializerInputFormatter/XmlSerializerOutputFormatter, one with
+other wrapper providers than `AddXmlSerializerFormatters()` gives it, or a DataContractSerializer formatter reads or writes
+it, and when it is a `SerializableError` or `ProblemDetails`, which MVC reads and writes through wrapper types.
 
 ### Server-sent events
 
@@ -381,14 +661,40 @@ const result = await client.eventsReadSubscribe(async (event, signal) => {
 String events carry plain text; concrete JSON types use the same lossless response codecs as ordinary JSON. The parser handles
 split UTF-8, a leading BOM, CR/LF/CRLF, comments, multiline data, event names, persistent IDs and retry fields. Retry milliseconds
 remain decimal text to preserve large values. It rejects invalid UTF-8 and discards an unfinished event at EOF.
-`byte[]` and `object` event data require an explicit adapter because ASP.NET can write raw bytes instead of JSON.
-Server-sent events are exported for minimal API endpoints; a controller action that returns them is diagnosed (SV29).
+ASP.NET Core writes `byte[]` event data as its bytes, and `object` data as JSON unless the value is a `byte[]`, so neither has
+one encoding the contract could describe: such events are text events with a warning, and the client receives each event's
+data as the text it is (CR and CRLF become LF; data that is not UTF-8 fails the subscription). Other types that can hold a
+`byte[]`, such as `IEnumerable<byte>`, are diagnosed.
+A controller action that returns `TypedResults.ServerSentEvents` is exported the same way. Its JSON data uses the minimal API
+`JsonOptions` (`ConfigureHttpJsonOptions`), not the MVC ones, because `ServerSentEventsResult<T>` serializes with them.
 An empty JSON data field represents ASP.NET's null event data and is accepted only by a nullable data contract.
 
-Subscriptions await each handler and retain no event history. Limits apply to the entire connection, including handler time;
-JSON depth/token/number limits apply to each event. Events already handled stay handled on cancellation/failure. There is no
-automatic reconnect or replay; the application owns that policy. A regular `client.eventsRead()` buffers a finite event array
-within the same limits. Explorer uses this finite view. SSE cannot be automatically hydrated.
+Subscriptions await each handler and retain no event history. `timeoutMs` applies to the whole subscription, including handler
+time, and `maxBodyBytes` to each connection; JSON depth/token/number limits apply to each event. Events already handled stay
+handled on cancellation/failure. A regular `client.eventsRead()` buffers a finite event array within the same limits. Explorer
+uses this finite view. SSE cannot be automatically hydrated.
+
+A dropped stream reconnects only when the server says it can resume and the caller asks. The server declares that it continues
+after the event whose id a reconnecting client sends in `Last-Event-ID` (HTML Standard) — every event then carries its own id:
+
+```csharp
+app.MapGet("/events", (HttpContext context) => TypedResults.ServerSentEvents(ReadEventsAfter(context.Request.Headers["Last-Event-ID"])))
+    .WithTisiliaEventResume() // [TisiliaEventResume] on a controller action
+    .WithTisiliaOperation("events.read"); // ReadEventsAfter yields SseItem<T> with EventId set
+```
+
+```ts
+const result = await client.eventsReadSubscribe(onEvent, {}, { reconnect: { maxAttempts: 5, delayMs: 3000 } });
+// result.reconnections counts the reconnections
+```
+
+The client reconnects after a transport failure while connecting or reading — never at EOF, after an HTTP error answer, a
+limit or a handler error — waiting the server's latest `retry:` (else `delayMs`), and sends `Last-Event-ID` with the id of the
+last event it delivered. It reconnects only where no event can arrive twice: before the first event, or after an event that
+named its own id; otherwise the failure is returned. `maxAttempts` counts attempts in a row without a delivered event.
+`Last-Event-ID` is not a CORS-safelisted header: a cross-origin server's CORS policy must allow it. Declaring the resume on an
+operation that writes no events is diagnosed (SV29). Whether the handler really continues after the given id is the
+application's to keep; the contract records the declaration.
 
 ### Endpoint-specific JSON settings
 
@@ -434,10 +740,11 @@ the ASP.NET Core 10 source, and the [Streams standard](https://streams.spec.what
 Use `tisilia doctor --project ./MyApi --allow-execute-project --format json --output doctor.json` before export. It reports
 each selected operation, grouped causes, effective DateTime declarations, and selected/analyzed/unanalyzed counts. Exit 0 means
 metadata is supported, 3 means blockers, and 6 means startup/metadata analysis is incomplete. HTTP remains unobserved. The command
-executes application startup, so run it with isolated settings; the flag is not a sandbox. Strict export writes no partial contract.
+executes application startup (and, with `--allow-execute-binders`, the declared binding code), so run it with isolated settings;
+the flags are not a sandbox. Strict export writes no partial contract.
 
-Version 0.1.0-alpha uses version 0.1 for the contract, Codec ABI, portable DSL, configuration and conformance formats.
-Export and generate with matching packages. After a format change, re-export the contract and regenerate clients and evidence;
+The contract, Codec ABI, portable DSL, configuration and conformance formats use version 0.1.
+Export and generate with the same Tisilia version. After a format change, re-export the contract and regenerate clients and evidence;
 replacing version strings does not migrate existing artifacts.
 
 Native AOT and trimmed applications (`dotnet new webapiaot`) are supported: their source-generated `JsonSerializerContext` is
@@ -453,7 +760,7 @@ would fail when the endpoint is called — add `[JsonSerializable(typeof(T))]`.
 | `module '…': artifact '…' is not installed at …` | copy the module there; for `tisilia-additional`: `dotnet tisilia codec install-additional --project <app dir>` |
 | `artifact '…' digest … does not match the contract; it differs only in line endings` | git converted the script on checkout: put a `.gitattributes` with `* -text` in its folder, delete the files there and restore them with `git checkout -- .` (for `tisilia-additional`, `codec install-additional` does both) |
 | `DateTime parameter … declared Local` | use the default mixed wire, Utc, Unspecified, or DateTimeOffset (section 6) |
-| `… declares no response types` (SV34) | add `.Produces<T>()` / `[ProducesResponseType]` or return a typed result |
+| `… declares no response types` (SV34) | the message names the return path the source generator could not read; declare that response with `.Produces<T>()` / `[ProducesResponseType]`, or return a typed result |
 | `export host exited with <code>` | the application failed to start or the export failed; the application's log is above the message |
 | `the application did not finish the export within 120 s` | the application does not call `AddTisilia`, or its startup takes longer: `--timeout <seconds>` |
 | `1 difference(s) … run generate` (`check`, exit 4) | regenerate and commit the output |

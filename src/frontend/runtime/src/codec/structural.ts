@@ -1,6 +1,7 @@
-import { type JsonEntry, type JsonValue, jsonNull } from "../json/ast.js";
-import type { Codec, CodecContext } from "./abi.js";
+import { type JsonEntry, type JsonObject, type JsonValue, jsonNull } from "../json/ast.js";
+import { graphOf, type Codec, type CodecContext } from "./abi.js";
 import { CodecError } from "./errors.js";
+import { carrier, inGraph, registerDecoded, resolveDecoded, validatedCopy, withoutUnusedIds, writeReference } from "./graph.js";
 import { TisiliaMap, type KeyComparer } from "./map.js";
 import { ordinalEqualsIgnoreCase, ordinalUpper } from "../primitives/ordinalCasing.js";
 
@@ -43,6 +44,13 @@ export interface ObjectCodecDescriptor {
   readonly extensionProperty?: string;
   readonly request: boolean;
   readonly response: boolean;
+  /** The server writes `$id` first, or `{"$ref"}` for a value it wrote before (ReferenceHandler.Preserve). */
+  readonly referenceMetadata?: boolean;
+  /**
+   * The server reads reference metadata here (ReferenceHandler.Preserve) and makes the value before it reads the members: a value
+   * the request reaches again is written once with `$id` first and then as `{"$ref"}`, also inside itself.
+   */
+  readonly requestReferenceMetadata?: boolean;
 }
 
 export type Extension = ReadonlyMap<string, unknown>;
@@ -50,6 +58,40 @@ export type Extension = ReadonlyMap<string, unknown>;
 /** Null-prototype record so that JSON names can never reach Object.prototype. */
 function createRecord(): Record<string, unknown> {
   return Object.create(null) as Record<string, unknown>;
+}
+
+/**
+ * The id of an object the server writes with reference metadata (ReferenceHandler.Preserve): its `$id` comes first and is not part
+ * of the value (`{"$ref": id}` in place of a value written before is read by the caller).
+ */
+function writtenId(wire: JsonObject, ctx: CodecContext, codecId: string): string {
+  const first = wire.entries[0];
+  if (first?.name !== "$id" || first.value.kind !== "string") {
+    throw new CodecError("type-mismatch", ctx.path, "the server writes this value with \"$id\" first (ReferenceHandler.Preserve)", codecId);
+  }
+  return first.value.value;
+}
+
+/** A collection the server writes inside reference metadata: `{"$id": id, "$values": [...]}`. */
+function writtenCollection(wire: JsonValue, ctx: CodecContext, codecId: string): { readonly id: string; readonly items: readonly JsonValue[] } {
+  if (wire.kind !== "object") {
+    throw new CodecError("type-mismatch", ctx.path, `the server writes this collection as {"$id", "$values"} (ReferenceHandler.Preserve) but found ${wire.kind}`, codecId);
+  }
+  const id = writtenId(wire, ctx, codecId);
+  const values = wire.entries[1];
+  if (wire.entries.length !== 2 || values?.name !== "$values" || values.value.kind !== "array") {
+    throw new CodecError("type-mismatch", ctx.path, "the server writes this collection as {\"$id\", \"$values\"} (ReferenceHandler.Preserve)", codecId);
+  }
+  return { id, items: values.value.items };
+}
+
+/** `{"$ref": id}`: the server wrote this value before, here or as an ancestor (ReferenceHandler.Preserve). */
+function isReference(wire: JsonValue): wire is JsonObject {
+  return wire.kind === "object" && wire.entries[0]?.name === "$ref";
+}
+
+function referenceTo(id: string): JsonObject {
+  return { kind: "object", entries: [{ name: "$ref", value: { kind: "string", value: id } }] };
 }
 
 function matchesName(matching: NameMatching, a: string, b: string): boolean {
@@ -73,8 +115,10 @@ export function objectCodec<T extends object>(d: ObjectCodecDescriptor): Codec<T
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
       throw new CodecError("type-mismatch", ctx.path, "object required", d.id);
     }
-    const out = createRecord();
-    const source = value as Record<string, unknown>;
+    const graph = graphOf(ctx);
+    return inGraph(graph, () => validatedCopy(graph, value, d.id, createRecord, (out) => fill(value as Record<string, unknown>, out, ctx))) as T;
+  };
+  const fill = (source: Record<string, unknown>, out: Record<string, unknown>, ctx: CodecContext): void => {
     for (const p of props) {
       const has = Object.prototype.hasOwnProperty.call(source, p.name);
       if (!has) {
@@ -111,46 +155,58 @@ export function objectCodec<T extends object>(d: ObjectCodecDescriptor): Codec<T
       }
       out[d.extensionProperty] = copy;
     }
-    return out as T;
   };
 
   const encodeRequest = d.request
     ? (value: T, ctx: CodecContext): JsonValue => {
         ctx.checkpoint();
-        const validated = validate(value, ctx) as Record<string, unknown>;
-        const entries: JsonEntry[] = [];
-        for (const p of props) {
-          const has = Object.prototype.hasOwnProperty.call(validated, p.name);
-          if (!has) {
-            if ((p.readPresence ?? p.presence) === "required") {
-              throw new CodecError("missing-required", ctx.child(p.name).path, `the server requires '${p.name}'`, d.id);
+        const graph = graphOf(ctx);
+        return inGraph(graph, (outermost) => {
+          const validated = validate(value, ctx) as Record<string, unknown>;
+          const reference = writeReference(graph, validated, d.id, d.requestReferenceMetadata === true, ctx.path);
+          if ("ref" in reference) {
+            return referenceTo(reference.ref);
+          }
+          graph.active.add(validated);
+          const entries: JsonEntry[] = [];
+          try {
+            for (const p of props) {
+              const has = Object.prototype.hasOwnProperty.call(validated, p.name);
+              if (!has) {
+                if ((p.readPresence ?? p.presence) === "required") {
+                  throw new CodecError("missing-required", ctx.child(p.name).path, `the server requires '${p.name}'`, d.id);
+                }
+                continue;
+              }
+              const v = validated[p.name];
+              if (v === null) {
+                entries.push({ name: p.name, value: jsonNull });
+                continue;
+              }
+              const codec = resolve(p.codec);
+              if (codec.encodeRequest === undefined) {
+                throw new CodecError("unsupported", ctx.child(p.name).path, `codec '${codec.id}' has no request capability`, codec.id);
+              }
+              entries.push({ name: p.name, value: codec.encodeRequest(v, ctx.child(p.name)) });
             }
-            continue;
-          }
-          const v = validated[p.name];
-          if (v === null) {
-            entries.push({ name: p.name, value: jsonNull });
-            continue;
-          }
-          const codec = resolve(p.codec);
-          if (codec.encodeRequest === undefined) {
-            throw new CodecError("unsupported", ctx.child(p.name).path, `codec '${codec.id}' has no request capability`, codec.id);
-          }
-          entries.push({ name: p.name, value: codec.encodeRequest(v, ctx.child(p.name)) });
-        }
-        if (d.extensionProperty !== undefined && d.extension !== undefined && d.readAdditional === "capture") {
-          const ext = validated[d.extensionProperty] as Map<string, unknown> | undefined;
-          if (ext !== undefined) {
-            const extCodec = resolve(d.extension);
-            if (extCodec.encodeRequest === undefined) {
-              throw new CodecError("unsupported", ctx.path, `extension codec '${extCodec.id}' has no request capability`, extCodec.id);
+            if (d.extensionProperty !== undefined && d.extension !== undefined && d.readAdditional === "capture") {
+              const ext = validated[d.extensionProperty] as Map<string, unknown> | undefined;
+              if (ext !== undefined) {
+                const extCodec = resolve(d.extension);
+                if (extCodec.encodeRequest === undefined) {
+                  throw new CodecError("unsupported", ctx.path, `extension codec '${extCodec.id}' has no request capability`, extCodec.id);
+                }
+                for (const [k, v] of ext) {
+                  entries.push({ name: k, value: extCodec.encodeRequest(v, ctx.child(k)) });
+                }
+              }
             }
-            for (const [k, v] of ext) {
-              entries.push({ name: k, value: extCodec.encodeRequest(v, ctx.child(k)) });
-            }
+          } finally {
+            graph.active.delete(validated);
           }
-        }
-        return { kind: "object", entries };
+          const node: JsonValue = reference.id === undefined ? { kind: "object", entries } : carrier(graph, reference.id, entries, false);
+          return outermost ? withoutUnusedIds(graph, node) : node;
+        });
       }
     : undefined;
 
@@ -160,67 +216,81 @@ export function objectCodec<T extends object>(d: ObjectCodecDescriptor): Codec<T
         if (wire.kind !== "object") {
           throw new CodecError("type-mismatch", ctx.path, `object required but found ${wire.kind}`, d.id);
         }
-        const out = createRecord();
-        const seen = new Set<string>();
-        let extension: Map<string, unknown> | undefined;
-        for (const entry of wire.entries) {
-          const p = props.find((x) => matchesName(d.nameMatching, x.name, entry.name));
-          if (p === undefined) {
-            switch (d.writeAdditional) {
-              case "reject":
-                throw new CodecError("unexpected-property", ctx.child(entry.name).path, `unexpected property '${entry.name}'`, d.id);
-              case "ignore":
-                continue;
-              case "capture": {
-                if (d.extension === undefined) {
-                  throw new CodecError("unsupported", ctx.path, "capture policy without extension codec", d.id);
-                }
-                extension ??= new Map();
-                if (extension.has(entry.name)) {
-                  if (d.duplicates === "reject") {
-                    throw new CodecError("duplicate-property", ctx.child(entry.name).path, `duplicate property '${entry.name}'`, d.id);
-                  }
-                }
-                const extCodec = resolve(d.extension);
-                if (extCodec.decodeResponse === undefined) {
-                  throw new CodecError("unsupported", ctx.path, `extension codec '${extCodec.id}' has no response capability`, extCodec.id);
-                }
-                extension.set(entry.name, extCodec.decodeResponse(entry.value, ctx.child(entry.name)));
-                continue;
-              }
-            }
-          }
-          if (seen.has(p.name)) {
-            if (d.duplicates === "reject") {
-              throw new CodecError("duplicate-property", ctx.child(entry.name).path, `duplicate property '${entry.name}'`, d.id);
-            }
-            // last-wins: fall through and overwrite
-          }
-          seen.add(p.name);
-          if (entry.value.kind === "null" && !(resolve(p.codec).ownsNullToken === true && !p.nullable)) {
-            if (!p.nullable) {
-              throw new CodecError("null-not-allowed", ctx.child(p.name).path, `property '${p.name}' is null but the public type is not nullable`, d.id);
-            }
-            out[p.name] = null;
-            continue;
-          }
-          const codec = resolve(p.codec);
-          if (codec.decodeResponse === undefined) {
-            throw new CodecError("unsupported", ctx.child(p.name).path, `codec '${codec.id}' has no response capability`, codec.id);
-          }
-          out[p.name] = codec.decodeResponse(entry.value, ctx.child(p.name));
-        }
-        for (const p of props) {
-          if (!seen.has(p.name) && (p.writePresence ?? p.presence) === "required") {
-            throw new CodecError("missing-required", ctx.child(p.name).path, `required property '${p.name}' is missing`, d.id);
-          }
-        }
-        if (extension !== undefined && d.extensionProperty !== undefined) {
-          out[d.extensionProperty] = extension;
-        }
-        return out as T;
+        const graph = graphOf(ctx);
+        return inGraph(graph, () => decodeObject(wire, ctx, graph));
       }
     : undefined;
+
+  // a value the server wrote before is that value again; one it writes now is registered before its members, which may refer to it
+  const decodeObject = (wire: JsonObject, ctx: CodecContext, graph: ReturnType<typeof graphOf>): T => {
+    let entries = wire.entries;
+    const out = createRecord();
+    if (d.referenceMetadata === true) {
+      if (isReference(wire)) {
+        return resolveDecoded(graph, wire, [d.id], d.id, ctx.path) as T;
+      }
+      registerDecoded(graph, writtenId(wire, ctx, d.id), out, d.id, ctx.path);
+      entries = entries.slice(1);
+    }
+    const seen = new Set<string>();
+    let extension: Map<string, unknown> | undefined;
+    for (const entry of entries) {
+      const p = props.find((x) => matchesName(d.nameMatching, x.name, entry.name));
+      if (p === undefined) {
+        switch (d.writeAdditional) {
+          case "reject":
+            throw new CodecError("unexpected-property", ctx.child(entry.name).path, `unexpected property '${entry.name}'`, d.id);
+          case "ignore":
+            continue;
+          case "capture": {
+            if (d.extension === undefined) {
+              throw new CodecError("unsupported", ctx.path, "capture policy without extension codec", d.id);
+            }
+            extension ??= new Map();
+            if (extension.has(entry.name)) {
+              if (d.duplicates === "reject") {
+                throw new CodecError("duplicate-property", ctx.child(entry.name).path, `duplicate property '${entry.name}'`, d.id);
+              }
+            }
+            const extCodec = resolve(d.extension);
+            if (extCodec.decodeResponse === undefined) {
+              throw new CodecError("unsupported", ctx.path, `extension codec '${extCodec.id}' has no response capability`, extCodec.id);
+            }
+            extension.set(entry.name, extCodec.decodeResponse(entry.value, ctx.child(entry.name)));
+            continue;
+          }
+        }
+      }
+      if (seen.has(p.name)) {
+        if (d.duplicates === "reject") {
+          throw new CodecError("duplicate-property", ctx.child(entry.name).path, `duplicate property '${entry.name}'`, d.id);
+        }
+        // last-wins: fall through and overwrite
+      }
+      seen.add(p.name);
+      if (entry.value.kind === "null" && !(resolve(p.codec).ownsNullToken === true && !p.nullable)) {
+        if (!p.nullable) {
+          throw new CodecError("null-not-allowed", ctx.child(p.name).path, `property '${p.name}' is null but the public type is not nullable`, d.id);
+        }
+        out[p.name] = null;
+        continue;
+      }
+      const codec = resolve(p.codec);
+      if (codec.decodeResponse === undefined) {
+        throw new CodecError("unsupported", ctx.child(p.name).path, `codec '${codec.id}' has no response capability`, codec.id);
+      }
+      out[p.name] = codec.decodeResponse(entry.value, ctx.child(p.name));
+    }
+    for (const p of props) {
+      if (!seen.has(p.name) && (p.writePresence ?? p.presence) === "required") {
+        throw new CodecError("missing-required", ctx.child(p.name).path, `required property '${p.name}' is missing`, d.id);
+      }
+    }
+    if (extension !== undefined && d.extensionProperty !== undefined) {
+      out[d.extensionProperty] = extension;
+    }
+    return out as T;
+  };
 
   const codec: Codec<T> = {
     id: d.id,
@@ -271,6 +341,13 @@ export interface ArrayCodecDescriptor {
   readonly typeId: string;
   readonly element: CodecRef<unknown>;
   readonly elementNullable: boolean;
+  /** The server writes the collection as `{"$id", "$values"}`, or `{"$ref"}` for one it wrote before (ReferenceHandler.Preserve). */
+  readonly referenceMetadata?: boolean;
+  /**
+   * The server reads reference metadata here (ReferenceHandler.Preserve) and makes the collection before it reads the items: a
+   * collection the request reaches again is written once as `{"$id", "$values"}` and then as `{"$ref"}`.
+   */
+  readonly requestReferenceMetadata?: boolean;
 }
 
 export function arrayCodec<E>(d: ArrayCodecDescriptor): Codec<readonly (E | null)[]> {
@@ -278,24 +355,25 @@ export function arrayCodec<E>(d: ArrayCodecDescriptor): Codec<readonly (E | null
     if (!Array.isArray(value)) {
       throw new CodecError("type-mismatch", ctx.path, "array required", d.id);
     }
-    const element = resolve(d.element);
-    const out: (E | null)[] = [];
-    // an index loop (not Array#map) so that holes are seen instead of skipped
-    for (let i = 0; i < value.length; i++) {
-      const item: unknown = value[i];
-      if (!(i in value) || item === undefined) {
-        throw new CodecError("undefined-not-allowed", ctx.child(i).path, "array holes and undefined are not JSON", d.id);
-      }
-      if (item === null) {
-        if (!d.elementNullable) {
-          throw new CodecError("null-not-allowed", ctx.child(i).path, "array element does not allow null", d.id);
+    const graph = graphOf(ctx);
+    return inGraph(graph, () => validatedCopy(graph, value, d.id, (): (E | null)[] => [], (out) => {
+      const element = resolve(d.element);
+      // an index loop (not Array#map) so that holes are seen instead of skipped
+      for (let i = 0; i < value.length; i++) {
+        const item: unknown = value[i];
+        if (!(i in value) || item === undefined) {
+          throw new CodecError("undefined-not-allowed", ctx.child(i).path, "array holes and undefined are not JSON", d.id);
         }
-        out.push(null);
-        continue;
+        if (item === null) {
+          if (!d.elementNullable) {
+            throw new CodecError("null-not-allowed", ctx.child(i).path, "array element does not allow null", d.id);
+          }
+          out.push(null);
+          continue;
+        }
+        out.push(element.validateDomain(item, ctx.child(i)) as E);
       }
-      out.push(element.validateDomain(item, ctx.child(i)) as E);
-    }
-    return out;
+    }));
   };
   return {
     id: d.id,
@@ -303,30 +381,62 @@ export function arrayCodec<E>(d: ArrayCodecDescriptor): Codec<readonly (E | null
     validateDomain: validate,
     encodeRequest: (value, ctx) => {
       ctx.checkpoint();
-      const items = validate(value, ctx);
-      const element = resolve(d.element);
-      if (element.encodeRequest === undefined) {
-        throw new CodecError("unsupported", ctx.path, `codec '${element.id}' has no request capability`, element.id);
-      }
-      return { kind: "array", items: items.map((item, i) => (item === null ? jsonNull : element.encodeRequest!(item, ctx.child(i)))) };
+      const graph = graphOf(ctx);
+      return inGraph(graph, (outermost) => {
+        const items = validate(value, ctx);
+        const reference = writeReference(graph, items, d.id, d.requestReferenceMetadata === true, ctx.path);
+        if ("ref" in reference) {
+          return referenceTo(reference.ref);
+        }
+        const element = resolve(d.element);
+        if (element.encodeRequest === undefined) {
+          throw new CodecError("unsupported", ctx.path, `codec '${element.id}' has no request capability`, element.id);
+        }
+        graph.active.add(items);
+        let array: JsonValue;
+        try {
+          array = { kind: "array", items: items.map((item, i) => (item === null ? jsonNull : element.encodeRequest!(item, ctx.child(i)))) };
+        } finally {
+          graph.active.delete(items);
+        }
+        const node = reference.id === undefined ? array : carrier(graph, reference.id, [{ name: "$values", value: array }], true);
+        return outermost ? withoutUnusedIds(graph, node) : node;
+      });
     },
     decodeResponse: (wire, ctx) => {
       ctx.checkpoint();
-      if (wire.kind !== "array") {
+      if (d.referenceMetadata !== true && wire.kind !== "array") {
         throw new CodecError("type-mismatch", ctx.path, `array required but found ${wire.kind}`, d.id);
       }
-      const element = resolve(d.element);
-      if (element.decodeResponse === undefined) {
-        throw new CodecError("unsupported", ctx.path, `codec '${element.id}' has no response capability`, element.id);
-      }
-      return wire.items.map((item, i) => {
-        if (item.kind === "null" && !(element.ownsNullToken === true && !d.elementNullable)) {
-          if (!d.elementNullable) {
-            throw new CodecError("null-not-allowed", ctx.child(i).path, "array element is null but the public type is not nullable", d.id);
-          }
-          return null;
+      const graph = graphOf(ctx);
+      return inGraph(graph, () => {
+        if (d.referenceMetadata === true && isReference(wire)) {
+          return resolveDecoded(graph, wire, [d.id], d.id, ctx.path) as readonly (E | null)[];
         }
-        return element.decodeResponse!(item, ctx.child(i)) as E;
+        const out: (E | null)[] = [];
+        let items: readonly JsonValue[];
+        if (d.referenceMetadata === true) {
+          const written = writtenCollection(wire, ctx, d.id);
+          registerDecoded(graph, written.id, out, d.id, ctx.path);
+          items = written.items;
+        } else {
+          items = (wire as Extract<JsonValue, { kind: "array" }>).items;
+        }
+        const element = resolve(d.element);
+        if (element.decodeResponse === undefined) {
+          throw new CodecError("unsupported", ctx.path, `codec '${element.id}' has no response capability`, element.id);
+        }
+        items.forEach((item, i) => {
+          if (item.kind === "null" && !(element.ownsNullToken === true && !d.elementNullable)) {
+            if (!d.elementNullable) {
+              throw new CodecError("null-not-allowed", ctx.child(i).path, "array element is null but the public type is not nullable", d.id);
+            }
+            out.push(null);
+            return;
+          }
+          out.push(element.decodeResponse!(item, ctx.child(i)) as E);
+        });
+        return out;
       });
     },
     parseRequestInput: (input, ctx) => {
@@ -349,6 +459,13 @@ export interface MapCodecDescriptor {
   readonly value: CodecRef<unknown>;
   readonly valueNullable: boolean;
   readonly comparer: KeyComparer;
+  /** The server writes `$id` before the entries, or `{"$ref"}` for a dictionary it wrote before (ReferenceHandler.Preserve). */
+  readonly referenceMetadata?: boolean;
+  /**
+   * The server reads reference metadata here (ReferenceHandler.Preserve) and makes the dictionary before it reads the entries: a
+   * dictionary the request reaches again is written once with `$id` first and then as `{"$ref"}`.
+   */
+  readonly requestReferenceMetadata?: boolean;
 }
 
 /** Dictionary codec: keys go through the key capabilities, collisions after encoding are rejected. */
@@ -364,24 +481,25 @@ export function mapCodec<K, V>(d: MapCodecDescriptor): Codec<TisiliaMap<K, V | n
       throw new CodecError("unsupported", ctx.path, `key codec '${kc.id}' has no key capability`, kc.id);
     }
     const identity = (k: K): string => kc.keyIdentity === undefined ? kc.encodeKey!(k, ctx) : kc.keyIdentity(k, ctx);
-    const out = new TisiliaMap<K, V | null>(d.comparer, identity);
-    const vc = resolve(d.value);
-    kc.validateKeySet?.([...value.keys()], ctx);
-    for (const [k, v] of value.entries()) {
-      const key = kc.validateDomain(k, ctx) as K;
-      if (v === undefined) {
-        throw new CodecError("undefined-not-allowed", ctx.path, "map values cannot be undefined", d.id);
+    const graph = graphOf(ctx);
+    return inGraph(graph, () => validatedCopy(graph, value, d.id, () => new TisiliaMap<K, V | null>(d.comparer, identity), (out) => {
+      const vc = resolve(d.value);
+      kc.validateKeySet?.([...value.keys()], ctx);
+      for (const [k, v] of value.entries()) {
+        const key = kc.validateDomain(k, ctx) as K;
+        if (v === undefined) {
+          throw new CodecError("undefined-not-allowed", ctx.path, "map values cannot be undefined", d.id);
+        }
+        if (v === null && !d.valueNullable) {
+          throw new CodecError("null-not-allowed", ctx.path, "map value does not allow null", d.id);
+        }
+        const encodedKey = kc.encodeKey!(key, ctx);
+        if (out.hasEncoded(identity(key))) {
+          throw new CodecError("key-collision", ctx.child(encodedKey).path, "two keys collide after encoding under the map comparer", d.id);
+        }
+        out.set(key, v === null ? null : (vc.validateDomain(v, ctx.child(encodedKey)) as V));
       }
-      if (v === null && !d.valueNullable) {
-        throw new CodecError("null-not-allowed", ctx.path, "map value does not allow null", d.id);
-      }
-      const encodedKey = kc.encodeKey(key, ctx);
-      if (out.hasEncoded(identity(key))) {
-        throw new CodecError("key-collision", ctx.child(encodedKey).path, "two keys collide after encoding under the map comparer", d.id);
-      }
-      out.set(key, v === null ? null : (vc.validateDomain(v, ctx.child(encodedKey)) as V));
-    }
-    return out;
+    }));
   };
   return {
     id: d.id,
@@ -389,18 +507,31 @@ export function mapCodec<K, V>(d: MapCodecDescriptor): Codec<TisiliaMap<K, V | n
     validateDomain: validate,
     encodeRequest: (value, ctx) => {
       ctx.checkpoint();
-      const map = validate(value, ctx);
-      const kc = keyCodec();
-      const vc = resolve(d.value);
-      if (vc.encodeRequest === undefined) {
-        throw new CodecError("unsupported", ctx.path, `codec '${vc.id}' has no request capability`, vc.id);
-      }
-      const entries: JsonEntry[] = [];
-      for (const [k, v] of map.entries()) {
-        const name = kc.encodeKey!(k, ctx);
-        entries.push({ name, value: v === null ? jsonNull : vc.encodeRequest(v, ctx.child(name)) });
-      }
-      return { kind: "object", entries };
+      const graph = graphOf(ctx);
+      return inGraph(graph, (outermost) => {
+        const map = validate(value, ctx);
+        const reference = writeReference(graph, map, d.id, d.requestReferenceMetadata === true, ctx.path);
+        if ("ref" in reference) {
+          return referenceTo(reference.ref);
+        }
+        const kc = keyCodec();
+        const vc = resolve(d.value);
+        if (vc.encodeRequest === undefined) {
+          throw new CodecError("unsupported", ctx.path, `codec '${vc.id}' has no request capability`, vc.id);
+        }
+        graph.active.add(map);
+        const entries: JsonEntry[] = [];
+        try {
+          for (const [k, v] of map.entries()) {
+            const name = kc.encodeKey!(k, ctx);
+            entries.push({ name, value: v === null ? jsonNull : vc.encodeRequest(v, ctx.child(name)) });
+          }
+        } finally {
+          graph.active.delete(map);
+        }
+        const node: JsonValue = reference.id === undefined ? { kind: "object", entries } : carrier(graph, reference.id, entries, false);
+        return outermost ? withoutUnusedIds(graph, node) : node;
+      });
     },
     decodeResponse: (wire, ctx) => {
       ctx.checkpoint();
@@ -415,22 +546,34 @@ export function mapCodec<K, V>(d: MapCodecDescriptor): Codec<TisiliaMap<K, V | n
       if (vc.decodeResponse === undefined) {
         throw new CodecError("unsupported", ctx.path, `codec '${vc.id}' has no response capability`, vc.id);
       }
-      const out = new TisiliaMap<K, V | null>(d.comparer, (k) => kc.keyIdentity === undefined ? kc.encodeKey!(k, ctx) : kc.keyIdentity(k, ctx));
-      for (const entry of wire.entries) {
-        const key = kc.decodeKey(entry.name, ctx.child(entry.name)) as K;
-        if (out.has(key)) {
-          throw new CodecError("duplicate-property", ctx.child(entry.name).path, "duplicate map key", d.id);
+      const graph = graphOf(ctx);
+      return inGraph(graph, () => {
+        if (d.referenceMetadata === true && isReference(wire)) {
+          return resolveDecoded(graph, wire, [d.id], d.id, ctx.path) as TisiliaMap<K, V | null>;
         }
-        if (entry.value.kind === "null" && !(vc.ownsNullToken === true && !d.valueNullable)) {
-          if (!d.valueNullable) {
-            throw new CodecError("null-not-allowed", ctx.child(entry.name).path, "map value is null but the public type is not nullable", d.id);
+        const out = new TisiliaMap<K, V | null>(d.comparer, (k) => kc.responseKeyIdentity !== undefined ? kc.responseKeyIdentity(k, ctx) : kc.keyIdentity === undefined ? kc.encodeKey!(k, ctx) : kc.keyIdentity(k, ctx));
+        let entries = wire.entries;
+        // a key named "$id" is data here: the metadata is the first entry only
+        if (d.referenceMetadata === true) {
+          registerDecoded(graph, writtenId(wire, ctx, d.id), out, d.id, ctx.path);
+          entries = entries.slice(1);
+        }
+        for (const entry of entries) {
+          const key = kc.decodeKey!(entry.name, ctx.child(entry.name)) as K;
+          if (out.has(key)) {
+            throw new CodecError("duplicate-property", ctx.child(entry.name).path, "duplicate map key", d.id);
           }
-          out.set(key, null);
-          continue;
+          if (entry.value.kind === "null" && !(vc.ownsNullToken === true && !d.valueNullable)) {
+            if (!d.valueNullable) {
+              throw new CodecError("null-not-allowed", ctx.child(entry.name).path, "map value is null but the public type is not nullable", d.id);
+            }
+            out.set(key, null);
+            continue;
+          }
+          out.set(key, vc.decodeResponse!(entry.value, ctx.child(entry.name)) as V);
         }
-        out.set(key, vc.decodeResponse(entry.value, ctx.child(entry.name)) as V);
-      }
-      return out;
+        return out;
+      });
     },
     // Explorer typed input: a JSON object whose names go through the key grammar and whose values through the value
     // codec's input, as a response is read; the contract declares this capability for every map codec
@@ -447,8 +590,11 @@ export function mapCodec<K, V>(d: MapCodecDescriptor): Codec<TisiliaMap<K, V | n
       }
       const vc = resolve(d.value);
       const out = new TisiliaMap<K, V | null>(d.comparer, (k) => kc.keyIdentity === undefined ? kc.encodeKey!(k, ctx) : kc.keyIdentity(k, ctx));
-      for (const entry of input.entries) {
-        const key = kc.decodeKey(entry.name, ctx.child(entry.name)) as K;
+      // input is a request: keys the server reads as one are refused with the key codec's own reason
+      const keys = input.entries.map((entry) => kc.decodeKey!(entry.name, ctx.child(entry.name)) as K);
+      kc.validateKeySet?.(keys, ctx);
+      for (const [index, entry] of input.entries.entries()) {
+        const key = keys[index]!;
         if (out.has(key)) {
           throw new CodecError("duplicate-property", ctx.child(entry.name).path, "duplicate map key", d.id);
         }
@@ -683,6 +829,8 @@ export interface TaggedUnionDescriptor {
   readonly variants: readonly TaggedUnionVariant[];
   /** Domain property that carries the variant tag (generated as a literal type). */
   readonly tagProperty: string;
+  /** The server may write `{"$ref"}` for a value it wrote before (ReferenceHandler.Preserve); each variant reads its own `$id`. */
+  readonly referenceMetadata?: boolean;
 }
 
 /** Polymorphic object dispatch on a discriminator literal: no body sniffing, unknown tags fail. */
@@ -716,6 +864,13 @@ export function taggedUnionCodec<T extends object>(d: TaggedUnionDescriptor): Co
     decodeResponse: (w, ctx) => {
       if (w.kind !== "object") {
         throw new CodecError("type-mismatch", ctx.path, `object required but found ${w.kind}`, d.id);
+      }
+      if (d.referenceMetadata === true) {
+        if (isReference(w)) {
+          // the value the server wrote before, made by one of the variants
+          return resolveDecoded(graphOf(ctx), w, d.variants.map((v) => resolve(v.codec).id), d.id, ctx.path) as T;
+        }
+        writtenId(w, ctx, d.id);
       }
       const entry = w.entries.find((e) => e.name === d.discriminator);
       if (entry === undefined) {
@@ -826,6 +981,10 @@ export function brandCodec<T>(id: string, typeId: string, base: CodecRef<unknown
     get keyIdentity() {
       const b = get();
       return b.keyIdentity === undefined ? undefined : (v: T, ctx: CodecContext): string => b.keyIdentity!(v, ctx);
+    },
+    get responseKeyIdentity() {
+      const b = get();
+      return b.responseKeyIdentity === undefined ? undefined : (v: T, ctx: CodecContext): string => b.responseKeyIdentity!(v, ctx);
     },
     get validateKeySet() {
       const b = get();

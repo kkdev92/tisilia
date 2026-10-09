@@ -44,6 +44,12 @@ public sealed class TisiliaOptions
     /// </summary>
     public DateTimeBindingCollection DateTimes { get; } = new();
 
+    /// <summary>
+    /// What a type's <c>BindAsync</c> or an MVC model binder reads from the request. A parameter bound by such code is exported only
+    /// as declared; an undeclared one is an export error.
+    /// </summary>
+    public CustomBindingCollection CustomBinding { get; } = new();
+
     /// <summary>Documentation entries copied to <c>contract.documentation</c> (excluded from the semantic hash).</summary>
     public Dictionary<string, (string Summary, string Description)> Documentation { get; } = new(StringComparer.Ordinal);
 

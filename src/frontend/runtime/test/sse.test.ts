@@ -94,3 +94,79 @@ describe("server-sent events", () => {
     expect(sink).not.toHaveBeenCalled();
   });
 });
+
+describe("reconnecting a dropped event stream", () => {
+  const resumable: OperationDescriptor = { ...operation, responses: [{ ...operation.responses[0]!, body: { ...(operation.responses[0]!.body as object), resume: "last-event-id" } as never }, operation.responses[1]!] };
+  // a stream that sends its text, then drops the connection
+  const dropping = (text: string) => { let sent = false; return new ReadableStream<Uint8Array>({ pull(c) { if (sent) { c.error(new TypeError("terminated")); } else { sent = true; c.enqueue(encoder.encode(text)); } } }); };
+  const connections = (...bodies: (string | ReadableStream<Uint8Array> | Error)[]) => {
+    const lastEventIds: (string | null)[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+      lastEventIds.push(new Headers(init?.headers).get("last-event-id"));
+      const body = bodies.shift();
+      if (body instanceof Error) { throw body; }
+      return new Response(body ?? "", { headers: { "content-type": "text/event-stream" } });
+    });
+    return { fetch, lastEventIds };
+  };
+  const collect = () => { const data: unknown[] = []; return { data, sink: (e: { data: unknown }) => { data.push(e.data); } }; };
+
+  it("reconnects after the server's retry with Last-Event-ID and delivers every event once", async () => {
+    const { fetch, lastEventIds } = connections(dropping("retry: 5\nid: 1\ndata: 1\n\nid: 2\ndata: 2\n\n"), "id: 3\ndata: 3\n\n");
+    const { data, sink } = collect();
+    const result = await subscribe(resumable, {}, { baseUrl: "http://api.test", transport: { fetch }, reconnect: { maxAttempts: 2, delayMs: 60_000 } }, sink);
+    expect(result).toMatchObject({ kind: "subscription", eventsReceived: 3, reconnections: 1 });
+    expect(data).toEqual([1n, 2n, 3n]);
+    expect(lastEventIds).toEqual([null, "2"]);
+  });
+
+  it("reconnects before any event without Last-Event-ID, and gives up after maxAttempts in a row", async () => {
+    const { fetch, lastEventIds } = connections(new TypeError("connect refused"), "id: 1\ndata: 1\n\n");
+    const { data, sink } = collect();
+    expect(await subscribe(resumable, {}, { baseUrl: "http://api.test", transport: { fetch }, reconnect: { maxAttempts: 1, delayMs: 1 } }, sink)).toMatchObject({ kind: "subscription", reconnections: 1 });
+    expect(data).toEqual([1n]);
+    expect(lastEventIds).toEqual([null, null]);
+    const refused = connections(new TypeError("a"), new TypeError("b"), new TypeError("c"));
+    expect(await subscribe(resumable, {}, { baseUrl: "http://api.test", transport: { fetch: refused.fetch }, reconnect: { maxAttempts: 2, delayMs: 1 } }, sink)).toMatchObject({ kind: "transport-failure", reason: "network" });
+    expect(refused.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not reconnect where an event could arrive twice, or without both the declaration and the option", async () => {
+    // the last delivered event carried an earlier id: resuming after it would send the event again
+    const inherited = connections(dropping("id: 1\ndata: 1\n\ndata: 2\n\n"), "id: 3\ndata: 3\n\n");
+    expect(await subscribe(resumable, {}, { baseUrl: "http://api.test", transport: { fetch: inherited.fetch }, reconnect: { maxAttempts: 3, delayMs: 1 } }, collect().sink)).toMatchObject({ kind: "transport-failure", reason: "read" });
+    expect(inherited.fetch).toHaveBeenCalledTimes(1);
+    // events without any id cannot be resumed after
+    const anonymous = connections(dropping("data: 1\n\n"), "data: 2\n\n");
+    expect(await subscribe(resumable, {}, { baseUrl: "http://api.test", transport: { fetch: anonymous.fetch }, reconnect: { maxAttempts: 3, delayMs: 1 } }, collect().sink)).toMatchObject({ kind: "transport-failure" });
+    expect(anonymous.fetch).toHaveBeenCalledTimes(1);
+    const undeclared = connections(dropping("id: 1\ndata: 1\n\n"), "id: 2\ndata: 2\n\n");
+    expect(await subscribe(operation, {}, { baseUrl: "http://api.test", transport: { fetch: undeclared.fetch }, reconnect: { maxAttempts: 3, delayMs: 1 } }, collect().sink)).toMatchObject({ kind: "transport-failure" });
+    const notAsked = connections(dropping("id: 1\ndata: 1\n\n"), "id: 2\ndata: 2\n\n");
+    expect(await subscribe(resumable, {}, { baseUrl: "http://api.test", transport: { fetch: notAsked.fetch } }, collect().sink)).toMatchObject({ kind: "transport-failure" });
+    expect([undeclared.fetch.mock.calls.length, notAsked.fetch.mock.calls.length]).toEqual([1, 1]);
+  });
+
+  it("ends at EOF and on a handler error without reconnecting, and checks its options", async () => {
+    const eof = connections("id: 1\ndata: 1\n\n", "id: 2\ndata: 2\n\n");
+    expect(await subscribe(resumable, {}, { baseUrl: "http://api.test", transport: { fetch: eof.fetch }, reconnect: { maxAttempts: 3, delayMs: 1 } }, collect().sink)).toMatchObject({ kind: "subscription", eventsReceived: 1, reconnections: 0 });
+    expect(eof.fetch).toHaveBeenCalledTimes(1);
+    const failing = connections("id: 1\ndata: 1\n\nid: 2\ndata: 2\n\n", "id: 3\ndata: 3\n\n");
+    expect(await subscribe(resumable, {}, { baseUrl: "http://api.test", transport: { fetch: failing.fetch }, reconnect: { maxAttempts: 3, delayMs: 1 } }, () => { throw new Error("handler"); })).toMatchObject({ kind: "transport-failure" });
+    expect(failing.fetch).toHaveBeenCalledTimes(1);
+    for (const reconnect of [{ maxAttempts: 0 }, { maxAttempts: 1.5 }, { maxAttempts: 1, delayMs: -1 }, { maxAttempts: 1, delayMs: Number.NaN }]) {
+      await expect(subscribe(resumable, {}, { baseUrl: "http://api.test", reconnect }, collect().sink)).rejects.toThrow(TypeError);
+    }
+  });
+});
+
+describe("event IDs across connections", () => {
+  it("continues the last event ID of the connection before, and tells an event's own id from an inherited one", () => {
+    const p = new SseParser("7");
+    const events = [...p.push(encoder.encode("data: a\n\nid: 8\ndata: b\n\n"))];
+    expect(events.map(e => e.id)).toEqual(["7", "8"]);
+    expect(p.lastHadOwnId).toBe(true);
+    [...p.push(encoder.encode("data: c\n\n"))];
+    expect(p.lastHadOwnId).toBe(false);
+  });
+});

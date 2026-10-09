@@ -26,7 +26,15 @@ builder.Services.AddCors(o =>
 });
 builder.Services.Configure<RouteOptions>(o => { o.ConstraintMap["incoming"] = typeof(IncomingConstraint); o.ConstraintMap["slug"] = typeof(SlugTransformer); });
 var registered = mode != "before";
-if (registered) { builder.Services.AddTisilia(o => o.ApiId = "adoption-api"); }
+if (registered)
+{
+    builder.Services.AddTisilia(o =>
+    {
+        o.ApiId = "adoption-api";
+        // Paging.BindAsync also reads size, which this declaration leaves out: doctor --allow-execute-binders reports it
+        if (mode == "binders") { o.CustomBinding.BindAsync<Paging>(reads => reads.Query<int>("page")); }
+    });
+}
 if (mode == "preserve") { builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.ReferenceHandler = ReferenceHandler.Preserve); }
 if (mode == "provider-failure") { builder.Services.AddSingleton<IApiDescriptionGroupCollectionProvider, BrokenDescriptions>(); }
 var app = builder.Build();
@@ -154,11 +162,17 @@ if (mode == "diagnostics")
     Select(group.MapGet("/unknown", () => Results.File(Known.Bytes, "application/pdf")), "bad.unknown");
 }
 if (mode == "excluded") { Select(group.MapGet("/excluded", () => 1).ExcludeFromDescription(), "bad.excluded"); }
+if (mode == "binders") { Select(group.MapGet("/paging", (Paging paging) => paging.Page), "binders.paging"); }
 app.MapControllers().WithTisiliaJsonOptions<CustomJsonValue>("mvc.json", JsonSettings.Response);
 if (registered) { app.MapTisiliaContract(); app.MapTisiliaExplorer(); }
 app.Run();
 
 public sealed record Observed(string? First, string? Second, string PathBase);
+public sealed record Paging(int Page, int Size)
+{
+    public static ValueTask<Paging?> BindAsync(HttpContext context) => ValueTask.FromResult<Paging?>(new(
+        int.TryParse(context.Request.Query["page"], out var page) ? page : 1, int.TryParse(context.Request.Query["size"], out var size) ? size : 10));
+}
 public sealed record Failure(long Id);
 public sealed record DateDto([property: JsonConverter(typeof(UnsupportedDateConverter))] DateTime At);
 public sealed class UnsupportedDateConverter : JsonConverter<DateTime>

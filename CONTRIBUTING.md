@@ -40,7 +40,10 @@ These constraints preserve value semantics, reproducible generation and the proj
 them in mind when proposing or implementing a change.
 
 1. The .NET packages and `@kkdev92/tisilia-runtime` take **no third-party runtime dependency**. The Nuxt module and the
-   Explorer depend on what they extend; nothing else does.
+   Explorer depend on what they extend; nothing else does. `Tisilia.AspNetCore.SourceGenerator`, which
+   Kkdev92.Tisilia.AspNetCore carries in `analyzers/dotnet/cs`, compiles against the compiler's own API
+   (Microsoft.CodeAnalysis.CSharp, at the oldest version a .NET 10 SDK runs in), which the compiler provides when it loads
+   it: the package takes no dependency on it.
 2. **Fail closed.** What a contract cannot describe exactly is a diagnostic with a fix — never `any`, never a guess, never a
    silent fallback to the base type.
 3. **Generating never executes anything.** Only `export`, `doctor`, `conformance` and `explorer build` run code, each behind its
@@ -77,11 +80,13 @@ contracts; the runtime tests run corpora).
 
 | Suite | Purpose |
 |---|---|
-| `tests/Tisilia.Contract.Tests` | The contract model, the schemas and the 54 semantic rules, hashing and canonical JSON, the exporter's readers, the TypeScript and portable generators, the CLI as a process, the conformance protocol and evidence, the package's build files, and the release version |
+| `tests/Tisilia.Contract.Tests` | The contract model, the schemas and the 55 semantic rules, hashing and canonical JSON, the exporter's readers, the TypeScript and portable generators, the CLI as a process, the conformance protocol and evidence, the package's build files, and the release version |
 | `src/frontend/runtime/test` | The lossless JSON parser and writer, the primitives against what .NET writes, the codecs, the HTTP pipeline and transport, the contract interpreter, the conformance runner |
 | `src/frontend/nuxt/test` | Header partitioning, request identity, cache keys and hydration checks; `config-types.ts` is checked by `npm run typecheck` |
 | `src/frontend/explorer/test` | Forms, examples, code snippets, redaction, storage, the page's text in both languages, documentation rendering, and the bundled packages named in `NOTICE` |
 | `scripts/install-check.ps1` | The packed packages in fresh projects: a new ASP.NET Core application exported, validated and called through a client generated from it |
+| `tests/Tisilia.CultureOracle` | A host with ICU culture data, which `MvcFormCultureTests` starts: the test process has the invariant culture only, and MVC reads form values with the request culture |
+| `tests/Tisilia.InferenceFixture` | Endpoints compiled with the source generator as their analyzer, as the package applies it, which `ResponseInferenceTests` export and call; `ResponseInferenceGeneratorTests` drive the generator itself |
 | `tests/oracle` | Programs that show what .NET does; not part of any build |
 
 `tests/fixtures` holds contracts, codec modules and a portable project that the tests read. `sample-api.contract.json` is

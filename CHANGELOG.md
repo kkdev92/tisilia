@@ -12,20 +12,30 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 - **Forms** across export, generated clients, the interpreter and Explorer: URL-encoded and multipart contracts for
   minimal API scalar and repeated fields, nested models and scalar constructor parameters (form-specific `DataMember`
-  names and ignored members), indexed collections of scalars and models, nested constructor objects and root lists, and
-  finite `IFormFile`/`IFormFileCollection` uploads; MVC string and file fields. Minimal API and MVC enums use their exact
-  integer domains. Indexed objects reject empty or sparse elements before sending, nested files share the upload budget,
-  and the application's CSRF policy remains enforced. Explorer edits form fields and selects files; its form snippets
-  construct branded integers and GUIDs so copied code passes strict TypeScript checking.
+  names, which may contain `.`, `[` or `]`, and ignored members), indexed collections of scalars and models, nested
+  constructor objects and root lists, dictionaries with string, integer or Guid keys, values of the additional codec
+  types, and finite `IFormFile`/`IFormFileCollection` uploads; MVC models (nested models, records, collections of models
+  and of values, files) written under the model's prefix, and MVC string, number, date and time, Guid, boolean and file
+  fields, with numbers and dates written so that every request culture reads the same value or refuses it. Minimal API
+  and MVC enums use their exact integer domains. Indexed objects reject empty or sparse elements before sending, nested
+  files share the upload budget, and the application's CSRF policy remains enforced. Explorer edits form fields,
+  dictionary rows and selects files; its form snippets construct branded integers and GUIDs, and cast values of the
+  additional codec types to their brands, so copied code passes strict TypeScript checking.
 - **Raw uploads** for minimal API `Stream` / `PipeReader` bodies with explicit `Accepts` metadata. Generated and
   interpreted clients send bounded `Uint8Array` bodies byte for byte. Explorer includes a file selector; Nuxt identities
-  distinguish raw body bytes, empty uploads and omitted bodies.
+  distinguish raw body bytes, empty uploads and omitted bodies. From Node, a `ReadableStream<Uint8Array>` body is sent
+  chunked as it is read, with `maxBodyBytes` counted while it is sent; browsers, which send a stream as text or as an
+  empty body or refuse it, never get one (`supportsRequestStreams()`), and hydrated Nuxt operations refuse it.
 - **Streaming downloads.** The runtime's `download` API streams declared binary responses into an asynchronous sink with
   ordered writes, a shared deadline, cancellation and decompressed-byte limits. Declared JSON errors still use their
   normal codecs.
-- **Server-sent events.** Typed SSE response contracts for minimal API endpoints, generated `operationSubscribe` methods and
-  the runtime `subscribe` API. Text and lossless JSON data decode incrementally, with ordered asynchronous handlers,
-  cancellation and connection byte/time limits. `isFailure` treats a completed download or subscription as success.
+- **Server-sent events.** Typed SSE response contracts for minimal API endpoints and controller actions, generated
+  `operationSubscribe` methods and the runtime `subscribe` API. Text and lossless JSON data decode incrementally, with
+  ordered asynchronous handlers, cancellation and connection byte/time limits; `byte[]` and `object` event data arrive as
+  text, with a warning. `isFailure` treats a completed download or subscription as success.
+- **Resumable server-sent events.** `WithTisiliaEventResume()` / `[TisiliaEventResume]` declares that an endpoint's events
+  resume after `Last-Event-ID`; with `reconnect: { maxAttempts }`, the runtime's `subscribe` then reconnects a dropped stream
+  after the server's `retry:`, sending the id of the last event it delivered, and only where no event can arrive twice.
 - **Endpoint JSON options.** `WithTisiliaJsonOptions<T>` declares and enforces a `TypedResults.Json` response's frozen
   options, type, status and media. `MapControllers().WithTisiliaJsonOptions<T>(operationId, options)` declares an MVC
   `JsonResult`, with a result filter enforcing the frozen settings, exact runtime value type, status and UTF-8 media type.
@@ -37,14 +47,91 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   optional declarations narrow the wire. DateTime dictionary keys use CLR tick equality; uncertain multi-key Local
   collisions are refused.
 - Explicit incoming values on routes with outbound transformers; link generation retains its separate transformer behavior.
+- **Custom binding declarations.** `TisiliaOptions.CustomBinding` declares what a type's `BindAsync` or an MVC model binder
+  reads — route, query and header values, or nothing from the request — and export describes the parameter that way.
+  `tisilia doctor --allow-execute-binders` calls the declared code with a request that records what it reads and reports
+  reads outside the declaration.
+- **Responses read from the handlers.** A minimal API handler that returns `IResult` (`Results.Ok(value)`,
+  `Results.NotFound()`) and an MVC action that returns `IActionResult` declare no response types, and export refused them.
+  Kkdev92.Tisilia.AspNetCore now carries a source generator that reads the return paths of registered handlers at build
+  time, and export describes each path as the typed declaration would: the TypedResults type it creates, or
+  `[ProducesResponseType]` with the static type of the value. A path it cannot read is reported with its place in the
+  source (SV34), and declared metadata is always used as it is.
+- **DateTime dictionary keys and the server's time zone.** System.Text.Json converts a key written with an offset to the
+  server's own time, so keys the client writes differently can be one key on the server, which keeps the last value.
+  `TisiliaOptions.DateTimes.ServerTimeZone` declares the zone the server runs in: the contract carries its UTC offsets
+  from 1900 to 2199 as .NET computes them, and the client refuses exactly the keys the server reads as one. Without the
+  declaration, several keys that include one with an offset are sent when no time zone can make two of them one, instead
+  of being refused. Outside Development, the application logs a warning when its own zone has other offsets than the
+  declared one, and `tisilia doctor` reports both zones.
+- **XML bodies.** An MVC action that accepts or produces only XML through MVC's XmlSerializer formatters
+  (`AddXmlSerializerFormatters()`) has typed request and response bodies, described with XmlSerializer's own mapping of
+  the type: the root element and namespaces, attributes and elements in XmlSerializer's order, wrapped and repeated
+  collections, `xsi:nil`, `Specified`/`ShouldSerialize` members and `[DefaultValue]`, character content, enum and flags
+  names, and XmlSerializer's forms of dates, times, durations, Guids and binary data. Generated clients, the interpreter
+  and Explorer write and read the documents; XML models are TypeScript types of their own (`OrderXmlRequest`,
+  `OrderXmlResponse`). A type with a form the client does not write or read — derived types and `object` members
+  (`xsi:type`), a choice of elements, `xs:any`, mixed content, `IXmlSerializable` — keeps the body as bytes with a warning
+  that names the form (SV29). XML equivalences are G1, and `tisilia conformance` lists them as not observed.
 
 ### Changed
 
-- `ReferenceHandler.Preserve` no longer blocks operations whose JSON bodies use only builtin scalar codecs (including
-  nullable scalars and base64 bytes). Structured JSON and custom reference handlers still fail closed under SV20.
+- `ReferenceHandler.Preserve` no longer blocks JSON requests or responses, shared and cyclic values included. The contract
+  marks where System.Text.Json writes `$id` and `{"$id","$values"}` in responses, and where it reads them in requests. A
+  value the server writes twice (`$ref`: a shared object or a cycle) decodes as one value. A request writes a value it
+  reaches again once with `$id` and then as `$ref` where the server reads references, and writes it again where it reads
+  none (arrays, immutable collections, structs, types built through a constructor with parameters). A reference to a value
+  first written at a position of another type is refused. Custom reference handlers still fail closed under SV20; a request
+  property whose JSON name starts with `$`, which System.Text.Json refuses under Preserve, is reported.
+- `tisilia conformance` runs key round trips only for codecs that a JSON body uses as a dictionary key, under the profile
+  of that body and never under `ReferenceHandler.Preserve`. A scalar that is never a key gets no key cases.
+- A route, query, header or form value of a type the server reads with its own `TryParse`, `IParsable<T>` or (MVC)
+  `TypeConverter`, which no codec describes, is exported as text with a warning (SV30) instead of failing export: the
+  client sends any string, and the server answers the texts its parser refuses.
+- A response that an MVC output formatter writes in a declared format other than JSON and that the contract does not
+  describe as XML (a DataContractSerializer or custom formatter, or a type with a form XML bodies do not cover), and a
+  minimal API string declared with a media type other than JSON, are exported as binary responses with a warning (SV29)
+  instead of failing export.
 
 ### Fixed
 
+- An MVC action that declares a polymorphic response type — `ActionResult<Shape>`, `[ProducesResponseType<Shape>]` — and
+  passes the value to `Ok(value)` was described as a tagged union, but MVC writes such a value with its own type, without
+  the discriminator, so the client failed to decode it. Export now refuses that response wherever it reads the source, and
+  says to return the value itself, which MVC writes with the declared type.
+- With `TisiliaOptions.DateTimes.Default = Local`, the client sent DateTime dictionary keys of one instant written with
+  different offsets as different keys, and the server kept only one of them. These keys now follow the rules of the
+  mixed DateTime keys.
+- A request value that contains itself made the client recurse until the stack overflowed. It is now refused with a codec
+  failure, or written with `$ref` where the server reads references.
+- Minimal API parameters bound by their type's `BindAsync` (`IBindableFromHttpContext<T>`) were left out of the contract,
+  so a generated client sent nothing for them. Export now describes them as declared, and reports an undeclared one (SV30).
+- A body parameter that the endpoint does not read as JSON — `[Consumes("application/xml")]`, or a minimal API that
+  declares only `text/json` — was exported as a JSON body, which the server answered with 415. A body MVC's
+  XmlSerializer formatter reads is now an XML body; one another MVC input formatter reads is sent as the bytes the caller
+  gives, with a warning; a body no client can send is reported (SV29).
+- An MVC action that returns a `string` with `[Produces("text/xml")]` was described as a text response, but MVC's string
+  formatter writes only `text/plain`: the XML formatter writes the string as `<string>…</string>`, which the client
+  returned as the value, markup included. It is now an XML response whose value is the string.
+- Controller action parameters whose type MVC reads from one value through a `TypeConverter` or `TryParse` — `Int128`,
+  `Version`, `IPAddress`, a type with its own `TryParse` — were exported as plain strings, because MVC's ApiExplorer
+  describes them as `string`. Export now reads the parameter's own type: the additional codec types bind through their
+  codec binders in the route, query, headers and JSON bodies, and other parsed types are sent as text with a warning.
+- A minimal API `IFormFileCollection` parameter, which receives every file of the request, was exported next to file
+  fields inside constructor-bound models or model collections, whose files it then received too. The rule now counts
+  every file field of the form. A controller action's `IFormFileCollection`, which receives only the files of its name,
+  no longer counts as taking every file, and a minimal API model member of that type is supported when it is the
+  operation's only file field.
+- A type that both controller actions and minimal API endpoints serve was described once, with the JSON options of
+  whichever endpoint export read first, also when MVC's options name or convert types otherwise
+  (`AddJsonOptions`): a generated client then sent the other side names it does not read — an MVC action with snake_case
+  names bound an empty model — and expected names it does not write. MVC models now have their own ids when MVC's
+  options describe types otherwise than the minimal API's; one converter type with other settings on each side is
+  reported (SV16).
+- `tisilia conformance` failed with `adapter.unknown-for-profile` when a codec was reached only from route, query or header
+  parameters, form fields or text bodies. Such codecs now get domain-validation cases only.
+- A contract whose types are all builtin scalars generated a `models/index.ts` that TypeScript rejected as not a module
+  (TS2306), so the generated client did not compile.
 - DateTime dictionary keys now honor application converter bindings. Conformance resolves builtin map comparers instead of
   silently skipping their map/object cases, and normalizes Local map keys in the recorded server zone.
 - Exported CSRF requirements now follow the endpoint's effective antiforgery metadata, including explicit overrides.
@@ -62,9 +149,29 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   without a declaration uses the new builtin `datetime` scalar; request identities add `bodyKind: "binary"` with
   canonical base64 body text. Use matching updated exporter, generator, runtime and Nuxt packages; older tools reject
   these variants.
-- The runtime's `RequestBodyDescriptor` is now a union of JSON, binary and form descriptors. Binary and form descriptors
-  carry `kind`; a JSON descriptor omits it or uses `"json"`. Narrow the union before reading `codec`.
+- The runtime's `RequestBodyDescriptor` is now a union of JSON, binary, form and XML descriptors. Binary, form and XML
+  descriptors carry `kind`; a JSON descriptor omits it or uses `"json"`. Narrow the union before reading `codec`.
 - Finite SSE calls return event arrays; subscriptions do not retain events and cannot be automatically hydrated.
+- Operations with an undeclared `BindAsync` parameter or a body that the endpoint does not read as JSON, which earlier
+  versions exported with a wrong request, now fail export with a diagnostic.
+- A parameter that the server parses with its type's own parser carries the new server acceptance
+  `tisilia.accept.server-parsed@0.1`, and such a form field `serverParsed`; older tools reject both.
+- When MVC's JSON options describe types otherwise than the minimal API's (naming or key policy, number handling, ignore
+  conditions, reference handling, converter types, resolvers), MVC models get ids of their own: re-export and regenerate.
+  A type both sides serve then has two TypeScript names, one of them with a number.
+- SSE response bodies may carry `resume: "last-event-id"`, as may the runtime's SSE response descriptors; a subscription
+  result reports `reconnections`, and `ClientOptions` takes `reconnect`. Older tools reject the field.
+- A generated client's raw upload body is typed `Uint8Array | ReadableStream<Uint8Array>`; `PreparedRequest` may carry a
+  `bodyStream` instead of `bodyBytes`, and a custom `transport.fetch` may receive a stream body with `duplex: "half"`.
+- Object, array and tagged-union wires may carry `referenceMetadata: true`, and the runtime's object, array, map and
+  tagged-union codec descriptors take a matching `referenceMetadata` option; older tools reject the field.
+- Form value fields of the additional codec types carry the parameter grammar their text follows (`grammarId`); MVC form
+  values that the server reads with the request culture are marked `requestCulture`; form dictionaries are fields of
+  `kind: "map"` with a `keyUse`.
+- XML bodies add `requestBody.kind: "xml"` and `body.kind: "xml"` with a root element, the wire shapes `xml-text`,
+  `xml-element` and `xml-items`, codecs bound to `tisilia.binding.xml-serializer@0.1`, the result adapter kind `xml`, and
+  the runtime's `xml` request and response descriptors; request identities of XML bodies use `bodyKind: "binary"`.
+  Validation adds SV55. Older tools reject these variants.
 
 ## [0.1.0-alpha] - 2026-10-05
 

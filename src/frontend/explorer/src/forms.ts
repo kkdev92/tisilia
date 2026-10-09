@@ -131,6 +131,9 @@ const primitiveGrammar: Readonly<Record<string, string>> = {
   "tisilia.json-value@0.1": "json",
 };
 
+/** The builtin scalars whose request input is a JSON number (an XML text of them is edited as one). */
+const numberPrimitives: ReadonlySet<string> = new Set(["int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64", "decimal", "float32", "float64"].map((n) => `tisilia.${n}@0.1`));
+
 function widgetOf(kind: string): { widget: ScalarWidget; hint: string; example?: string } {
   if (kind in integerRanges) {
     const [min, max] = integerRanges[kind]!;
@@ -307,6 +310,49 @@ export class FormSchema {
         for (const b of nonNull) {
           choice.branches.push({ token: b.token, node: this.node(b.wire, use) });
         }
+        return node;
+      }
+      // an XML body is edited as its value, which the codec writes as XML: a class's members are its properties, a collection's items
+      // its elements, and a text the scalar or enum it carries
+      case "xml-text": {
+        if (domain?.kind === "primitive" && domain.primitiveId === "tisilia.boolean@0.1") {
+          return this.remember(key, { kind: "boolean" });
+        }
+        const token = domain?.kind === "primitive" && numberPrimitives.has(domain.primitiveId) ? "number" : "string";
+        return this.remember(key, use === undefined ? this.scalarOfGrammar(shape.grammarId, token) : this.scalarOfType(use.typeId, token));
+      }
+      case "xml-element": {
+        const node: { kind: "object"; typeLabel: string; typeId?: string; properties: ObjectProperty[]; closed: boolean } = {
+          kind: "object",
+          typeLabel: use === undefined ? "object" : this.typeLabel(use.typeId),
+          ...(use !== undefined ? { typeId: use.typeId } : {}),
+          properties: [],
+          closed: true,
+        };
+        this.cache.set(key, node);
+        const domainProps = domain?.kind === "object" ? domain.properties : [];
+        for (const m of [...shape.attributes, ...shape.elements, ...(shape.text === undefined ? [] : [shape.text])]) {
+          const domainProp = domainProps.find((d) => d.name === m.property);
+          let child: InputNode;
+          if (m.repeated === true) {
+            const collection = domainProp === undefined ? undefined : this.unbrand(this.types.get(domainProp.use.typeId)?.shape);
+            const itemUse = collection?.kind === "array" ? collection.element : undefined;
+            const item = this.node(m.wire, itemUse === undefined ? undefined : this.withoutNull(itemUse));
+            child = { kind: "array", typeLabel: domainProp === undefined ? "array" : this.typeLabel(domainProp.use.typeId), element: itemUse?.semanticNullable === true ? { kind: "nullable", inner: item } : item };
+          } else {
+            const inner = this.node(m.wire, domainProp === undefined ? undefined : this.withoutNull(domainProp.use));
+            child = domainProp?.use.semanticNullable === true ? { kind: "nullable", inner } : inner;
+          }
+          node.properties.push({ name: m.property, required: domainProp?.presence === "required", node: child });
+        }
+        return node;
+      }
+      case "xml-items": {
+        const elementUse = domain?.kind === "array" ? domain.element : undefined;
+        const node = { kind: "array", typeLabel: use === undefined ? "array" : this.typeLabel(use.typeId), element: undefined as unknown as InputNode } as { kind: "array"; typeLabel: string; element: InputNode };
+        this.cache.set(key, node);
+        const item = this.node(shape.item.wire, elementUse === undefined ? undefined : this.withoutNull(elementUse));
+        node.element = elementUse?.semanticNullable === true ? { kind: "nullable", inner: item } : item;
         return node;
       }
       case "tagged-union": {

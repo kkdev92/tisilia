@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createCodecContext } from "../src/codec/abi.js";
+import { createCodecContext, type Codec } from "../src/codec/abi.js";
 import { CodecError } from "../src/codec/errors.js";
 import { TisiliaMap } from "../src/codec/map.js";
 import { scalarCodec, webNumbers } from "../src/codec/scalars.js";
@@ -290,6 +290,122 @@ describe("JSON null as a value (lossless json-value)", () => {
     expect(items.decodeResponse!(parseJson("[null,1]"), ctx)).toEqual([{ kind: "null" }, { kind: "number", text: "1" }]);
     const values = mapCodec<string, unknown>({ id: "demo.Values.codec", typeId: "demo.Values", key: scalarCodec("string"), value: json, valueNullable: false, comparer: "ordinal" });
     expect(values.decodeResponse!(parseJson('{"a":null}'), ctx).get("a")).toEqual({ kind: "null" });
+  });
+});
+
+describe("reference metadata (ReferenceHandler.Preserve)", () => {
+  const item = (referenceMetadata?: boolean) => objectCodec<{ name: string }>({
+    id: "item", typeId: "item",
+    properties: [{ name: "name", codec: scalarCodec("string"), presence: "required", nullable: false }],
+    nameMatching: "ordinal", duplicates: "reject", readAdditional: "ignore", writeAdditional: "reject", request: true, response: true,
+    ...(referenceMetadata === true ? { referenceMetadata } : {}),
+  });
+
+  type Node = { name: string; next?: Node | null; other?: Node | null };
+  const node = (marks: { readonly response?: boolean; readonly request?: boolean } = {}): Codec<Node> => {
+    const self: Codec<Node> = objectCodec<Node>({
+      id: "node", typeId: "node",
+      properties: [
+        { name: "name", codec: scalarCodec("string"), presence: "required", nullable: false },
+        { name: "next", codec: () => self, presence: "optional", nullable: true },
+        { name: "other", codec: () => self, presence: "optional", nullable: true },
+      ],
+      nameMatching: "ordinal", duplicates: "reject", readAdditional: "ignore", writeAdditional: "reject", request: true, response: true,
+      ...(marks.response === true ? { referenceMetadata: true } : {}),
+      ...(marks.request === true ? { requestReferenceMetadata: true } : {}),
+    });
+    return self;
+  };
+  const decode = <T>(codec: Codec<T>, text: string): T => codec.decodeResponse!(parseJson(text), createCodecContext());
+  const encode = <T>(codec: Codec<T>, value: T): string => writeJson(codec.encodeRequest!(value, createCodecContext()));
+
+  it("objects drop their leading $id, and a $ref is the value written before: shared or an ancestor", () => {
+    expect(decode(item(true), '{"$id":"1","name":"a"}')).toEqual({ name: "a" });
+    const shared = decode(node({ response: true }), '{"$id":"1","name":"a","next":{"$id":"2","name":"b"},"other":{"$ref":"2"}}');
+    expect(shared.next).toBe(shared.other);
+    const cyclic = decode(node({ response: true }), '{"$id":"1","name":"a","next":{"$id":"2","name":"b","next":{"$ref":"1"}}}');
+    expect(cyclic.next!.next).toBe(cyclic);
+    expect(() => decode(node({ response: true }), '{"$id":"1","name":"a","next":{"$ref":"2"}}')).toThrow(/had not written/);
+    expect(() => decode(node({ response: true }), '{"$id":"1","name":"a","next":{"$ref":"1","name":"x"}}')).toThrow(/no other property/);
+    expect(() => decode(node({ response: true }), '{"$id":"1","name":"a","next":{"$id":"1","name":"b"}}')).toThrow(/twice/);
+    expect(() => decode(item(true), '{"name":"a"}')).toThrow(/"\$id" first/);
+    expect(() => decode(item(true), '{"$id":1,"name":"a"}')).toThrow(/"\$id" first/);
+    // a value type carries no metadata: its first property named $id is data, never stripped
+    expect(() => decode(item(), '{"$id":"1","name":"a"}')).toThrow(/unexpected property '\$id'/);
+    // ids are per call: a second response numbers its values from "1" again
+    const codec = node({ response: true });
+    decode(codec, '{"$id":"1","name":"a"}');
+    expect(decode(codec, '{"$id":"1","name":"b"}')).toEqual({ name: "b" });
+  });
+
+  it("requests write $id and $ref only for a value reached again where the server reads them", () => {
+    const b: Node = { name: "b" };
+    const cyclic: Node = { name: "a" };
+    cyclic.next = cyclic;
+    expect(encode(node({ request: true }), { name: "a", next: { name: "b" } })).toBe('{"name":"a","next":{"name":"b"}}');
+    expect(encode(node({ request: true }), { name: "a", next: b, other: b })).toBe('{"name":"a","next":{"$id":"2","name":"b"},"other":{"$ref":"2"}}');
+    expect(encode(node({ request: true }), cyclic)).toBe('{"$id":"1","name":"a","next":{"$ref":"1"}}');
+    // where the server reads no reference, a shared value is written twice and a value inside itself is refused
+    expect(encode(node(), { name: "a", next: b, other: b })).toBe('{"name":"a","next":{"name":"b"},"other":{"name":"b"}}');
+    expect(() => encode(node(), cyclic)).toThrow(/contains itself/);
+    // validation keeps the graph: the copy is a cycle too
+    const copy = node().validateDomain(cyclic, createCodecContext());
+    expect(copy).not.toBe(cyclic);
+    expect(copy.next).toBe(copy);
+  });
+
+  it("collections read {$id, $values}, and a $ref is the collection or element written before", () => {
+    const list = arrayCodec<Node>({ id: "list", typeId: "list", element: node({ response: true, request: true }), elementNullable: false, referenceMetadata: true, requestReferenceMetadata: true });
+    expect(decode(list, '{"$id":"1","$values":[{"$id":"2","name":"a"}]}')).toEqual([{ name: "a" }]);
+    const items = decode(list, '{"$id":"1","$values":[{"$id":"2","name":"a"},{"$ref":"2"}]}');
+    expect(items[0]).toBe(items[1]);
+    expect(() => decode(list, '[{"$id":"2","name":"a"}]')).toThrow(/"\$values"/);
+    expect(() => decode(list, '{"$id":"1","$values":[],"x":1}')).toThrow(/"\$values"/);
+    expect(() => decode(list, '{"$ref":"1"}')).toThrow(/had not written/);
+    const holder = objectCodec<{ a: readonly (Node | null)[]; b: readonly (Node | null)[] }>({
+      id: "holder", typeId: "holder",
+      properties: [{ name: "a", codec: list, presence: "required", nullable: false }, { name: "b", codec: list, presence: "required", nullable: false }],
+      nameMatching: "ordinal", duplicates: "reject", readAdditional: "ignore", writeAdditional: "reject", request: true, response: true, referenceMetadata: true, requestReferenceMetadata: true,
+    });
+    const lists = decode(holder, '{"$id":"1","a":{"$id":"2","$values":[]},"b":{"$ref":"2"}}');
+    expect(lists.a).toBe(lists.b);
+    const x: Node = { name: "x" };
+    const shared = [x, x];
+    expect(encode(list, shared)).toBe('[{"$id":"2","name":"x"},{"$ref":"2"}]');
+    expect(encode(holder, { a: shared, b: shared })).toBe('{"a":{"$id":"2","$values":[{"$id":"3","name":"x"},{"$ref":"3"}]},"b":{"$ref":"2"}}');
+    const array = arrayCodec<bigint>({ id: "array", typeId: "array", element: scalarCodec("int64"), elementNullable: false });
+    expect(decode(array, "[1,2]")).toEqual([1n, 2n]);
+    expect(encode(list, [{ name: "a" }])).toBe('[{"name":"a"}]');
+  });
+
+  it("dictionaries drop only their first $id: a later \"$id\" key is data", () => {
+    const map = mapCodec<string, string>({ id: "m", typeId: "m", key: scalarCodec("string"), value: scalarCodec("string"), valueNullable: false, comparer: "ordinal", referenceMetadata: true });
+    expect([...map.decodeResponse!(parseJson('{"$id":"5","$id":"1","x":"y"}'), ctx).entries()]).toEqual([["$id", "1"], ["x", "y"]]);
+    const immutable = mapCodec<string, string>({ id: "i", typeId: "i", key: scalarCodec("string"), value: scalarCodec("string"), valueNullable: false, comparer: "ordinal" });
+    expect([...immutable.decodeResponse!(parseJson('{"$id":"1","a":"b"}'), ctx).entries()]).toEqual([["$id", "1"], ["a", "b"]]);
+  });
+
+  it("unions find the discriminator after $id, and a $ref is a value of one of their variants", () => {
+    const circle = objectCodec<{ $type: "circle"; r: number }>({
+      id: "circle", typeId: "circle",
+      properties: [
+        { name: "$type", codec: scalarCodec("string"), presence: "required", nullable: false },
+        { name: "r", codec: scalarCodec("float64"), presence: "required", nullable: false },
+      ],
+      nameMatching: "ordinal", duplicates: "reject", readAdditional: "ignore", writeAdditional: "ignore", request: true, response: true, referenceMetadata: true,
+    });
+    const shape = taggedUnionCodec<{ $type: "circle"; r: number }>({ id: "shape", typeId: "shape", discriminator: "$type", tagProperty: "$type", variants: [{ tag: "circle", codec: circle }], referenceMetadata: true });
+    expect(shape.decodeResponse!(parseJson('{"$id":"1","$type":"circle","r":2.5}'), ctx)).toEqual({ $type: "circle", r: 2.5 });
+    const shapes = arrayCodec<{ $type: "circle"; r: number }>({ id: "shapes", typeId: "shapes", element: shape, elementNullable: false });
+    const read = decode(shapes, '[{"$id":"1","$type":"circle","r":2.5},{"$ref":"1"}]');
+    expect(read[0]).toBe(read[1]);
+    // the value first written at a position of another type has another shape here
+    const mixed = objectCodec<{ item: { name: string }; shape: { $type: "circle"; r: number } }>({
+      id: "mixed", typeId: "mixed",
+      properties: [{ name: "item", codec: item(true), presence: "required", nullable: false }, { name: "shape", codec: shape, presence: "required", nullable: false }],
+      nameMatching: "ordinal", duplicates: "reject", readAdditional: "ignore", writeAdditional: "reject", request: true, response: true, referenceMetadata: true,
+    });
+    expect(() => decode(mixed, '{"$id":"1","item":{"$id":"2","name":"a"},"shape":{"$ref":"2"}}')).toThrow(/another type/);
   });
 });
 

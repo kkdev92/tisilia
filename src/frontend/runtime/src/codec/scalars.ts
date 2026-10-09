@@ -40,6 +40,7 @@ import {
   type Duration,
   type TimeOnly,
 } from "../primitives/datetime.js";
+import { checkDateTimeKeys, dateTimeKeyIdentity, parseServerTimeZone, type ServerTimeZone } from "../primitives/datetime-keys.js";
 
 /** Effective number handling of a usage position (mirrors the generator's NumberProfile). */
 export interface NumberProfile {
@@ -77,6 +78,27 @@ export interface ScalarOptions {
   readonly numbers?: NumberProfile;
   readonly minUtf16Length?: number;
   readonly maxUtf16Length?: number;
+  /**
+   * The non-secret context of the codec's binding. The DateTime codecs read `serverTimeZone`: the offsets of the server's time zone
+   * (TisiliaOptions.DateTimes.ServerTimeZone), with which they find the dictionary keys the server reads as one.
+   */
+  readonly context?: Readonly<Record<string, string>>;
+}
+
+/** The server time zone a DateTime codec's binding declares, parsed on first use; a malformed one is refused when keys need it. */
+function serverTimeZoneOf(options: ScalarOptions): (path: string) => ServerTimeZone | undefined {
+  const text = options.context?.["serverTimeZone"];
+  let parsed: ServerTimeZone | undefined;
+  return (path) => {
+    if (text === undefined) {
+      return undefined;
+    }
+    parsed ??= parseServerTimeZone(text);
+    if (parsed === undefined) {
+      throw new CodecError("unsupported", path, "the contract's server time zone is malformed; re-export the contract");
+    }
+    return parsed;
+  };
 }
 
 function expectString(wire: JsonValue, ctx: CodecContext, what: string): string {
@@ -237,24 +259,39 @@ export function scalarCodec<T = unknown>(name: ScalarName, options: ScalarOption
       return stringScalar<DateOnly>(base, validateDateOnly, parseDateOnly, formatDateOnly) as Codec<DateOnly> as Codec<T, T>;
     case "time-only":
       return stringScalar<TimeOnly>(base, validateTimeOnly, parseTimeOnly, formatTimeOnly) as Codec<TimeOnly> as Codec<T, T>;
-    case "datetime":
+    case "datetime": {
+      // DateTime equality ignores Kind: the server's keys are equal by their ticks, and a key read with an offset gets the ticks of the
+      // server's own time zone
+      const zone = serverTimeZoneOf(options);
       return {
         ...stringScalar<DateTime>(base, validateDateTime, parseDateTime, formatDateTime),
         encodeRequest: (v, ctx) => ({ kind: "string", value: formatDateTime(validateDateTimeRequest(v, ctx.path)) }),
         encodeKey: (v, ctx) => formatDateTime(validateDateTimeRequest(v, ctx.path)),
-        keyIdentity: (v, ctx) => validateDateTime(v, ctx.path).ticks.toString(),
+        keyIdentity: (v, ctx) => dateTimeKeyIdentity(validateDateTime(v, ctx.path), zone(ctx.path)),
+        responseKeyIdentity: (v, ctx) => validateDateTime(v, ctx.path).ticks.toString(),
         validateKeySet: (values, ctx) => {
-          if (values.length > 1 && values.some(v => validateDateTime(v, ctx.path).kind === "datetime-local-wire")) {
-            throw new CodecError("unsupported", ctx.path, "multiple DateTime keys including Local require a codec bound to the server time zone; use UTC or unspecified keys");
-          }
+          const keys = values.map((v) => validateDateTime(v, ctx.path));
+          checkDateTimeKeys(keys, zone(ctx.path), (i) => ctx.child(formatDateTime(keys[i]!)).path);
         },
       } as Codec<DateTime> as Codec<T, T>;
+    }
     case "datetime-utc":
       return stringScalar<DateTimeUtc>(base, (v, p) => ({ kind: "datetime-utc", ticks: validateDateTimeTicks(v, p, "utc") }), parseDateTimeUtc, formatDateTimeUtc) as Codec<DateTimeUtc> as Codec<T, T>;
     case "datetime-unspecified":
       return stringScalar<DateTimeUnspecified>(base, (v, p) => ({ kind: "datetime-unspecified", ticks: validateDateTimeTicks(v, p, "unspecified") }), parseDateTimeUnspecified, formatDateTimeUnspecified) as Codec<DateTimeUnspecified> as Codec<T, T>;
-    case "datetime-local-wire":
-      return stringScalar<DateTimeLocalWire>(base, validateDateTimeLocalWire, parseDateTimeLocalWire, formatDateTimeLocalWire) as Codec<DateTimeLocalWire> as Codec<T, T>;
+    case "datetime-local-wire": {
+      // the server converts each key to its own time zone: keys written with different offsets can be one key there
+      const zone = serverTimeZoneOf(options);
+      return {
+        ...stringScalar<DateTimeLocalWire>(base, validateDateTimeLocalWire, parseDateTimeLocalWire, formatDateTimeLocalWire),
+        keyIdentity: (v, ctx) => dateTimeKeyIdentity(validateDateTimeLocalWire(v, ctx.path), zone(ctx.path)),
+        responseKeyIdentity: (v, ctx) => formatDateTimeLocalWire(validateDateTimeLocalWire(v, ctx.path)),
+        validateKeySet: (values, ctx) => {
+          const keys = values.map((v) => validateDateTimeLocalWire(v, ctx.path));
+          checkDateTimeKeys(keys, zone(ctx.path), (i) => ctx.child(formatDateTimeLocalWire(keys[i]!)).path);
+        },
+      } as Codec<DateTimeLocalWire> as Codec<T, T>;
+    }
     case "datetime-offset":
       return stringScalar<DateTimeOffset>(base, validateDateTimeOffset, parseDateTimeOffset, formatDateTimeOffset) as Codec<DateTimeOffset> as Codec<T, T>;
     case "duration":

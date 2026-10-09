@@ -122,6 +122,24 @@ public static class ContractDiff
 
         switch (oldOp.RequestBody, newOp.RequestBody)
         {
+            case (XmlRequestBody ox, XmlRequestBody nx):
+                if (ox.MediaType != nx.MediaType || ox.Root != nx.Root || (ox.Presence == Presence.Optional && nx.Presence == Presence.Required) || nx.MaxDepth < ox.MaxDepth
+                    || !TypeShapeEquals(oldIndex, newIndex, ox.Use, nx.Use, WireDirection.ServerRead, [])
+                    || XmlWireText(oldIndex, ox.Use, WireDirection.ServerRead) != XmlWireText(newIndex, nx.Use, WireDirection.ServerRead))
+                {
+                    breaking.Add(new DiffEntry("body-changed", opId, "XML request body changed (media type, root element, members or value forms)"));
+                }
+                break;
+            case (NoRequestBody, XmlRequestBody nx):
+                (nx.Presence == Presence.Required ? breaking : compatible).Add(new DiffEntry("body-added", opId, "XML request body added"));
+                break;
+            case (XmlRequestBody, NoRequestBody):
+                review.Add(new DiffEntry("body-removed", opId, "XML request body removed"));
+                break;
+            case (XmlRequestBody, _):
+            case (_, XmlRequestBody):
+                breaking.Add(new DiffEntry("body-changed", opId, "request body encoding changed"));
+                break;
             case (FormRequestBody oldForm, FormRequestBody newForm):
                 if (System.Text.Json.JsonSerializer.Serialize(oldForm, TisiliaJson.Options) != System.Text.Json.JsonSerializer.Serialize(newForm, TisiliaJson.Options)
                     || oldForm.Fields.Any(f => f.Use is not null && newForm.Fields.FirstOrDefault(n => n.Name == f.Name)?.Use is { } nextUse
@@ -201,11 +219,80 @@ public static class ContractDiff
             {
                 breaking.Add(new DiffEntry("response-changed", opId, $"binary response case '{r.Id}' media type changed"));
             }
+            if (r.Body is XmlResponseBody oldXml && nr.Body is XmlResponseBody newXml
+                && (oldXml.MediaType != newXml.MediaType || oldXml.Root != newXml.Root || !TypeShapeEquals(oldIndex, newIndex, oldXml.Use, newXml.Use, WireDirection.ServerWrite, [])
+                    || XmlWireText(oldIndex, oldXml.Use, WireDirection.ServerWrite) != XmlWireText(newIndex, newXml.Use, WireDirection.ServerWrite)))
+            {
+                breaking.Add(new DiffEntry("response-changed", opId, $"XML response case '{r.Id}' changed (media type, root element, members or value forms)"));
+            }
         }
 
         foreach (var nr in newOp.Responses.Where(x => !oldOp.Responses.Any(r => r.Id == x.Id)))
         {
             review.Add(new DiffEntry("response-added", opId, $"response case '{nr.Id}' added; old clients classify it as unexpected-response"));
+        }
+    }
+
+    /// <summary>
+    /// The XML a use is written as, without wire ids: element and attribute names, namespaces, order, nillable, repeated and default
+    /// members and the text grammars. Any difference is a different document, so XML bodies compare it whole.
+    /// </summary>
+    private static string XmlWireText(ContractIndex index, TypeUse use, WireDirection direction)
+    {
+        var codec = index.Codecs[use.CodecId];
+        var cap = direction == WireDirection.ServerRead ? codec.Capabilities.Request : codec.Capabilities.Response;
+        var text = new System.Text.StringBuilder();
+        var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+        Write(cap?.Wire.WireId);
+        return text.ToString();
+
+        void Write(string? wireId)
+        {
+            if (wireId is null || !index.Wires.TryGetValue(wireId, out var wire))
+            {
+                text.Append('?');
+                return;
+            }
+
+            if (seen.TryGetValue(wireId, out var number))
+            {
+                text.Append('#').Append(number);
+                return;
+            }
+
+            seen[wireId] = seen.Count;
+            switch (wire.Shape)
+            {
+                case XmlTextWire t:
+                    text.Append("text(").Append(t.GrammarId);
+                    foreach (var n in t.Names ?? [])
+                    {
+                        text.Append(',').Append(n.Value).Append('=').Append(n.Name);
+                    }
+
+                    text.Append(')');
+                    break;
+                case XmlElementWire e:
+                    text.Append("element(");
+                    foreach (var (kind, member) in e.Attributes.Select(m => ("@", m)).Concat(e.Elements.Select(m => ("<", m))).Concat(e.Text is null ? [] : [("#", e.Text)]))
+                    {
+                        text.Append(kind).Append(member.Property).Append('|').Append(member.Name).Append('|').Append(member.Namespace).Append('|').Append(member.Presence)
+                            .Append(member.Nillable == true ? "|nil" : "").Append(member.Repeated == true ? "|*" : "").Append(member.Default is null ? "" : "|=" + member.Default).Append(':');
+                        Write(member.Wire.WireId);
+                        text.Append(';');
+                    }
+
+                    text.Append(')');
+                    break;
+                case XmlItemsWire i:
+                    text.Append("items(").Append(i.Item.Name).Append('|').Append(i.Item.Namespace).Append(i.Item.Nillable == true ? "|nil" : "").Append(':');
+                    Write(i.Item.Wire.WireId);
+                    text.Append(')');
+                    break;
+                default:
+                    text.Append(wire.Shape.Kind);
+                    break;
+            }
         }
     }
 

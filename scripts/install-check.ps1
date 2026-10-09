@@ -86,6 +86,9 @@ try {
       if ($policyHash -ne (Get-FileHash (Join-Path $root 'assets/brand/tisilia/BRAND-ASSET-POLICY.md')).Hash) { throw "$id changed the brand policy" }
       if ($nuspec.package.metadata.license.'#text' -ne 'MIT') { throw "$id changed the code license" }
       if ($entries | Where-Object { $_ -match '(?i)(mascot-|banner|social|ASSET_PREVIEW|CODEX_TASK)' }) { throw "$id contains unexpected brand source files" }
+      # the source generator travels as an analyzer of the package, and the compiler API it builds against is no dependency
+      if ($id -eq 'Kkdev92.Tisilia.AspNetCore' -and $entries -notcontains 'analyzers/dotnet/cs/Tisilia.AspNetCore.SourceGenerator.dll') { throw "$id has no source generator in analyzers/dotnet/cs" }
+      if (@($nuspec.package.metadata.dependencies.group.dependency | Where-Object { $_.id -like 'Microsoft.CodeAnalysis*' }).Count -ne 0) { throw "$id depends on Microsoft.CodeAnalysis" }
     } finally {
       $zip.Dispose()
     }
@@ -125,6 +128,9 @@ app.MapGet("/default/{page=1}", (int page) => new { value = page }).WithTisiliaO
 app.MapGet("/files/{**path}", (string? path) => new { value = path }).WithTisiliaOperation("route.files");
 app.MapGet("/download", () => { Interlocked.Increment(ref downloads); return Results.File(new byte[] { 0, 255, 1, 195, 40 }, "application/pdf", "packed.pdf"); })
     .Produces<FileContentResult>(200, "application/pdf").WithTisiliaOperation("file.get");
+// no response metadata: the package's source generator reads the responses from the handler
+app.MapGet("/pong/{id:guid}", (Guid id) => id == Guid.Empty ? Results.NotFound() : Results.Ok(new Pong(id, 1, DateTimeOffset.UnixEpoch)))
+    .WithTisiliaOperation("pong.inferred");
 if (app.Environment.IsDevelopment())
 {
     app.MapTisiliaContract();
@@ -163,6 +169,8 @@ public sealed record Undocumented(int Value);
   Step "tisilia validate (exported contract)" { & $tisilia validate --contract $contract }
   $exported = Get-Content -Raw $contract | ConvertFrom-Json
   if (($exported.operations | Where-Object { $_.id -eq "ping.get" } | Measure-Object).Count -ne 1) { throw "the exported contract has no ping.get operation" }
+  $inferred = @(($exported.operations | Where-Object { $_.id -eq "pong.inferred" }).responses)
+  if (($inferred | ForEach-Object { "$($_.status) $($_.body.kind)" }) -join ", " -ne "404 none, 200 json") { throw "the responses of pong.inferred were not read from its handler: $($inferred | ConvertTo-Json -Compress -Depth 6)" }
   $pong = $exported.documentation | Where-Object { $_.summary -eq "A pong." }
   if (($pong | Measure-Object).Count -lt 1 -or -not $pong[0].description.Contains('- `revision` — The revision, beyond 2^53.')) { throw "the exported contract lacks the XML comments of Pong: $($exported.documentation | ConvertTo-Json -Compress)" }
   Write-Host ("exported " + $exported.operations.Count + " operation(s), " + $exported.documentation.Count + " documentation entries, semanticHash " + $exported.semanticHash)

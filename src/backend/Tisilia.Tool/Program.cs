@@ -75,7 +75,7 @@ static int Help()
         commands:
           init      --contract <file> --output <dir> [--config tisilia.json --api-id <id> --module-mode bundler|nodenext --force]
                                                                write a config with the default settings (paths relative to the config)
-          validate  --contract <file> [--format json]          structural + semantic validation (SV01–SV54), no code execution
+          validate  --contract <file> [--format json]          structural + semantic validation (SV01–SV55), no code execution
           hash      --contract <file> [--write]                recompute semanticHash / profile fingerprints (--write updates the file)
           closure   --contract <file> --operation <id>[,..]    print the qualification closure record input
           generate  --config <file> [--evidence a.json,b.json --trusted-issuer id]
@@ -84,7 +84,7 @@ static int Help()
           diff      --old <file> --new <file>                  per-direction compatibility diff
           export    --project <dir> --allow-execute-project [--output <file> --configuration <c> --environment <e> --no-build --timeout <s>]
                                                                build, then run the application's export host (executes user code; 120 s by default)
-          doctor    --project <dir> --allow-execute-project [--format json --output <report.json> --no-build --timeout <s>]
+          doctor    --project <dir> --allow-execute-project [--allow-execute-binders --format json --output <report.json> --no-build --timeout <s>]
                                                                aggregate adoption diagnostics; startup executes user code; no handler probing and no sandbox
           conformance --config <file> --project <dir> --allow-execute-adapters [--client <dir> --output <evidence.json> --report <file> --issuer <id> --seed <n> --cases <n> --operation a,b]
                                                                run the standard suite through the C# and TypeScript runners and write evidence

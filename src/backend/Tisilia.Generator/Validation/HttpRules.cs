@@ -374,6 +374,33 @@ public static partial class HttpRules
         "application/json", "text/json", "application/problem+json",
     };
 
+    /// <summary>
+    /// A media type MVC's XmlSerializer formatters read and write: application/xml, text/xml or a concrete <c>application/…+xml</c> type
+    /// (their supported media types, aspnetcore v10.0.0), with UTF-8 or no charset.
+    /// </summary>
+    public static bool IsXmlMediaType(string value) => ParseMediaType(value) is { } media
+        && !media.Type.Contains('*') && !media.Subtype.Contains('*') && (media.Charset is null || media.Charset == "utf-8")
+        && (media.Essence is "application/xml" or "text/xml" || (media.Type == "application" && media.Subtype.Length > "+xml".Length && media.Subtype.EndsWith("+xml", StringComparison.Ordinal)));
+
+    /// <summary>
+    /// Builtin scalars a form value read with the request culture (MVC) may carry: their request-culture text reads as the same value
+    /// in every culture or is refused (a Kestrel sweep of every ICU culture, MvcFormCultureTests). Strings and enums need none.
+    /// </summary>
+    public static readonly HashSet<string> RequestCultureScalars = new(new[]
+    {
+        "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64", "decimal", "float32", "float64",
+        "boolean", "guid", "char", "datetime", "date-only", "time-only", "datetime-offset", "duration",
+    }.Select(Builtins.Scalar), StringComparer.Ordinal);
+
+    /// <summary>
+    /// Key scalars of a form map: the form mapper parses a key with its type's IParsable&lt;T&gt; and the invariant culture, which reads
+    /// these types' canonical text unchanged.
+    /// </summary>
+    public static readonly HashSet<string> FormMapKeyScalars = new(new[]
+    {
+        "string", "int8", "uint8", "int16", "uint16", "int32", "uint32", "int64", "uint64", "guid",
+    }.Select(Builtins.Scalar), StringComparer.Ordinal);
+
     public static bool IsRedirectStatus(int status) => status is 301 or 302 or 303 or 307 or 308;
 
     public static bool IsBodylessStatus(int status) => status is 204 or 205 or 304;

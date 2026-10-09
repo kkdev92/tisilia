@@ -8,13 +8,15 @@ import { resolveLimits, type Limits } from "../json/limits.js";
 import type { Binder } from "./binders.js";
 import { isUtf8OrUnspecified, parseMediaType } from "./mediaType.js";
 import type { BodylessCaseResult, ResponseCaseResult, ResponseMetadata, RuntimeFailure } from "./result.js";
-import { send, type TransportOptions } from "./transport.js";
+import { send, supportsRequestStreams, type TransportOptions } from "./transport.js";
 import { buildUrl, encodePathSegment, encodeQueryComponent, isCredentialHeader, validateHeaderName, validateHeaderToken, validateHeaderValue, type QueryEntry } from "./url.js";
 import { buildPlannedUrl, type RoutePlan } from "./routes.js";
 import { suggestedFileName } from "./filename.js";
-import { BudgetEnded, ExecutionBudget } from "./budget.js";
+import { BudgetEnded, discard, ExecutionBudget } from "./budget.js";
 import { SseParser, type ServerSentEvent } from "./sse.js";
 import { encodeForm, FormLimitError, type FormFieldDescriptor } from "./forms.js";
+import { readXmlBody, writeXmlBody, type XmlRoot } from "../codec/xml.js";
+import { parseXmlBytes, XmlParseError } from "../xml/parser.js";
 
 export type HttpMethod = "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS";
 
@@ -29,7 +31,19 @@ export interface ParameterDescriptor {
   readonly get: (args: unknown) => unknown;
 }
 
-export type RequestBodyDescriptor = JsonRequestBodyDescriptor | BinaryRequestBodyDescriptor | FormRequestBodyDescriptor;
+export type RequestBodyDescriptor = JsonRequestBodyDescriptor | BinaryRequestBodyDescriptor | FormRequestBodyDescriptor | XmlRequestBodyDescriptor;
+
+/** A UTF-8 XML document read by MVC's XmlSerializerInputFormatter: the value's content in the root element. */
+export interface XmlRequestBodyDescriptor {
+  readonly kind: "xml";
+  readonly mediaType: string;
+  readonly codec: CodecRef<unknown>;
+  readonly root: XmlRoot;
+  readonly presence: "required" | "optional";
+  /** The deepest element nesting the server reads (the formatter's MaxDepth; the root is level 1). */
+  readonly maxDepth: number;
+  readonly get: (args: unknown) => unknown;
+}
 
 export interface FormRequestBodyDescriptor {
   readonly kind: "form";
@@ -58,11 +72,12 @@ export interface JsonRequestBodyDescriptor {
 }
 
 export type ResponseBodyDescriptor =
-  | { readonly kind: "sse"; readonly mediaType: string; readonly dataFormat: "text" | "json"; readonly codec: CodecRef<unknown>; readonly nullable: boolean; readonly profileId?: string }
+  | { readonly kind: "sse"; readonly mediaType: string; readonly dataFormat: "text" | "json"; readonly codec: CodecRef<unknown>; readonly nullable: boolean; readonly profileId?: string; readonly resume?: "last-event-id" }
   | { readonly kind: "none" }
   | { readonly kind: "json"; readonly mediaType: string; readonly codec: CodecRef<unknown>; readonly nullable: boolean; readonly profileId?: string }
   | { readonly kind: "text"; readonly mediaType: string }
-  | { readonly kind: "binary"; readonly mediaType: string };
+  | { readonly kind: "binary"; readonly mediaType: string }
+  | { readonly kind: "xml"; readonly mediaType: string; readonly codec: CodecRef<unknown>; readonly root: XmlRoot; readonly nullable: boolean };
 
 /** Complete content-decoded bytes. Uint8Array elements remain mutable. */
 export interface BufferedFile {
@@ -82,7 +97,7 @@ export interface StreamedFile {
 export type DownloadSink = (chunk: Uint8Array, signal: AbortSignal) => void | Promise<void>;
 export type DownloadResult = { readonly kind: "download"; readonly caseId: string; readonly status: number; readonly headers: readonly (readonly [string, string])[]; readonly file: StreamedFile } | OperationResult;
 export type EventSink<T = unknown> = (event: ServerSentEvent<T>, signal: AbortSignal) => void | Promise<void>;
-export type SubscriptionResult = { readonly kind: "subscription"; readonly caseId: string; readonly status: number; readonly headers: readonly (readonly [string, string])[]; readonly eventsReceived: number } | OperationResult;
+export type SubscriptionResult = { readonly kind: "subscription"; readonly caseId: string; readonly status: number; readonly headers: readonly (readonly [string, string])[]; readonly eventsReceived: number; readonly reconnections: number } | OperationResult;
 
 export interface ResponseCaseDescriptor {
   readonly caseId: string;
@@ -126,6 +141,20 @@ export interface ClientOptions {
   readonly retainRawBody?: boolean;
   readonly context?: Record<string, string>;
   readonly transport?: TransportOptions;
+  /** subscribe() only: reconnects a dropped event stream of an operation whose server resumes from Last-Event-ID (`resume`). */
+  readonly reconnect?: ReconnectOptions;
+}
+
+/**
+ * Reconnection of a dropped event stream (a transport failure while connecting or reading — never at EOF), for an operation whose
+ * server declares that it resumes after `Last-Event-ID`. The stream reconnects only where no event would arrive twice: before any
+ * event, or after an event that named its own id.
+ */
+export interface ReconnectOptions {
+  /** Attempts in a row without a delivered event before the failure is returned (at least 1). */
+  readonly maxAttempts: number;
+  /** Milliseconds before reconnecting until the server sets its own with `retry:` (default 3000). */
+  readonly delayMs?: number;
 }
 
 export interface PreparedRequest {
@@ -137,6 +166,8 @@ export interface PreparedRequest {
   readonly headers: readonly (readonly [string, string])[];
   readonly bodyText: string | undefined;
   readonly bodyBytes: Uint8Array | undefined;
+  /** A raw body the caller passed as a ReadableStream: sent as it is read, so it has no text, no bytes and no request identity. */
+  readonly bodyStream?: ReadableStream<Uint8Array>;
 }
 
 export type OperationResult = ResponseCaseResult<string, number, unknown> | BodylessCaseResult<string, number> | RuntimeFailure;
@@ -221,6 +252,7 @@ export function prepareRequest(operation: OperationDescriptor, args: unknown, op
   }
   let bodyText: string | undefined;
   let bodyBytes: Uint8Array | undefined;
+  let bodyStream: ReadableStream<Uint8Array> | undefined;
   if (operation.requestBody !== undefined) {
     const raw = operation.requestBody.get(args);
     const bctx = context.child("body");
@@ -233,9 +265,36 @@ export function prepareRequest(operation: OperationDescriptor, args: unknown, op
       bodyBytes = form.bytes;
       bodyText = form.text;
       headers.push(["content-type", form.contentType]);
+    } else if (operation.requestBody.kind === "binary" && raw instanceof ReadableStream) {
+      // Sent as it is read; maxBodyBytes is counted while fetch reads it. Browsers send a stream as text or as nothing, or refuse
+      // it, so it is refused before sending wherever fetch is not known to stream a request body (supportsRequestStreams).
+      if (!supportsRequestStreams()) {
+        throw new CodecError("unsupported", bctx.path, "only Node's fetch streams a request body (Firefox sends a stream as text, Safari as an empty body, Chromium refuses it over HTTP/1.1): pass a Uint8Array");
+      }
+      if (raw.locked) {
+        throw new CodecError("unsupported", bctx.path, "the request body stream is already being read");
+      }
+      bodyStream = raw as ReadableStream<Uint8Array>;
+      headers.push(["content-type", operation.requestBody.mediaType]);
+    } else if (operation.requestBody.kind === "xml") {
+      if (raw === null) {
+        throw new CodecError("null-not-allowed", bctx.path, "an XML request body is never null; leave an optional body out");
+      }
+      // the server reads elements nested MaxDepth levels deep at most (XmlDictionaryReaderQuotas, the root is level 1)
+      const maxDepth = Math.min(context.limits.maxDepth, operation.requestBody.maxDepth);
+      const written = writeXmlBody(resolveCodec(operation.requestBody.codec), operation.requestBody.root, raw, bctx, maxDepth);
+      if (written.depth > maxDepth) {
+        throw new RequestLimitError("maxDepth", bctx.path, `request body nests ${written.depth} elements; the limit is ${maxDepth}`);
+      }
+      bodyBytes = new TextEncoder().encode(written.text);
+      if (bodyBytes.byteLength > context.limits.maxBodyBytes) {
+        throw new RequestLimitError("maxBodyBytes", bctx.path, `request body has ${bodyBytes.byteLength} bytes; the limit is ${context.limits.maxBodyBytes}`);
+      }
+      bodyText = written.text;
+      headers.push(["content-type", operation.requestBody.mediaType]);
     } else if (operation.requestBody.kind === "binary") {
       if (!(raw instanceof Uint8Array)) {
-        throw new CodecError("type-mismatch", bctx.path, "raw request body requires a Uint8Array");
+        throw new CodecError("type-mismatch", bctx.path, "raw request body requires a Uint8Array or a ReadableStream of them");
       }
       if (raw.byteLength > context.limits.maxBodyBytes) {
         throw new RequestLimitError("maxBodyBytes", bctx.path, "raw request body exceeds the byte limit");
@@ -273,13 +332,37 @@ export function prepareRequest(operation: OperationDescriptor, args: unknown, op
     }
   }
   if (operation.method === "GET" || operation.method === "HEAD") {
-    if (bodyBytes !== undefined) {
+    if (bodyBytes !== undefined || bodyStream !== undefined) {
       throw new CodecError("unsupported", "", "GET/HEAD requests cannot carry a body");
     }
   }
   const built = operation.routePlan === undefined ? buildUrl(options.baseUrl, operation.route, pathValues, queryEntries)
     : buildPlannedUrl(options.baseUrl, operation.routePlan, pathValues, queryEntries);
-  return { url: built.url, encodedPath: built.encodedPath, queryEntries: built.queryEntries, method: operation.method, headers, bodyText, bodyBytes };
+  return { url: built.url, encodedPath: built.encodedPath, queryEntries: built.queryEntries, method: operation.method, headers, bodyText, bodyBytes, ...(bodyStream === undefined ? {} : { bodyStream }) };
+}
+
+/** The caller's upload stream as fetch reads it, counted: past maxBodyBytes, or when the caller's stream fails, the request fails. */
+function countedUpload(source: ReadableStream<Uint8Array>, maxBytes: number): { readonly stream: ReadableStream<Uint8Array>; readonly failure: () => "limit" | "source" | undefined } {
+  let total = 0;
+  let failure: "limit" | "source" | undefined;
+  const reader = source.getReader();
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try { chunk = await reader.read(); } catch (error) { failure = "source"; controller.error(error); return; }
+      if (chunk.done) { controller.close(); return; }
+      if (!(chunk.value instanceof Uint8Array)) {
+        failure = "source"; controller.error(new TypeError("the request body stream yielded a non-byte chunk")); discard(() => reader.cancel()); return;
+      }
+      total += chunk.value.byteLength;
+      if (total > maxBytes) {
+        failure = "limit"; controller.error(new RangeError("the request body exceeds maxBodyBytes")); discard(() => reader.cancel()); return;
+      }
+      controller.enqueue(chunk.value);
+    },
+    cancel(reason) { return reader.cancel(reason); },
+  });
+  return { stream, failure: () => failure };
 }
 
 /** A selected response case before decoding: what a hydration envelope carries. */
@@ -290,7 +373,7 @@ export interface RawResponse {
   readonly mediaType: string | undefined;
   /** Exposed headers of the case only (lowercase names). */
   readonly headers: readonly (readonly [string, string])[];
-  readonly bodyKind: "none" | "json" | "text" | "binary" | "sse";
+  readonly bodyKind: "none" | "json" | "text" | "binary" | "sse" | "xml";
   readonly body: Uint8Array;
   readonly metadata: ResponseMetadata;
 }
@@ -323,7 +406,7 @@ function budgetFailure(operation: OperationDescriptor, budget: ExecutionBudget, 
   return error.kind === "cancelled" ? { kind: "cancelled", operationId: operation.id } : { kind: "timeout", operationId: operation.id, timeoutMs: budget.timeoutMs };
 }
 
-async function fetchWithinBudget(operation: OperationDescriptor, args: unknown, options: ClientOptions, budget: ExecutionBudget, prepared?: PreparedRequest, consumer?: (selected: ResponseCaseDescriptor, metadata: ResponseMetadata) => DownloadSink | undefined): Promise<RawOutcome & { readonly streamed?: true }> {
+async function fetchWithinBudget(operation: OperationDescriptor, args: unknown, options: ClientOptions, budget: ExecutionBudget, prepared?: PreparedRequest, consumer?: (selected: ResponseCaseDescriptor, metadata: ResponseMetadata) => DownloadSink | undefined, runtimeHeaders: readonly (readonly [string, string])[] = []): Promise<RawOutcome & { readonly streamed?: true }> {
   const limits: Limits = resolveLimits(options.limits);
   budget.check();
   const context = codecContextFor(operation, options, limits, budget);
@@ -344,7 +427,8 @@ async function fetchWithinBudget(operation: OperationDescriptor, args: unknown, 
     }
     throw error;
   }
-  const headers = [...request.headers];
+  // the runtime's own protocol headers (a reconnection's Last-Event-ID), never from the caller's allowlisted ones
+  const headers = [...request.headers, ...runtimeHeaders];
   if (options.credentialProvider !== undefined) {
     // names are checked as tokens only: the Nuxt module forwards an incoming cookie during SSR, which Node's fetch sends; a header that
     // cannot be sent is a request-encoding failure like any other argument, never an exception (values never reach the message)
@@ -364,12 +448,13 @@ async function fetchWithinBudget(operation: OperationDescriptor, args: unknown, 
   if (acceptable.length > 0 && !headers.some(([n]) => n === "accept")) {
     headers.push(["accept", [...new Set(acceptable)].join(", ")]);
   }
+  const upload = request.bodyStream === undefined ? undefined : countedUpload(request.bodyStream, limits.maxBodyBytes);
   const outcome = await send(
     {
       url: request.url,
       method: request.method,
       headers,
-      ...(request.bodyBytes !== undefined ? { body: request.bodyBytes } : {}),
+      ...(request.bodyBytes !== undefined ? { body: request.bodyBytes } : upload !== undefined ? { body: upload.stream } : {}),
       ...(options.signal !== undefined ? { signal: options.signal } : {}),
       ...(options.credentials !== undefined ? { credentials: options.credentials } : {}),
     },
@@ -390,6 +475,13 @@ async function fetchWithinBudget(operation: OperationDescriptor, args: unknown, 
       return consumer(selected, metadata);
     },
   );
+  // a streamed body that went past the limit, or whose source failed, fails the request with that cause
+  if (upload?.failure() === "limit" && outcome.kind !== "cancelled" && outcome.kind !== "timeout") {
+    return { kind: "limit-failure", operationId: operation.id, limit: "maxBodyBytes" };
+  }
+  if (upload?.failure() === "source" && outcome.kind === "transport-failure") {
+    return { kind: "transport-failure", operationId: operation.id, reason: "network", message: "the request body stream failed" };
+  }
   switch (outcome.kind) {
     case "cancelled":
       return { kind: "cancelled", operationId: operation.id };
@@ -479,6 +571,14 @@ export function decodeResponse(operation: OperationDescriptor, raw: RawOutcome, 
       const text = decodeUtf8Strict(raw.body);
       return { kind: "response", caseId: selected.caseId, status: raw.status, headers: raw.headers, data: text };
     }
+    if (selected.body.kind === "xml") {
+      if (raw.body.byteLength === 0) {
+        return { kind: "codec-failure", operationId: operation.id, caseId: selected.caseId, metadata: raw.metadata, code: "empty-body", path: "", message: "declared XML case received an empty body", ...retained };
+      }
+      const element = parseXmlBytes(raw.body, { limits, checkpoint: context.checkpoint });
+      const data = readXmlBody(resolveCodec(selected.body.codec), selected.body.root, element, selected.body.nullable, context);
+      return { kind: "response", caseId: selected.caseId, status: raw.status, headers: raw.headers, data };
+    }
     if (raw.body.byteLength === 0) {
       return { kind: "codec-failure", operationId: operation.id, caseId: selected.caseId, metadata: raw.metadata, code: "empty-body", path: "", message: "declared JSON case received an empty body (JSON null is a body)", ...retained };
     }
@@ -499,6 +599,12 @@ export function decodeResponse(operation: OperationDescriptor, raw: RawOutcome, 
     return { kind: "response", caseId: selected.caseId, status: raw.status, headers: raw.headers, data };
   } catch (error) {
     if (error instanceof SseDecodeFailure) { return error.failure; }
+    if (error instanceof XmlParseError) {
+      if (error.code === "depth-limit" || error.code === "token-limit") {
+        return { kind: "limit-failure", operationId: operation.id, limit: error.code === "depth-limit" ? "maxDepth" : "maxTokens", metadata: raw.metadata };
+      }
+      return { kind: "codec-failure", operationId: operation.id, caseId: selected.caseId, metadata: raw.metadata, code: "xml-" + error.code, path: "", message: error.message, ...retained };
+    }
     if (error instanceof JsonParseError) {
       if (error.code === "depth-limit" || error.code === "token-limit" || error.code === "number-length-limit") {
         return { kind: "limit-failure", operationId: operation.id, limit: error.code === "depth-limit" ? "maxDepth" : error.code === "token-limit" ? "maxTokens" : "maxNumberCharacters", metadata: raw.metadata };
@@ -591,52 +697,86 @@ function decodeSseEvent(operation: OperationDescriptor, selected: ResponseCaseDe
 }
 
 /**
- * Receives SSE events as they arrive, awaiting each handler before reading more input. Does not reconnect or retain events.
- * timeoutMs and maxBodyBytes bound the entire connection; each JSON event also uses the codec/parser limits.
- * Events already delivered remain delivered on failure. EOF alone returns kind:"subscription".
+ * Receives SSE events as they arrive, awaiting each handler before reading more input. Does not retain events.
+ * timeoutMs bounds the whole subscription and maxBodyBytes each connection; each JSON event also uses the codec/parser limits.
+ * Events already delivered remain delivered on failure. EOF alone returns kind:"subscription". With `options.reconnect`, a
+ * dropped stream of an operation whose server resumes from Last-Event-ID reconnects (see {@link ReconnectOptions}).
  */
 export async function subscribe<T = unknown>(operation: OperationDescriptor, args: unknown, options: ClientOptions, onEvent: EventSink<T>): Promise<SubscriptionResult> {
+  const reconnect = options.reconnect;
+  if (reconnect !== undefined && (!Number.isSafeInteger(reconnect.maxAttempts) || reconnect.maxAttempts < 1
+    || reconnect.delayMs !== undefined && !(Number.isFinite(reconnect.delayMs) && reconnect.delayMs >= 0))) {
+    throw new TypeError("reconnect.maxAttempts must be a positive integer and reconnect.delayMs a non-negative number of milliseconds");
+  }
+  const resumable = reconnect !== undefined && operation.responses.some(r => r.body.kind === "sse" && r.body.resume === "last-event-id");
   const budget = new ExecutionBudget(resolveLimits(options.limits).timeoutMs, options.signal, options.transport?.now);
-  const parser = new SseParser();
   let eventsReceived = 0;
-  let failure: RuntimeFailure | undefined;
-  let selectedCase: ResponseCaseDescriptor | undefined;
-  let streamMetadata: ResponseMetadata | undefined;
-  const parseFailure = (error: unknown): void => {
-    if (error instanceof SseDecodeFailure) { failure = error.failure; }
-    else if (error instanceof JsonParseError && selectedCase !== undefined && streamMetadata !== undefined) {
-      failure = { kind: "codec-failure", operationId: operation.id, caseId: selectedCase.caseId, metadata: streamMetadata, code: error.code, path: "", message: error.message };
-    }
-  };
+  let reconnections = 0;
+  let attempts = 0;
+  let lastEventId = "";
+  // a reconnection resumes after Last-Event-ID: exact only when the last delivered event named that id itself
+  let resumesExactly = true;
+  let delayMs = reconnect?.delayMs ?? 3000;
   try {
-    const raw = await fetchWithinBudget(operation, args, options, budget, undefined, (selected, metadata) => {
-      if (selected.body.kind !== "sse") { return undefined; }
-      selectedCase = selected;
-      streamMetadata = metadata;
-      return async (chunk, signal) => {
-        streamMetadata = { ...metadata, bodyBytes: streamMetadata!.bodyBytes + chunk.byteLength };
-        const iterator = parser.push(chunk);
-        for (;;) {
-          let event: ServerSentEvent<unknown>;
-          try {
-            budget.check();
-            const next = iterator.next();
-            if (next.done) { break; }
-            event = decodeSseEvent(operation, selected, next.value, streamMetadata, options, budget);
-          } catch (error) { parseFailure(error); throw error; }
-          // Handler errors are deliberately outside the codec catch; transport supplies a fixed, sanitized diagnostic.
-          await onEvent(event as ServerSentEvent<T>, signal);
-          eventsReceived++;
+    for (;;) {
+      const parser = new SseParser(lastEventId);
+      let failure: RuntimeFailure | undefined;
+      let handlerFailed = false;
+      let selectedCase: ResponseCaseDescriptor | undefined;
+      let streamMetadata: ResponseMetadata | undefined;
+      const parseFailure = (error: unknown): void => {
+        if (error instanceof SseDecodeFailure) { failure = error.failure; }
+        else if (error instanceof JsonParseError && selectedCase !== undefined && streamMetadata !== undefined) {
+          failure = { kind: "codec-failure", operationId: operation.id, caseId: selectedCase.caseId, metadata: streamMetadata, code: error.code, path: "", message: error.message };
         }
       };
-    });
-    if (failure !== undefined) { return failure; }
-    if (raw.kind === "raw" && raw.bodyKind === "sse" && raw.streamed === true) {
-      try { parser.finish(); } catch (error) { parseFailure(error); if (failure !== undefined) { return failure; } throw error; }
-      budget.check();
-      return { kind: "subscription", caseId: raw.caseId, status: raw.status, headers: raw.headers, eventsReceived };
+      const raw = await fetchWithinBudget(operation, args, options, budget, undefined, (selected, metadata) => {
+        if (selected.body.kind !== "sse") { return undefined; }
+        selectedCase = selected;
+        streamMetadata = metadata;
+        return async (chunk, signal) => {
+          streamMetadata = { ...metadata, bodyBytes: streamMetadata!.bodyBytes + chunk.byteLength };
+          const iterator = parser.push(chunk);
+          for (;;) {
+            let event: ServerSentEvent<unknown>;
+            try {
+              budget.check();
+              const next = iterator.next();
+              if (next.done) { break; }
+              event = decodeSseEvent(operation, selected, next.value, streamMetadata, options, budget);
+            } catch (error) { parseFailure(error); throw error; }
+            // Handler errors are deliberately outside the codec catch; transport supplies a fixed, sanitized diagnostic.
+            try { await onEvent(event as ServerSentEvent<T>, signal); }
+            catch (error) { handlerFailed = true; throw error; }
+            eventsReceived++;
+            attempts = 0;
+            lastEventId = event.id;
+            resumesExactly = parser.lastHadOwnId;
+            if (event.retryMilliseconds !== undefined) { delayMs = Math.min(Number(event.retryMilliseconds), 2_147_483_647); }
+          }
+        };
+      }, lastEventId === "" ? [] : [["last-event-id", lastEventId]]);
+      if (failure !== undefined) { return failure; }
+      if (raw.kind === "raw" && raw.bodyKind === "sse" && raw.streamed === true) {
+        try { parser.finish(); } catch (error) { parseFailure(error); if (failure !== undefined) { return failure; } throw error; }
+        budget.check();
+        return { kind: "subscription", caseId: raw.caseId, status: raw.status, headers: raw.headers, eventsReceived, reconnections };
+      }
+      // only a dropped connection reconnects, never a handler error, an HTTP answer or a limit, and only where nothing arrives twice
+      if (resumable && raw.kind === "transport-failure" && (raw.reason === "network" || raw.reason === "read") && !handlerFailed
+        && attempts < reconnect!.maxAttempts && (eventsReceived === 0 || lastEventId !== "" && resumesExactly)) {
+        attempts++;
+        reconnections++;
+        const wait = delayMs;
+        await budget.wait(() => new Promise<void>(resolve => {
+          const done = (): void => { clearTimeout(timer); budget.signal.removeEventListener("abort", done); resolve(); };
+          const timer = setTimeout(done, wait);
+          budget.signal.addEventListener("abort", done, { once: true });
+        }));
+        continue;
+      }
+      return decodeResponse(operation, raw, options, budget);
     }
-    return decodeResponse(operation, raw, options, budget);
   } catch (error) { if (error instanceof BudgetEnded) { return budgetFailure(operation, budget, error); } throw error; }
   finally { budget.dispose(); }
 }

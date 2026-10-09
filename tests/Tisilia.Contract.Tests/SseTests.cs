@@ -19,20 +19,48 @@ namespace Tisilia.Contract.Tests;
 /// <summary>Oracle: ServerSentEventsResult.cs (aspnetcore v10.0.0), exercised through Kestrel.</summary>
 public sealed class SseTests
 {
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Raw_byte_event_types_and_interfaces_that_can_contain_them_are_diagnosed(bool sequence)
+    [Fact]
+    public async Task Interfaces_that_can_hold_raw_byte_events_are_diagnosed()
     {
         var builder = WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
         builder.Services.AddTisilia(o => o.ApiId = "events");
         await using var app = builder.Build();
-        if (sequence) { app.MapGet("/events", () => TypedResults.ServerSentEvents(Values<IEnumerable<byte>>([1], [2]))).WithTisiliaOperation("events"); }
-        else { app.MapGet("/events", () => TypedResults.ServerSentEvents(Values<byte[]>([1], [2]))).WithTisiliaOperation("events"); }
+        app.MapGet("/events", () => TypedResults.ServerSentEvents(Values<IEnumerable<byte>>([1], [2]))).WithTisiliaOperation("events");
         await app.StartAsync();
         var export = app.Services.GetRequiredService<TisiliaContractExporter>().ExportFresh();
         Assert.True(export.Diagnostics.HasErrors); Assert.Null(export.Text);
         Assert.Contains(export.Diagnostics.Items, d => d.Rule == "SV29" && d.Message.Contains("SSE", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Byte_array_and_object_events_reach_the_client_as_their_text_with_a_warning()
+    {
+        var builder = WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
+        builder.Services.AddTisilia(o => o.ApiId = "opaque-events");
+        await using var app = builder.Build();
+        app.MapGet("/bytes", () => TypedResults.ServerSentEvents(Values<byte[]>("a\r\nb"u8.ToArray(), "日本"u8.ToArray()))).WithTisiliaOperation("bytes");
+        app.MapGet("/objects", () => TypedResults.ServerSentEvents(Values<object>("text", new { value = 9007199254740993L }))).WithTisiliaOperation("objects");
+        await app.StartAsync();
+        var export = app.Services.GetRequiredService<TisiliaContractExporter>().ExportFresh();
+        Assert.False(export.Diagnostics.HasErrors, string.Join("\n", export.Diagnostics.Items));
+        foreach (var id in new[] { "bytes", "objects" })
+        {
+            var body = Assert.IsType<Tisilia.Contract.SseResponseBody>(Assert.Single(export.Index!.Operations[id].Responses).Body);
+            Assert.Equal("text", body.DataFormat);
+            Assert.Contains(export.Diagnostics.Items, d => d.Rule == "SV29" && d.Severity == Tisilia.Generator.Diagnostics.DiagnosticSeverity.Warning && d.RelatedIds.Contains(id));
+        }
+
+        // the runtime decodes each event's data as text: CRLF becomes LF; object data is JSON (a string is quoted)
+        var work = Directory.CreateTempSubdirectory("tisilia-events-");
+        try
+        {
+            var results = await InterpreterRequests.SendAsync(work.FullName, export.Text!, app.Urls.Single(), [("bytes", new { }), ("objects", new { })], execute: true);
+            using var bytes = JsonDocument.Parse(results[0]);
+            Assert.Equal(["a\nb", "日本"], bytes.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty("data").GetString()));
+            using var objects = JsonDocument.Parse(results[1]);
+            Assert.Equal(["\"text\"", "{\"value\":9007199254740993}"], objects.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty("data").GetString()));
+        }
+        finally { work.Delete(recursive: true); }
     }
 
     [Theory]
@@ -66,18 +94,27 @@ public sealed class SseTests
     }
 
     [Fact]
-    public async Task Controller_actions_returning_SSE_are_diagnosed_as_minimal_API_only()
+    public async Task Controller_actions_returning_SSE_export_their_events_with_the_minimal_API_JSON_options()
     {
         var builder = WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
-        builder.Services.AddControllers().ConfigureApplicationPartManager(m => m.FeatureProviders.Add(new SseControllerFeatureProvider()));
+        // MVC writes PascalCase here; ServerSentEventsResult<T> still serializes with the minimal API JsonOptions (camelCase)
+        builder.Services.AddControllers().AddJsonOptions(o => o.JsonSerializerOptions.PropertyNamingPolicy = null)
+            .ConfigureApplicationPartManager(m => m.FeatureProviders.Add(new SseControllerFeatureProvider()));
         builder.Services.AddTisilia(o => o.ApiId = "mvc-events");
         await using var app = builder.Build();
         app.MapControllers();
         await app.StartAsync();
         var export = app.Services.GetRequiredService<TisiliaContractExporter>().ExportFresh();
-        Assert.True(export.Diagnostics.HasErrors); Assert.Null(export.Text);
-        // the action declares SseItem<long> through its result type, so the diagnostic must name the real cause: MVC
-        Assert.Contains(export.Diagnostics.Items, d => d.Rule == "SV29" && d.Message.Contains("minimal API", StringComparison.Ordinal));
+        Assert.False(export.Diagnostics.HasErrors, string.Join("\n", export.Diagnostics.Items));
+        var body = Assert.IsType<Tisilia.Contract.SseResponseBody>(Assert.Single(export.Index!.Operations["mvc-events"].Responses).Body);
+        Assert.Equal("json", body.DataFormat);
+        Assert.Equal("mvc-events.profile.minimal", body.ProfileId);
+        Assert.Equal("tisilia.naming.camel-case@0.1", export.Index.Profiles[body.ProfileId!].Options.PropertyNamingPolicyId);
+
+        using var client = new HttpClient();
+        var text = await client.GetStringAsync(app.Urls.Single() + "/mvc-events");
+        Assert.Contains("data: {\"value\":9007199254740993}", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"Value\"", text, StringComparison.Ordinal);
     }
 
     internal static async IAsyncEnumerable<SseItem<T>> Values<T>(T first, T second)
@@ -102,5 +139,7 @@ public sealed class SseEventsController : ControllerBase
 {
     [HttpGet("/mvc-events")]
     [TisiliaOperation("mvc-events")]
-    public ServerSentEventsResult<long> Get() => TypedResults.ServerSentEvents(SseTests.Values(1L, 2L));
+    public ServerSentEventsResult<SseTick> Get() => TypedResults.ServerSentEvents(SseTests.Values(new SseTick(9007199254740993L), new SseTick(2)));
 }
+
+public sealed record SseTick(long Value);

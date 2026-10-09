@@ -128,7 +128,6 @@ public class ValidationTests(ITestOutputHelper output)
     [InlineData("SV03 unresolved builtin", "/operations/0/security/authPolicyId", "tisilia.auth.future@0.1", TisiliaCodes.UnresolvedReference)]
     [InlineData("SV04 codec type mismatch", "/operations/0/parameters/0/use/codecId", "std.int64.codec.r", TisiliaCodes.CodecTypeMismatch)]
     [InlineData("SV17 max depth", "/profiles/0/options/maxDepthEffective", "32", TisiliaCodes.MaxDepth)]
-    [InlineData("SV20 preserve references", "/profiles/0/options/referenceHandling", "Preserve", TisiliaCodes.ReferencePreserve)]
     [InlineData("SV26 GET with body", "/operations/1/method", "GET", TisiliaCodes.BodyOnGetOrHead)]
     [InlineData("SV27 204 with body", "/operations/0/responses/0/status", "204", TisiliaCodes.BodylessStatusMismatch)]
     [InlineData("SV30 route mismatch", "/operations/0/route", "/users/{userId:guid}", TisiliaCodes.ParameterRouteMismatch)]
@@ -143,6 +142,28 @@ public class ValidationTests(ITestOutputHelper output)
         SetPointer(root, pointer, replacementJson);
         var (_, bag) = ValidateAll(root, verifyHashes: false);
         Assert.Contains(bag.Items, d => d.Code == expectedCode);
+    }
+
+    [Theory]
+    [InlineData("demo.UserResponse.write", "the response reaches wire 'demo.UserResponse.write', which says the server writes reference metadata")]
+    [InlineData("demo.UserPutRequest.read", "the request body reaches wire 'demo.UserPutRequest.read', which says the server reads reference metadata")]
+    public void Reference_metadata_is_only_on_wires_of_bodies_under_Preserve(string wireId, string expected)
+    {
+        // the sample's profile does not preserve references: neither its response nor its request body can carry the metadata
+        var root = SampleContracts.UsersApiJson();
+        var wire = root["wires"]!.AsArray().Single(w => w!["id"]!.GetValue<string>() == wireId)!;
+        wire["shape"]!["referenceMetadata"] = true;
+        var (_, bag) = ValidateAll(root, verifyHashes: false);
+        Assert.Contains(bag.Items, d => d.Code == TisiliaCodes.ReferencePreserve && d.Message.Contains(expected, StringComparison.Ordinal));
+
+        // under a profile that preserves references, both are the wire of what the server writes or reads
+        foreach (var profile in root["profiles"]!.AsArray())
+        {
+            profile!["options"]!["referenceHandling"] = "Preserve";
+        }
+
+        (_, bag) = ValidateAll(root, verifyHashes: false);
+        Assert.DoesNotContain(bag.Items, d => d.Code == TisiliaCodes.ReferencePreserve);
     }
 
     [Theory]

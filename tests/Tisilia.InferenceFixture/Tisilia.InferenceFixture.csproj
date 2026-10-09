@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Endpoints whose handlers return Results.Ok(value) or IActionResult, compiled with Tisilia's source generator the way the
+    package applies it (an analyzer of the project that maps them): ResponseInferenceTests export them and call them. A project of
+    its own, because the generator records every operation of the project it runs in.
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Tisilia.InferenceFixture</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\backend\Tisilia.AspNetCore\Tisilia.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\backend\Tisilia.AspNetCore.SourceGenerator\Tisilia.AspNetCore.SourceGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>

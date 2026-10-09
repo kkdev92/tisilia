@@ -18,6 +18,9 @@ public sealed class ContractClosure
     private readonly SortedSet<string> _bindingIds = new(StringComparer.Ordinal);
     private readonly SortedSet<string> _moduleIds = new(StringComparer.Ordinal);
     private readonly SortedSet<ClosureCapability> _capabilities = [];
+    private readonly SortedSet<string> _jsonCodecIds = new(StringComparer.Ordinal);
+    private readonly SortedDictionary<string, SortedSet<string>> _jsonKeyProfileIds = new(StringComparer.Ordinal);
+    private readonly HashSet<(string TypeId, string? ProfileId)> _jsonTypes = [];
 
     private ContractClosure(ContractIndex index) => _index = index;
 
@@ -39,6 +42,19 @@ public sealed class ContractClosure
     public IReadOnlySet<string> BindingIds => _bindingIds;
     public IReadOnlySet<string> ModuleIds => _moduleIds;
     public IReadOnlySet<ClosureCapability> Capabilities => _capabilities;
+
+    /// <summary>
+    /// Codecs that read or write JSON somewhere in the closure: request and response bodies, JSON event data, and everything they
+    /// contain. A codec reached only from route, query or header parameters, form fields or text bodies travels through a binder or
+    /// as plain text, never through the server's JSON converters. This set is not part of the closure record.
+    /// </summary>
+    public IReadOnlySet<string> JsonCodecIds => _jsonCodecIds;
+
+    /// <summary>
+    /// The profiles whose JSON carries the codec as a dictionary key, in ordinal order. A codec that is never a map key never meets
+    /// the server's property-name converter, whatever key capability it has. This is not part of the closure record.
+    /// </summary>
+    public IReadOnlyCollection<string> JsonKeyProfileIds(string codecId) => _jsonKeyProfileIds.TryGetValue(codecId, out var profileIds) ? profileIds : [];
 
     public IEnumerable<string> OperationIds => _refs.Where(r => r.Registry == RegistryName.Operations).Select(r => r.Id);
 
@@ -91,11 +107,23 @@ public sealed class ContractClosure
             _capabilities.Add(ClosureCapability.Request);
             VisitProfile(body.ProfileId);
             VisitUse(body.Use, WireDirection.ServerRead);
+            CollectJson(body.Use, body.ProfileId);
+        }
+
+        // an XML body reaches its XML codecs and wires; the conformance runner does not observe XML, so they are not JSON codecs
+        if (op.RequestBody is XmlRequestBody xmlBody)
+        {
+            _capabilities.Add(ClosureCapability.Request);
+            VisitUse(xmlBody.Use, WireDirection.ServerRead);
         }
 
         if (op.RequestBody is FormRequestBody form)
         {
-            foreach (var field in FormField.Descendants(form.Fields)) { if (field.Use is not null) { VisitUse(field.Use, null); } }
+            foreach (var field in FormField.Descendants(form.Fields))
+            {
+                if (field.Use is not null) { VisitUse(field.Use, null); }
+                if (field.GrammarId is not null) { VisitBinding(field.GrammarId); }
+            }
         }
         foreach (var r in op.Responses)
         {
@@ -112,15 +140,21 @@ public sealed class ContractClosure
                     _capabilities.Add(ClosureCapability.Response);
                     if (sse.ProfileId is not null) { VisitProfile(sse.ProfileId); }
                     VisitUse(sse.Use, sse.DataFormat == "json" ? WireDirection.ServerWrite : null);
+                    if (sse.DataFormat == "json") { CollectJson(sse.Use, sse.ProfileId); }
                     break;
                 case JsonResponseBody json:
                     _capabilities.Add(ClosureCapability.Response);
                     VisitProfile(json.ProfileId);
                     VisitUse(json.Use, WireDirection.ServerWrite);
+                    CollectJson(json.Use, json.ProfileId);
                     break;
                 case TextResponseBody text:
                     _capabilities.Add(ClosureCapability.Response);
                     VisitUse(text.Use, null);
+                    break;
+                case XmlResponseBody xml:
+                    _capabilities.Add(ClosureCapability.Response);
+                    VisitUse(xml.Use, WireDirection.ServerWrite);
                     break;
                 case NoResponseBody:
                 case BinaryResponseBody:
@@ -143,6 +177,67 @@ public sealed class ContractClosure
     {
         VisitType(use.TypeId);
         VisitCodec(use.CodecId, direction);
+    }
+
+    /// <summary>
+    /// Adds a JSON root's codec, the codecs it depends on and the codecs of everything its type contains to <see cref="JsonCodecIds"/>,
+    /// and the codecs of its dictionary keys to <see cref="JsonKeyProfileIds"/> under the profile that writes them.
+    /// </summary>
+    private void CollectJson(TypeUse use, string? profileId)
+    {
+        CollectJsonCodec(use.CodecId);
+        if (!_index.Types.TryGetValue(use.TypeId, out var model) || !_jsonTypes.Add((use.TypeId, profileId)))
+        {
+            return;
+        }
+
+        if (model.Shape is MapShape keyed && profileId is not null)
+        {
+            CollectKeyCodec(keyed.Key.CodecId, profileId);
+        }
+
+        var children = model.Shape switch
+        {
+            ObjectShape obj => obj.Properties.Select(p => p.Use).Concat(obj.Extension is CaptureExtension capture ? [capture.Value] : []),
+            ArrayShape arr => [arr.Element],
+            MapShape map => [map.Key, map.Value],
+            BrandShape brand => [brand.Base],
+            UnionShape union => union.Variants.Select(v => v.Use),
+            _ => Enumerable.Empty<TypeUse>(),
+        };
+        foreach (var child in children)
+        {
+            CollectJson(child, profileId);
+        }
+    }
+
+    private void CollectJsonCodec(string id)
+    {
+        if (_jsonCodecIds.Add(id) && _index.Codecs.TryGetValue(id, out var codec))
+        {
+            foreach (var dep in codec.Dependencies)
+            {
+                CollectJsonCodec(dep);
+            }
+        }
+    }
+
+    /// <summary>A map key codec and the codecs it is built on (a brand's key goes through its base's key capability).</summary>
+    private void CollectKeyCodec(string id, string profileId)
+    {
+        if (!_jsonKeyProfileIds.TryGetValue(id, out var profileIds))
+        {
+            profileIds = new SortedSet<string>(StringComparer.Ordinal);
+            _jsonKeyProfileIds[id] = profileIds;
+        }
+
+        if (profileIds.Add(profileId) && _index.Codecs.TryGetValue(id, out var codec))
+        {
+            foreach (var dep in codec.Dependencies)
+            {
+                CollectKeyCodec(dep, profileId);
+            }
+        }
     }
 
     private void VisitType(string id)
@@ -296,6 +391,19 @@ public sealed class ContractClosure
                     VisitWire(v.Wire.WireId);
                 }
 
+                break;
+            case XmlTextWire text:
+                VisitBinding(text.GrammarId);
+                break;
+            case XmlElementWire element:
+                foreach (var member in element.Attributes.Concat(element.Elements).Concat(element.Text is null ? [] : [element.Text]))
+                {
+                    VisitWire(member.Wire.WireId);
+                }
+
+                break;
+            case XmlItemsWire items:
+                VisitWire(items.Item.Wire.WireId);
                 break;
         }
     }

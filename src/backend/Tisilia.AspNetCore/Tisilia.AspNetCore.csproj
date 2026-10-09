@@ -17,6 +17,28 @@
     <ProjectReference Include="..\Tisilia.Generator\Tisilia.Generator.csproj" />
   </ItemGroup>
 
+  <!--
+    The source generator that reads the responses of handlers without response metadata, in analyzers/dotnet/cs: NuGet adds it to
+    the analyzers of each C# project that references the package. Built before this project; neither a reference of this assembly
+    nor a dependency of the package.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Tisilia.AspNetCore.SourceGenerator\Tisilia.AspNetCore.SourceGenerator.csproj" ReferenceOutputAssembly="false" PrivateAssets="all" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);PackTisiliaSourceGenerator</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <Target Name="PackTisiliaSourceGenerator">
+    <MSBuild Projects="..\Tisilia.AspNetCore.SourceGenerator\Tisilia.AspNetCore.SourceGenerator.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)" RemoveProperties="TargetFramework;RuntimeIdentifier">
+      <Output TaskParameter="TargetOutputs" ItemName="TisiliaSourceGeneratorAssembly" />
+    </MSBuild>
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="@(TisiliaSourceGeneratorAssembly)" PackagePath="analyzers/dotnet/cs" />
+    </ItemGroup>
+  </Target>
+
   <!-- the documentation readers (XML comment ids, Markdown) are tested directly -->
   <ItemGroup>
     <InternalsVisibleTo Include="Tisilia.Contract.Tests" />

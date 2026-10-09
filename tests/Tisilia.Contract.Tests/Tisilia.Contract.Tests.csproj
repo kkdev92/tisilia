@@ -11,6 +11,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <!-- drives Tisilia's source generator over sources the tests write (ResponseInferenceGeneratorTests) -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
@@ -22,6 +24,11 @@
     <ProjectReference Include="..\..\src\backend\Tisilia.AspNetCore\Tisilia.AspNetCore.csproj" />
     <!-- the CLI commands (init) -->
     <ProjectReference Include="..\..\src\backend\Tisilia.Tool\Tisilia.Tool.csproj" />
+    <!-- a controller host with ICU, started by MvcFormCultureTests -->
+    <ProjectReference Include="..\Tisilia.CultureOracle\Tisilia.CultureOracle.csproj" />
+    <!-- the source generator, and endpoints compiled with it as their analyzer (ResponseInferenceTests) -->
+    <ProjectReference Include="..\..\src\backend\Tisilia.AspNetCore.SourceGenerator\Tisilia.AspNetCore.SourceGenerator.csproj" />
+    <ProjectReference Include="..\Tisilia.InferenceFixture\Tisilia.InferenceFixture.csproj" />
   </ItemGroup>
 
 </Project>

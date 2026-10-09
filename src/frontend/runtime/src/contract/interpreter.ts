@@ -6,6 +6,8 @@ import { CodecError } from "../codec/errors.js";
 import { CodecRegistry } from "../codec/registry.js";
 import { scalarCodec, type NumberProfile, type ScalarName } from "../codec/scalars.js";
 import { arrayCodec, brandCodec, enumCodec, mapCodec, nullableCodec, objectCodec, taggedUnionCodec, type AdditionalPolicy, type DuplicatePolicy, type EnumMember, type NameMatching, type Presence, type PropertyDescriptor } from "../codec/structural.js";
+import { xmlElementCodec, xmlEnumCodec, xmlItemsCodec, xmlTextCodec, type XmlMemberDescriptor } from "../codec/xml.js";
+import type { XmlScalarGrammar } from "../xml/lexical.js";
 import type { KeyComparer } from "../codec/map.js";
 import { codecBinder, enumBinder, standardBinder, type NullPolicy, type ParameterLocation } from "../http/binders.js";
 import type { HttpMethod, OperationDescriptor, ParameterDescriptor, ResponseBodyDescriptor, ResponseCaseDescriptor } from "../http/client.js";
@@ -67,11 +69,30 @@ export type ContractWireShape =
   | { readonly kind: "boolean" }
   | { readonly kind: "string"; readonly grammarId: string; readonly minUtf16Length?: number; readonly maxUtf16Length?: number }
   | { readonly kind: "number"; readonly grammarId: string }
-  | { readonly kind: "array"; readonly element: ContractWireRef }
-  | { readonly kind: "object"; readonly properties: readonly ContractWireProperty[]; readonly additional: { readonly kind: AdditionalPolicy; readonly wire?: ContractWireRef }; readonly duplicatePolicyId: string; readonly nameMatchingId: string }
+  | { readonly kind: "array"; readonly element: ContractWireRef; readonly referenceMetadata?: true }
+  | { readonly kind: "object"; readonly properties: readonly ContractWireProperty[]; readonly additional: { readonly kind: AdditionalPolicy; readonly wire?: ContractWireRef }; readonly duplicatePolicyId: string; readonly nameMatchingId: string; readonly referenceMetadata?: true }
   | { readonly kind: "token-union"; readonly branches: readonly { readonly token: string; readonly wire: ContractWireRef }[] }
-  | { readonly kind: "tagged-union"; readonly discriminator: string; readonly variants: readonly { readonly tag: { readonly kind: "string"; readonly value: string } | { readonly kind: "number"; readonly text: string }; readonly wire: ContractWireRef }[] }
-  | { readonly kind: "lossless-json"; readonly grammarId: string };
+  | { readonly kind: "tagged-union"; readonly discriminator: string; readonly variants: readonly { readonly tag: { readonly kind: "string"; readonly value: string } | { readonly kind: "number"; readonly text: string }; readonly wire: ContractWireRef }[]; readonly referenceMetadata?: true }
+  | { readonly kind: "lossless-json"; readonly grammarId: string }
+  | { readonly kind: "xml-text"; readonly grammarId: string; readonly names?: readonly { readonly value: string; readonly name: string }[] }
+  | { readonly kind: "xml-element"; readonly attributes: readonly ContractXmlMember[]; readonly elements: readonly ContractXmlMember[]; readonly text?: ContractXmlMember }
+  | { readonly kind: "xml-items"; readonly item: { readonly name: string; readonly namespace?: string; readonly wire: ContractWireRef; readonly nillable?: true } };
+
+export interface ContractXmlMember {
+  readonly property: string;
+  readonly name?: string;
+  readonly namespace?: string;
+  readonly wire: ContractWireRef;
+  readonly presence: Presence;
+  readonly nillable?: true;
+  readonly repeated?: true;
+  readonly default?: string;
+}
+
+export interface ContractXmlName {
+  readonly name: string;
+  readonly namespace?: string;
+}
 
 export interface ContractWire {
   readonly id: string;
@@ -162,27 +183,37 @@ export interface ContractParameter {
 
 export interface ContractFormField {
   readonly name: string;
-  readonly kind: "value" | "file" | "object";
+  readonly kind: "value" | "file" | "object" | "map";
   readonly use?: ContractTypeUse;
+  /** The key of a map field: a builtin string, integer or Guid scalar. */
+  readonly keyUse?: ContractTypeUse;
   readonly repeated: boolean;
   readonly rejectBlank?: boolean;
   readonly indexed?: boolean;
   readonly wireName?: "";
   readonly fields?: readonly ContractFormField[];
   readonly enumDefinedOnly?: boolean;
+  /** The parameter grammar of a module type's value: written as its request codec's canonical text. */
+  readonly grammarId?: string;
+  /** The server reads the value with the request culture (MVC): written so that every culture reads it the same way. */
+  readonly requestCulture?: boolean;
+  /** A string the server reads with the CLR type's own parser: the contract does not say which texts it accepts. */
+  readonly serverParsed?: boolean;
   readonly presence: Presence;
 }
 
 export type ContractRequestBody = { readonly kind: "none" } | { readonly kind: "json"; readonly mediaType: string; readonly profileId: string; readonly use: ContractTypeUse; readonly presence: Presence }
   | { readonly kind: "form"; readonly mediaType: string; readonly presence: Presence; readonly fields: readonly ContractFormField[] }
-  | { readonly kind: "binary"; readonly mediaType: string; readonly presence: Presence };
+  | { readonly kind: "binary"; readonly mediaType: string; readonly presence: Presence }
+  | { readonly kind: "xml"; readonly mediaType: string; readonly root: ContractXmlName; readonly use: ContractTypeUse; readonly presence: Presence; readonly maxDepth: number };
 
 export type ContractResponseBody =
-  | { readonly kind: "sse"; readonly mediaType: string; readonly dataFormat: "text" | "json"; readonly profileId?: string; readonly use: ContractTypeUse }
+  | { readonly kind: "sse"; readonly mediaType: string; readonly dataFormat: "text" | "json"; readonly profileId?: string; readonly use: ContractTypeUse; readonly resume?: "last-event-id" }
   | { readonly kind: "none" }
   | { readonly kind: "json"; readonly mediaType: string; readonly profileId: string; readonly use: ContractTypeUse }
   | { readonly kind: "text"; readonly mediaType: string; readonly use: ContractTypeUse }
-  | { readonly kind: "binary"; readonly mediaType: string };
+  | { readonly kind: "binary"; readonly mediaType: string }
+  | { readonly kind: "xml"; readonly mediaType: string; readonly root: ContractXmlName; readonly use: ContractTypeUse };
 
 export interface ContractResponse {
   readonly id: string;
@@ -381,7 +412,73 @@ export function createContractRegistry(document: ContractDocument, options: Cont
     return built;
   };
 
+  // an XML codec (MVC's XmlSerializer formatters) is read from its XML wire, as the generated client does
+  const buildXml = (codec: ContractCodec, model: ContractModel): Codec<unknown> => {
+    const caps = codec.capabilities;
+    const wire = wireShape((caps.response ?? caps.request)?.wire);
+    const directions = { request: caps.request !== undefined, response: caps.response !== undefined };
+    const shape = model.shape;
+    if (wire?.kind === "xml-text" && shape.kind === "primitive") {
+      const grammar = builtinName(wire.grammarId) as XmlScalarGrammar;
+      return xmlTextCodec({ id: codec.id, typeId: codec.typeId, scalar: scalarNameOf(shape.primitiveId), grammar });
+    }
+    if (wire?.kind === "xml-text" && shape.kind === "enum") {
+      return xmlEnumCodec({
+        id: codec.id,
+        typeId: codec.typeId,
+        underlying: scalarNameOf(shape.underlyingPrimitiveId) as "int8" | "uint8" | "int16" | "uint16" | "int32" | "uint32" | "int64" | "uint64",
+        flags: shape.flags,
+        members: shape.members.map((m) => ({ name: m.name, value: BigInt(m.value) })),
+        names: (wire.names ?? []).map((n) => ({ value: BigInt(n.value), name: n.name })),
+      }) as Codec<unknown>;
+    }
+    if (wire?.kind === "xml-element" && shape.kind === "object") {
+      const member = (m: ContractXmlMember): XmlMemberDescriptor => {
+        const property = shape.properties.find((p) => p.name === m.property);
+        if (property === undefined) {
+          throw new CodecError("unsupported", "", `XML codec '${codec.id}' has no domain property '${m.property}'`, codec.id);
+        }
+        const collection = m.repeated === true ? types.get(property.use.typeId)?.shape : undefined;
+        if (m.repeated === true && collection?.kind !== "array") {
+          throw new CodecError("unsupported", "", `XML codec '${codec.id}': repeated member '${m.property}' is not a collection`, codec.id);
+        }
+        const value = collection?.kind === "array" ? collection.element : property.use;
+        return {
+          property: m.property,
+          ...(m.name !== undefined ? { name: m.name } : {}),
+          ...(m.namespace !== undefined ? { ns: m.namespace } : {}),
+          codec: () => registry.get(value.codecId),
+          presence: property.presence,
+          wirePresence: m.presence,
+          nullable: value.semanticNullable,
+          ...(m.nillable === true ? { nillable: true } : {}),
+          ...(m.repeated === true ? { repeated: true } : {}),
+          ...(m.default !== undefined ? { default: m.default } : {}),
+        };
+      };
+      return xmlElementCodec({ id: codec.id, typeId: codec.typeId, attributes: wire.attributes.map(member), elements: wire.elements.map(member), ...(wire.text !== undefined ? { text: member(wire.text) } : {}), ...directions }) as Codec<unknown>;
+    }
+    if (wire?.kind === "xml-items" && shape.kind === "array") {
+      return xmlItemsCodec({
+        id: codec.id,
+        typeId: codec.typeId,
+        item: { name: wire.item.name, ...(wire.item.namespace !== undefined ? { ns: wire.item.namespace } : {}), ...(wire.item.nillable === true ? { nillable: true } : {}) },
+        element: () => registry.get(shape.element.codecId),
+        elementNullable: shape.element.semanticNullable,
+        ...directions,
+      }) as Codec<unknown>;
+    }
+    throw new CodecError("unsupported", "", `XML codec '${codec.id}' does not convert a ${shape.kind} model through a ${wire?.kind ?? "missing"} wire`, codec.id);
+  };
+
   const build = (codec: ContractCodec): Codec<unknown> => {
+    if (codec.bindingId === "tisilia.binding.xml-serializer@0.1") {
+      const model = types.get(codec.typeId);
+      if (model === undefined) {
+        throw new CodecError("unsupported", "", `codec '${codec.id}' references unknown type '${codec.typeId}'`, codec.id);
+      }
+      return buildXml(codec, model);
+    }
     // the nullable wrapper of any codec — a module codec's too, which keeps the module's origin — passes null by itself (null behavior
     // bypass) and hands every other value to the codec it wraps, as the generated client does
     if (codec.id.endsWith(".nullable")) {
@@ -403,7 +500,10 @@ export function createContractRegistry(document: ContractDocument, options: Cont
       case "primitive": {
         const wire = wireShape((caps.response ?? caps.request)?.wire);
         const lengths = wire?.kind === "string" ? { ...(wire.minUtf16Length !== undefined ? { minUtf16Length: wire.minUtf16Length } : {}), ...(wire.maxUtf16Length !== undefined ? { maxUtf16Length: wire.maxUtf16Length } : {}) } : {};
-        return scalarCodec(scalarNameOf(shape.primitiveId), { id: codec.id, typeId: codec.typeId, numbers: numbersOf(codec.id), ...lengths });
+        // a builtin codec bound to a contract binding (the DateTime codecs to the server's time zone) reads the binding's context
+        const entries = (bindings.get(codec.bindingId)?.context ?? []).filter((e) => !e.confidential);
+        const context = entries.length === 0 ? {} : { context: Object.fromEntries(entries.map((e) => [e.name, e.value])) };
+        return scalarCodec(scalarNameOf(shape.primitiveId), { id: codec.id, typeId: codec.typeId, numbers: numbersOf(codec.id), ...lengths, ...context });
       }
       case "object": {
         const readWire = wireShape(caps.request?.wire);
@@ -431,12 +531,24 @@ export function createContractRegistry(document: ContractDocument, options: Cont
           ...(extension !== undefined ? { extension: () => registry.get(extension), extensionProperty: "extensions" } : {}),
           request: caps.request !== undefined,
           response: caps.response !== undefined,
+          ...(writeObject?.referenceMetadata === true ? { referenceMetadata: true } : {}),
+          ...(readObject?.referenceMetadata === true ? { requestReferenceMetadata: true } : {}),
         });
       }
-      case "array":
-        return arrayCodec({ id: codec.id, typeId: codec.typeId, element: () => registry.get(shape.element.codecId), elementNullable: shape.element.semanticNullable }) as Codec<unknown>;
-      case "map":
-        return mapCodec({ id: codec.id, typeId: codec.typeId, key: () => registry.get(shape.key.codecId), value: () => registry.get(shape.value.codecId), valueNullable: shape.value.semanticNullable, comparer: comparerOf(shape.comparerId) }) as Codec<unknown>;
+      case "array": {
+        const written = wireShape(caps.response?.wire);
+        const read = wireShape(caps.request?.wire);
+        return arrayCodec({ id: codec.id, typeId: codec.typeId, element: () => registry.get(shape.element.codecId), elementNullable: shape.element.semanticNullable,
+          ...(written?.kind === "array" && written.referenceMetadata === true ? { referenceMetadata: true } : {}),
+          ...(read?.kind === "array" && read.referenceMetadata === true ? { requestReferenceMetadata: true } : {}) }) as Codec<unknown>;
+      }
+      case "map": {
+        const written = wireShape(caps.response?.wire);
+        const read = wireShape(caps.request?.wire);
+        return mapCodec({ id: codec.id, typeId: codec.typeId, key: () => registry.get(shape.key.codecId), value: () => registry.get(shape.value.codecId), valueNullable: shape.value.semanticNullable, comparer: comparerOf(shape.comparerId),
+          ...(written?.kind === "object" && written.referenceMetadata === true ? { referenceMetadata: true } : {}),
+          ...(read?.kind === "object" && read.referenceMetadata === true ? { requestReferenceMetadata: true } : {}) }) as Codec<unknown>;
+      }
       case "enum": {
         const stringForm = wireShape(caps.response?.wire)?.kind === "token-union";
         const members: EnumMember[] = shape.members.map((m) => ({ name: m.name, value: BigInt(m.value), ...(m.serializedName !== undefined ? { serializedName: m.serializedName } : {}) }));
@@ -465,6 +577,7 @@ export function createContractRegistry(document: ContractDocument, options: Cont
             const tag: string | bigint = wireTag?.kind === "number" ? BigInt(wireTag.text) : wireTag?.kind === "string" ? wireTag.value : v.tag;
             return { tag, codec: () => registry.get(v.use.codecId) };
           }),
+          ...(wireShape(caps.response?.wire)?.kind === "tagged-union" && wire.referenceMetadata === true ? { referenceMetadata: true } : {}),
         }) as Codec<unknown>;
       }
       case "brand":
@@ -526,10 +639,14 @@ export function createContractRegistry(document: ContractDocument, options: Cont
         body = { kind: "binary", mediaType: r.body.mediaType };
       } else if (r.body.kind === "sse") {
         const codecId = r.body.use.codecId;
-        body = { kind: "sse", mediaType: r.body.mediaType, dataFormat: r.body.dataFormat, codec: () => registry.get(codecId), nullable: r.body.use.semanticNullable, ...(r.body.profileId === undefined ? {} : { profileId: r.body.profileId }) };
+        body = { kind: "sse", mediaType: r.body.mediaType, dataFormat: r.body.dataFormat, codec: () => registry.get(codecId), nullable: r.body.use.semanticNullable, ...(r.body.profileId === undefined ? {} : { profileId: r.body.profileId }),
+          ...(r.body.resume === "last-event-id" ? { resume: "last-event-id" as const } : {}) };
       } else if (r.body.kind === "json") {
         const codecId = r.body.use.codecId;
         body = { kind: "json", profileId: r.body.profileId, mediaType: r.body.mediaType, codec: () => registry.get(codecId), nullable: r.body.use.semanticNullable };
+      } else if (r.body.kind === "xml") {
+        const codecId = r.body.use.codecId;
+        body = { kind: "xml", mediaType: r.body.mediaType, codec: () => registry.get(codecId), root: { name: r.body.root.name, ...(r.body.root.namespace !== undefined ? { ns: r.body.root.namespace } : {}) }, nullable: r.body.use.semanticNullable };
       } else {
         throw new Error("unknown response body kind; re-export with matching Tisilia tooling");
       }
@@ -537,8 +654,14 @@ export function createContractRegistry(document: ContractDocument, options: Cont
     });
     const formDescriptor = (f: ContractFormField): FormFieldDescriptor => {
       const shape = f.use === undefined ? undefined : types.get(f.use.typeId)?.shape;
-      if (f.kind === "value" && shape?.kind !== "primitive" && shape?.kind !== "enum") { throw new Error("form field requires a builtin scalar or enum"); }
-      return { name: f.name, kind: f.kind, repeated: f.repeated, ...(f.rejectBlank === true ? { rejectBlank: true } : {}), presence: f.presence, ...(f.indexed === true ? { indexed: true } : {}), ...(f.wireName === undefined ? {} : { wireName: f.wireName }), ...(f.fields === undefined ? {} : { fields: f.fields.map(formDescriptor) }), ...(shape?.kind === "primitive" ? { scalar: scalarNameOf(shape.primitiveId) } : shape?.kind === "enum" ? { format: enumBinder(() => registry.get(f.use!.codecId), shape.members.map(m => [m.name, BigInt(m.value)] as const), "query", { flags: shape.flags, definedOnly: f.enumDefinedOnly === true }).format } : {}) };
+      if ((f.kind === "value" || f.kind === "map") && f.grammarId === undefined && shape?.kind !== "primitive" && shape?.kind !== "enum") { throw new Error("form field requires a builtin scalar, an enum or a module type with a parameter grammar"); }
+      const keyShape = f.keyUse === undefined ? undefined : types.get(f.keyUse.typeId)?.shape;
+      if ((f.kind === "map") !== (keyShape?.kind === "primitive")) { throw new Error("only map form fields have a key, and it is a builtin scalar"); }
+      // a module type's value is its request codec's canonical text, as its parameter binder writes it
+      const value = f.kind !== "value" && f.kind !== "map" ? {} : f.grammarId !== undefined ? { format: codecBinder(() => registry.get(f.use!.codecId), "query").format }
+        : shape?.kind === "primitive" ? { scalar: scalarNameOf(shape.primitiveId) }
+        : shape?.kind === "enum" ? { format: enumBinder(() => registry.get(f.use!.codecId), shape.members.map(m => [m.name, BigInt(m.value)] as const), "query", { flags: shape.flags, definedOnly: f.enumDefinedOnly === true }).format } : {};
+      return { name: f.name, kind: f.kind, repeated: f.repeated, ...(f.rejectBlank === true ? { rejectBlank: true } : {}), ...(f.requestCulture === true ? { requestCulture: true } : {}), presence: f.presence, ...(f.indexed === true ? { indexed: true } : {}), ...(f.wireName === undefined ? {} : { wireName: f.wireName }), ...(f.fields === undefined ? {} : { fields: f.fields.map(formDescriptor) }), ...(keyShape?.kind === "primitive" ? { key: scalarNameOf(keyShape.primitiveId) } : {}), ...value };
     };
     const requestBody = op.requestBody;
     operations.set(op.id, {
@@ -550,6 +673,9 @@ export function createContractRegistry(document: ContractDocument, options: Cont
       parameters,
       ...(requestBody.kind === "form" ? { requestBody: { kind: "form" as const, mediaType: requestBody.mediaType, presence: requestBody.presence, fields: requestBody.fields.map(formDescriptor), get: (args: unknown) => (args as { body?: unknown }).body } } : {}),
       ...(requestBody.kind === "binary" ? { requestBody: { kind: "binary" as const, mediaType: requestBody.mediaType, presence: requestBody.presence, get: (args: unknown) => (args as { body?: unknown }).body } } : {}),
+      ...(requestBody.kind === "xml"
+        ? { requestBody: { kind: "xml" as const, mediaType: requestBody.mediaType, codec: () => registry.get(requestBody.use.codecId), root: { name: requestBody.root.name, ...(requestBody.root.namespace !== undefined ? { ns: requestBody.root.namespace } : {}) }, presence: requestBody.presence, maxDepth: requestBody.maxDepth, get: (args: unknown) => (args as { body?: unknown }).body } }
+        : {}),
       ...(requestBody.kind === "json"
         ? { requestBody: { mediaType: requestBody.mediaType, codec: () => registry.get(requestBody.use.codecId), presence: requestBody.presence, nullable: requestBody.use.semanticNullable, get: (args: unknown) => (args as { body?: unknown }).body, ...maxDepthOf(document, requestBody.profileId) } }
         : {}),

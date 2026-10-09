@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { execute, prepareRequest, type OperationDescriptor } from "../src/http/client.js";
+import { supportsRequestStreams } from "../src/http/transport.js";
 
 const operation: OperationDescriptor = {
   id: "upload", method: "POST", route: "/upload", parameters: [],
@@ -46,5 +47,65 @@ describe("finite raw uploads", () => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(null, { status: 204 }));
     await execute(operation, { body }, { ...options, transport: { fetch }, credentialProvider: async () => { body.fill(8); return []; } });
     expect(fetch.mock.calls[0]?.[1]?.body).toEqual(new Uint8Array([0, 255]));
+  });
+});
+
+describe("streamed raw uploads", () => {
+  const chunks = (...parts: number[][]) => new ReadableStream<Uint8Array>({ start(c) { for (const part of parts) { c.enqueue(new Uint8Array(part)); } c.close(); } });
+  const read = async (body: unknown) => new Uint8Array(await new Response(body as ReadableStream<Uint8Array>).arrayBuffer());
+
+  it("sends a stream as it is read, with duplex half, where fetch streams request bodies", async () => {
+    expect(supportsRequestStreams()).toBe(true); // Node's fetch
+    const prepared = prepareRequest(operation, { body: chunks([0, 1], [255]) }, options);
+    expect(prepared.bodyBytes).toBeUndefined();
+    expect(prepared.bodyText).toBeUndefined();
+    expect(prepared.bodyStream).toBeInstanceOf(ReadableStream);
+    let sent: Uint8Array | undefined;
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => {
+      expect((init as RequestInit & { duplex?: string }).duplex).toBe("half");
+      sent = await read(init?.body);
+      return new Response(null, { status: 204 });
+    });
+    expect((await execute(operation, { body: chunks([0, 1], [255]) }, { ...options, transport: { fetch } })).kind).toBe("response");
+    expect(sent).toEqual(new Uint8Array([0, 1, 255]));
+  });
+
+  it("fails a stream that goes past maxBodyBytes while it is sent, and one whose source fails", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, init) => { await read(init?.body); return new Response(null, { status: 204 }); });
+    const config = { ...options, limits: { maxBodyBytes: 2 }, transport: { fetch } };
+    expect(await execute(operation, { body: chunks([0, 1], [2]) }, config)).toEqual({ kind: "limit-failure", operationId: "upload", limit: "maxBodyBytes" });
+    expect((await execute(operation, { body: chunks([0], [1]) }, config)).kind).toBe("response");
+    const failing = new ReadableStream<Uint8Array>({ pull(c) { c.error(new Error("disk gone: /private/path")); } });
+    const failed = await execute(operation, { body: failing }, config);
+    expect(failed).toEqual({ kind: "transport-failure", operationId: "upload", reason: "network", message: "the request body stream failed" });
+    const notBytes = new ReadableStream({ start(c) { c.enqueue("text"); c.close(); } });
+    expect((await execute(operation, { body: notBytes }, config)).kind).toBe("transport-failure");
+  });
+
+  it("refuses a stream where fetch would send it as text or nothing, and one already being read", () => {
+    const platform = globalThis.Request;
+    // Firefox and Safari: the stream becomes text, with a Content-Type, and duplex is never read
+    globalThis.Request = class extends platform {
+      constructor(input: RequestInfo | URL, init?: RequestInit) { super(input, init === undefined ? undefined : { method: init.method ?? "GET", body: "[object ReadableStream]" }); }
+    } as typeof Request;
+    try {
+      expect(supportsRequestStreams()).toBe(false);
+      expect(() => prepareRequest(operation, { body: chunks([0]) }, options)).toThrow(/only Node's fetch streams a request body/);
+    } finally {
+      globalThis.Request = platform;
+    }
+    // a browser: WebKit passes the Fetch check yet sends an empty body, so outside Node a stream is never sent
+    const node = Object.getOwnPropertyDescriptor(globalThis, "process")!;
+    Object.defineProperty(globalThis, "process", { value: undefined, configurable: true, writable: true });
+    try {
+      expect(supportsRequestStreams()).toBe(false);
+    } finally {
+      Object.defineProperty(globalThis, "process", node);
+    }
+    expect(supportsRequestStreams()).toBe(true);
+    const locked = chunks([0]);
+    locked.getReader();
+    expect(() => prepareRequest(operation, { body: locked }, options)).toThrow(/already being read/);
+    expect(() => prepareRequest({ ...operation, method: "GET" }, { body: chunks([0]) }, options)).toThrow();
   });
 });

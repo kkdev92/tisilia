@@ -46,14 +46,6 @@ public sealed partial class SemanticValidator
                 Error(TisiliaCodes.IgnoreCondition, "SV18", JsonPointer.Append(op, "defaultIgnoreCondition"), $"profile '{profile.Id}': DefaultIgnoreCondition.Always is rejected by System.Text.Json", [profile.Id]);
             }
 
-            // Builtin scalar converters do not participate in reference preservation. Object/collection/module
-            // codecs still require graph support; never infer this exception from the observed value alone.
-            if (o.ReferenceHandling == ReferenceHandling.Preserve && !ScalarOnlyJsonProfile(profile.Id))
-            {
-                Error(TisiliaCodes.ReferencePreserve, "SV20", JsonPointer.Append(op, "referenceHandling"), $"profile '{profile.Id}': ReferenceHandler.Preserve ($id/$ref graphs) is not supported by the runtime", [profile.Id],
-                    "use a profile without reference preservation for structured JSON; builtin scalar-only JSON is supported");
-            }
-
             var behaviorsInProfile = profile.Behaviors.ToDictionary(b => b.Id, b => b, StringComparer.Ordinal);
             for (var j = 0; j < profile.Behaviors.Count; j++)
             {
@@ -155,25 +147,80 @@ public sealed partial class SemanticValidator
         }
     }
 
-    private bool ScalarOnlyJsonProfile(string profileId)
+    /// <summary>
+    /// ReferenceHandler.Preserve writes reference metadata — <c>$id</c> first, collections as <c>{"$id","$values"}</c>, <c>{"$ref"}</c>
+    /// for a value written before — where the server-write wires say <c>referenceMetadata</c>, which the runtime reads, and reads it in a
+    /// request where the server-read wires say so, which the runtime then writes for a value reached again. Only a body of a profile that
+    /// preserves references reaches such a wire (SV20).
+    /// </summary>
+    private void CheckReferenceMetadata()
     {
-        bool IsScalar(TypeUse use) => _index.Codecs.TryGetValue(use.CodecId, out var codec)
-            && codec.Origin == CodecOrigin.Builtin && codec.Dependencies.Count == 0
-            && _index.Types.TryGetValue(use.TypeId, out var type) && type.Shape is PrimitiveShape scalar
-            && scalar.PrimitiveId != Builtins.Scalar("json-value");
-        foreach (var operation in _doc.Operations)
+        static bool Marked(WireShape shape) => shape is ObjectWire { ReferenceMetadata: true } or ArrayWire { ReferenceMetadata: true } or TaggedUnionWire { ReferenceMetadata: true };
+
+        // the first marked wire a body reaches, or null
+        string? MarkedWireReached(string start)
         {
-            if (operation.RequestBody is JsonRequestBody request && request.ProfileId == profileId && !IsScalar(request.Use))
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var pending = new Stack<string>([start]);
+            while (pending.TryPop(out var wireId))
             {
-                return false;
+                if (!seen.Add(wireId) || !_index.Wires.TryGetValue(wireId, out var wire))
+                {
+                    continue;
+                }
+
+                if (Marked(wire.Shape))
+                {
+                    return wireId;
+                }
+
+                IEnumerable<WireRef> children = wire.Shape switch
+                {
+                    ArrayWire array => [array.Element],
+                    ObjectWire obj => obj.Properties.Select(p => p.Wire).Concat(obj.Additional is CaptureAdditional capture ? [capture.Wire] : []),
+                    TokenUnionWire tokens => tokens.Branches.Select(b => b.Wire),
+                    TaggedUnionWire tagged => tagged.Variants.Select(v => v.Wire),
+                    _ => [],
+                };
+                foreach (var child in children)
+                {
+                    pending.Push(child.WireId);
+                }
             }
-            if (operation.Responses.Any(r => r.Body is JsonResponseBody response && response.ProfileId == profileId && !IsScalar(response.Use)
-                || r.Body is SseResponseBody sse && sse.ProfileId == profileId && !IsScalar(sse.Use)))
+
+            return null;
+        }
+
+        bool Preserves(string profileId) => _index.Profiles.TryGetValue(profileId, out var profile) && profile.Options.ReferenceHandling == ReferenceHandling.Preserve;
+
+        for (var i = 0; i < _doc.Operations.Count; i++)
+        {
+            var operation = _doc.Operations[i];
+            if (operation.RequestBody is JsonRequestBody body && !Preserves(body.ProfileId) && _index.Codecs.TryGetValue(body.Use.CodecId, out var bodyCodec)
+                && bodyCodec.Capabilities.Request is { } request && MarkedWireReached(request.Wire.WireId) is { } readWire)
             {
-                return false;
+                Error(TisiliaCodes.ReferencePreserve, "SV20", JsonPointer.Append(JsonPointer.Append("/operations", i), "requestBody"), $"operation '{operation.Id}': profile '{body.ProfileId}' does not preserve references, but the request body reaches wire '{readWire}', which says the server reads reference metadata", [operation.Id, readWire]);
+            }
+
+            for (var j = 0; j < operation.Responses.Count; j++)
+            {
+                var (use, profileId) = operation.Responses[j].Body switch
+                {
+                    JsonResponseBody json => (json.Use, json.ProfileId),
+                    SseResponseBody { ProfileId: { } sseProfile } sse => (sse.Use, sseProfile),
+                    _ => (null, null),
+                };
+                if (use is null || profileId is null || Preserves(profileId) || !_index.Codecs.TryGetValue(use.CodecId, out var codec) || codec.Capabilities.Response is not { } response)
+                {
+                    continue;
+                }
+
+                if (MarkedWireReached(response.Wire.WireId) is { } writeWire)
+                {
+                    Error(TisiliaCodes.ReferencePreserve, "SV20", JsonPointer.Append(JsonPointer.Append(JsonPointer.Append("/operations", i), "responses"), j), $"operation '{operation.Id}': profile '{profileId}' does not preserve references, but the response reaches wire '{writeWire}', which says the server writes reference metadata", [operation.Id, writeWire]);
+                }
             }
         }
-        return true;
     }
 
     // ---------------------------------------------------------------- usage graph (SV05/SV06/SV07/SV08)
@@ -196,6 +243,11 @@ public sealed partial class SemanticValidator
             {
                 var p = op.Parameters[j];
                 Walk(p.Use, Usage.Domain, JsonPointer.Append(JsonPointer.Append(JsonPointer.Append(opPath, "parameters"), j), "use"), visited, $"operation '{op.Id}' parameter '{p.Name}'");
+            }
+
+            if (op.RequestBody is XmlRequestBody xmlBody)
+            {
+                Walk(xmlBody.Use, Usage.Request, JsonPointer.Append(JsonPointer.Append(opPath, "requestBody"), "use"), visited, $"operation '{op.Id}' request body");
             }
 
             if (op.RequestBody is JsonRequestBody body)
@@ -225,6 +277,9 @@ public sealed partial class SemanticValidator
                     case TextResponseBody text:
                         Walk(text.Use, Usage.Domain, JsonPointer.Append(rp, "use"), visited, $"operation '{op.Id}' case '{r.Id}'");
                         break;
+                    case XmlResponseBody xml:
+                        Walk(xml.Use, Usage.Response, JsonPointer.Append(rp, "use"), visited, $"operation '{op.Id}' case '{r.Id}'");
+                        break;
                 }
             }
         }
@@ -249,7 +304,8 @@ public sealed partial class SemanticValidator
             Error(TisiliaCodes.MissingCapability, "SV05", JsonPointer.Append(path, "codecId"), $"{context}: codec '{codec.Id}' lacks the {(usage == Usage.Request ? "request (encodeRequest)" : "response (decodeResponse)")} capability required at this position", [codec.Id, use.TypeId]);
         }
 
-        if (cap is not null)
+        // an XML codec never sees null: xsi:nil, an absent member or empty content belongs to the member or the root (SV55)
+        if (cap is not null && !IsXmlCodec(codec))
         {
             if (use.SemanticNullable && cap.NullBehavior == NullBehavior.Reject)
             {
@@ -379,8 +435,10 @@ public sealed partial class SemanticValidator
 
                 var ok = wire.Shape switch
                 {
-                    NullWire or BooleanWire or StringWire or NumberWire or LiteralWire or LosslessJsonWire or ArrayWire => true,
+                    NullWire or BooleanWire or StringWire or NumberWire or LiteralWire or LosslessJsonWire or ArrayWire or XmlTextWire or XmlItemsWire => true,
                     ObjectWire obj => obj.Properties.Where(p => p.Presence == Presence.Required).All(p => productiveWires.Contains(p.Wire.WireId)),
+                    // a repeated member may have no element and a nillable one may be xsi:nil
+                    XmlElementWire element => MembersOf(element).Where(m => m.Presence == Presence.Required && m.Repeated != true && m.Nillable != true).All(m => productiveWires.Contains(m.Wire.WireId)),
                     TokenUnionWire tu => tu.Branches.Any(b => productiveWires.Contains(b.Wire.WireId)),
                     TaggedUnionWire tg => tg.Variants.Any(v => productiveWires.Contains(v.Wire.WireId)),
                     _ => false,

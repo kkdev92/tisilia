@@ -7,11 +7,12 @@ Finite binary downloads stay server-only in hydration. `useTisiliaOperation` may
 decoded buffer through `serverResult`. Only a safe `failure/server-only` envelope enters the payload: no bytes, filename or raw
 metadata. Hydration accepts that envelope without treating it as a mismatch or automatically refetching. Explicit refresh is a
 new request; imperative `useTisiliaClient` calls can obtain bytes in the browser. Do not render `serverResult` into HTML. JSON
-precision and browser-safe envelopes retain their existing behavior. The runtime, module and generator must use matching
-0.1.0-alpha packages. The contract, hydration envelope format and Codec ABI all use version 0.1.
+precision and browser-safe envelopes retain their existing behavior. The runtime, module and generator must come from the
+same Tisilia version. The contract, hydration envelope format and Codec ABI all use version 0.1.
 
 Finite raw uploads take a `Uint8Array` body. Their request identity includes the exact bytes as canonical base64 with
-`bodyKind: "binary"`; different bytes, an empty body and an omitted body get different identities. This identity input
+`bodyKind: "binary"`; different bytes, an empty body and an omitted body get different identities. A `ReadableStream` body,
+which the runtime streams from Node, has no bytes before it is sent and so no identity: `useTisiliaOperation` refuses it. This identity input
 is hashed, and the raw request bytes are not added to hydration envelopes. Use the runtime's `download` API with an
 application-owned sink for incremental downloads; `useTisiliaOperation` retains its buffered response behavior.
 
@@ -69,7 +70,7 @@ bound to `semanticHash`, `operationId`, the `requestIdentity` and the page's `sc
 values are never put into the payload; the browser decodes the envelope with the same case codec the server used.
 
 A response case whose contract hydration is `server-only` (the exporter's default for statuses ≥ 400 and text
-bodies) hydrates as `failure/server-only`, and a failed call (timeout, contract mismatch, …) as a `failure` envelope
+bodies, and always for XML bodies) hydrates as `failure/server-only`, and a failed call (timeout, contract mismatch, …) as a `failure` envelope
 with its code. `result` is decoded from the envelope on both sides — `hydration-failure` with that code — so a page
 renders the same thing on the server and in the browser and hydrates without a mismatch. Server code that needs the
 body or the failure's details (to set the page's status, to log) reads `serverResult`, which exists during SSR only;
@@ -108,6 +109,7 @@ after login/logout/tenant change rotates the nonce and clears the cached envelop
 
 Form requests use `bodyKind: "binary"` identities over the complete encoded bytes, including deterministic multipart
 boundaries and file parts. Different field/file values produce different keys; credentials remain outside the record.
+An XML request body is identified the same way, by the bytes of the document the client sends.
 SSE responses are server-only for hydration, including finite event arrays. Subscribe explicitly in the consuming
 application and stop the subscription when its scope ends. Endpoint-specific JSON responses retain their response
 profile when decoded after hydration; request encoding continues to use the request profile.

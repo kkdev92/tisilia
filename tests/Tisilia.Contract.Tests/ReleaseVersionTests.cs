@@ -102,6 +102,36 @@ public sealed partial class ReleaseVersionTests
     [GeneratedRegex(@"\*\*Status:\*\* `(?<version>[^`]+)`")]
     private static partial Regex StatusLine();
 
+    /// <summary>
+    /// Between releases the readme follows main, which is then ahead of the published packages. It says so, naming the latest
+    /// release, exactly while the changelog lists changes under Unreleased; the release that moves them under its version removes it.
+    /// </summary>
+    [Fact]
+    public void The_readme_says_when_main_is_ahead_of_the_latest_release()
+    {
+        var ahead = AheadNote().Match(File.ReadAllText(Path.Combine(Root, "README.md")));
+        var unreleased = UnreleasedSection().Match(Changelog);
+        var pending = unreleased.Success && PendingEntry().IsMatch(unreleased.Groups["body"].Value);
+        var released = Released();
+        if (!pending || released.Count == 0)
+        {
+            Assert.False(ahead.Success, "The readme says main is ahead of a release, but no release precedes unreleased changes.");
+            return;
+        }
+
+        Assert.True(ahead.Success, "The changelog lists unreleased changes, but the readme does not say that main is ahead of the latest release.");
+        Assert.Equal(released[0].Version, ahead.Groups["version"].Value);
+    }
+
+    [GeneratedRegex(@"This README follows the `main` branch, which is ahead of `(?<version>[^`]+)`")]
+    private static partial Regex AheadNote();
+
+    [GeneratedRegex(@"^## \[Unreleased\][^\n]*\n(?<body>[\s\S]*?)(?=^## \[|\z)", RegexOptions.Multiline)]
+    private static partial Regex UnreleasedSection();
+
+    [GeneratedRegex(@"^- ", RegexOptions.Multiline)]
+    private static partial Regex PendingEntry();
+
     /// <summary>The baseline names the release immediately before the one being built, and there is none until there is one.</summary>
     [Fact]
     public void The_baseline_names_the_previous_release()

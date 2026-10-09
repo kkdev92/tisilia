@@ -72,4 +72,43 @@ public sealed class BinaryUploadTests
         Assert.True(exported.Diagnostics.HasErrors);
         Assert.Null(exported.Text);
     }
+
+    /// <summary>
+    /// Oracle: Node's fetch sends a ReadableStream body chunked as it is read (duplex "half"), and Kestrel hands the handler every byte;
+    /// the stream is never buffered into one array first.
+    /// </summary>
+    [Fact]
+    public async Task A_streamed_raw_upload_reaches_Kestrel_chunked_and_whole()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        builder.Logging.ClearProviders();
+        builder.Services.AddTisilia(o => o.ApiId = "streamed-upload");
+        await using var app = builder.Build();
+        app.MapPost("/upload", async (HttpContext context, Stream body) =>
+        {
+            long count = 0, sum = 0;
+            var buffer = new byte[8192];
+            for (int read; (read = await body.ReadAsync(buffer)) > 0;)
+            {
+                for (var i = 0; i < read; i++) { if (buffer[i] != (byte)((count + i) % 251)) { return Results.Text($"byte {count + i} differs"); } sum += buffer[i]; }
+                count += read;
+            }
+            return Results.Text($"{count}:{sum}:{context.Request.ContentLength?.ToString() ?? "chunked"}");
+        }).Accepts<Stream>("application/octet-stream").Produces<string>(200, "text/plain").WithTisiliaOperation("upload");
+        await app.StartAsync();
+        var exported = app.Services.GetRequiredService<TisiliaContractExporter>().ExportFresh();
+        Assert.False(exported.Diagnostics.HasErrors, string.Join("\n", exported.Diagnostics.Items));
+        var dir = Directory.CreateTempSubdirectory("tisilia-streamed-upload-");
+        try
+        {
+            // the runtime's own send path (execute): the prepared request carries the stream, not bytes
+            var sent = await InterpreterRequests.SendAsync(dir.FullName, exported.Text!, app.Urls.Single(), [("upload", new { body = new Dictionary<string, object> { ["$stream"] = new { size = 65539 } } })], execute: true);
+            long expected = 0;
+            for (var i = 0; i < 65539; i++) { expected += i % 251; }
+            using var result = JsonDocument.Parse(sent[0]);
+            Assert.Equal($"65539:{expected}:chunked", result.RootElement.GetProperty("data").GetString());
+        }
+        finally { dir.Delete(recursive: true); }
+    }
 }
