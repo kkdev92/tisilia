@@ -285,6 +285,23 @@ jobs:
           done
           echo "12 artefacts downloaded and readable."
 
+      # The same for npm publish, which otherwise runs only in publish-npm: npm parses the arguments publish-npm passes and
+      # reads each tarball, and --dry-run stops it there, without credentials.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Check npm publish accepts the tarballs
+        run: |
+          version=$(tar -xzOf artifacts/kkdev92-tisilia-runtime-*.tgz package/package.json | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+          case "$version" in
+            *-*) tag=next ;;
+            *)   tag=latest ;;
+          esac
+          for name in runtime nuxt explorer; do
+            npm publish "./artifacts/kkdev92-tisilia-${name}-${version}.tgz" --access public --tag "$tag" --dry-run
+          done
+
   # Before the registries, because this is the half that can be undone.
   publish-github:
     name: attach to a draft GitHub release
@@ -421,7 +438,8 @@ jobs:
           # The runtime first: the Nuxt module and the Explorer depend on it at exactly this version.
           for name in runtime nuxt explorer; do
             package="@kkdev92/tisilia-${name}"
-            tarball="artifacts/kkdev92-tisilia-${name}-${version}.tgz"
+            # With the leading ./ npm reads the argument as a file; artifacts/<name>.tgz is a GitHub repository to it.
+            tarball="./artifacts/kkdev92-tisilia-${name}-${version}.tgz"
             local_shasum=$(sha1sum "$tarball" | cut -d ' ' -f 1)
             published_shasum=$(npm view "${package}@${version}" dist.shasum 2>/dev/null || true)
             if [ -n "$published_shasum" ]; then
