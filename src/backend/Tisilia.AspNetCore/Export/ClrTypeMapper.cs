@@ -211,6 +211,21 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
     /// </summary>
     public TypeUse? Map(Type type, WireDirection direction, string path, bool isRoot, JsonPropertyInfo? member = null, bool nullableRoot = false)
     {
+        // the builder compares what each profile describes under one model id (ContractBuilder.ProfileConflicts)
+        var outer = builder.ActiveProfileId;
+        builder.ActiveProfileId = profile.Profile.Id;
+        try
+        {
+            return MapInProfile(type, direction, path, isRoot, member, nullableRoot);
+        }
+        finally
+        {
+            builder.ActiveProfileId = outer;
+        }
+    }
+
+    private TypeUse? MapInProfile(Type type, WireDirection direction, string path, bool isRoot, JsonPropertyInfo? member, bool nullableRoot)
+    {
         var numbers = NumbersFor(member);
         var nullable = false;
         var underlying = Nullable.GetUnderlyingType(type);
@@ -627,6 +642,46 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         _ => "datetime",
     };
 
+    // JsonConverter.CanHaveMetadata (internal, System.Text.Json v10.0.0): true for the object converters and the mutable collection and
+    // dictionary converters, false for arrays, immutable collections, Memory<T>, the JSON node converters and custom converters
+    private static readonly PropertyInfo? CanHaveMetadata = typeof(JsonConverter).GetProperty("CanHaveMetadata", BindingFlags.Instance | BindingFlags.NonPublic);
+
+    /// <summary>
+    /// Whether the server writes reference metadata for a value at this position: under ReferenceHandler.Preserve, System.Text.Json writes
+    /// <c>$id</c> (and <c>$ref</c> for a value it wrote before) for a value that is not a value type when its converter can have metadata
+    /// (JsonConverter.TryHandleSerializedObjectReference and WriteMetadataForObject, v10.0.0).
+    /// </summary>
+    private bool WritesReferenceMetadata(Type type, JsonConverter converter, WireDirection direction, string path)
+    {
+        if (direction != WireDirection.ServerWrite || !ReferenceEquals(profile.Options.ReferenceHandler, ReferenceHandler.Preserve) || type.IsValueType)
+        {
+            return false;
+        }
+
+        if (CanHaveMetadata?.GetValue(converter) is bool canHaveMetadata)
+        {
+            return canHaveMetadata;
+        }
+
+        bag.Error(TisiliaCodes.ReferencePreserve, "SV20", path, $"'{type}': this System.Text.Json version does not show where ReferenceHandler.Preserve writes reference metadata", [NeutralModelId(type)],
+            "write the response with a profile without reference preservation (WithTisiliaJsonOptions for a TypedResults.Json or JsonResult response)");
+        return false;
+    }
+
+    /// <summary>
+    /// Whether a request may carry reference metadata for a value at this position, also inside the value: under ReferenceHandler.Preserve,
+    /// System.Text.Json reads <c>$id</c> and <c>{"$ref"}</c> where the converter can have metadata on a value that is not a value type, and
+    /// registers an object, collection or dictionary before it reads the members or items (ObjectDefaultConverter, JsonCollectionConverter,
+    /// JsonDictionaryConverter, v10.0.0). An object built through a constructor with parameters is registered only after its members are
+    /// read, and refuses metadata read while it waits for its constructor (ObjectWithParameterizedConstructorConverter), so the request writes
+    /// it without any; <paramref name="referenceOnly"/> asks only whether <c>{"$ref"}</c> can stand at the position (a polymorphic base,
+    /// which builds nothing itself). Without the internal flag the request writes trees, which the server always reads.
+    /// </summary>
+    private bool ReadsReferenceMetadata(Type type, JsonTypeInfo info, WireDirection direction, bool referenceOnly = false)
+        => direction == WireDirection.ServerRead && ReferenceEquals(profile.Options.ReferenceHandler, ReferenceHandler.Preserve) && !type.IsValueType
+            && (referenceOnly || info.Kind != JsonTypeInfoKind.Object || !info.Properties.Any(p => p.AssociatedParameter is not null))
+            && CanHaveMetadata?.GetValue(info.Converter) is true;
+
     private static bool IsBuiltinConverter(JsonConverter converter)
     {
         var ns = converter.GetType().Namespace ?? "";
@@ -652,7 +707,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
     private static bool IsAnonymous(Type type)
         => type.Namespace is null && type.Name.Contains("AnonymousType", StringComparison.Ordinal) && type.IsDefined(typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute), inherit: false);
 
-    private static string CleanName(Type type)
+    internal static string CleanName(Type type)
     {
         if (IsAnonymous(type))
         {
@@ -679,7 +734,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         return type.FullName ?? type.Name;
     }
 
-    private static string BaseTsName(Type type)
+    internal static string BaseTsName(Type type)
     {
         if (type.IsArray)
         {
@@ -728,7 +783,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         return sb.ToString();
     }
 
-    private static string Capitalize(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
+    internal static string Capitalize(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
 
     /// <summary>
     /// The TypeScript name of an object or union model: the CLR name (with generic arguments) plus the direction suffix, made unique
@@ -775,7 +830,8 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         element = NullableItem(element, elementType);
         RecordTypeScope(type);
         var arrayId = ModelId(type, direction);
-        var arrayUse = builder.ArrayOf(arrayId, UniqueTsName(Capitalize(elementName) + "Array", arrayId, direction), CleanName(type), element);
+        var arrayUse = builder.ArrayOf(arrayId, UniqueTsName(Capitalize(elementName) + "Array", arrayId, direction), CleanName(type), element,
+            writeReferenceMetadata: WritesReferenceMetadata(type, info.Converter, direction, path), readReferenceMetadata: ReadsReferenceMetadata(type, info, direction));
         // the model has both capabilities whichever direction built it: the read normalizes for every use of the CLR type
         if (NormalizingCollection(type) is { } aspects)
         {
@@ -870,7 +926,8 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         var comparerId = builder.StandardComparer(keyScalar ?? (keyType == typeof(DateTime) ? DateTimeScalar(null) : "string"));
         RecordTypeScope(type);
         var mapId = ModelId(type, direction);
-        var mapUse = builder.MapOf(mapId, UniqueTsName(Capitalize(valueName) + "Map", mapId, direction), CleanName(type), key, value, comparerId);
+        var mapUse = builder.MapOf(mapId, UniqueTsName(Capitalize(valueName) + "Map", mapId, direction), CleanName(type), key, value, comparerId,
+            writeReferenceMetadata: WritesReferenceMetadata(type, info.Converter, direction, path), readReferenceMetadata: ReadsReferenceMetadata(type, info, direction));
         // DictionaryKeyPolicy is applied when System.Text.Json writes string and enum keys, never when it reads them (observed on .NET 10):
         // the response does not keep the key names of the value the server holds
         if (profile.Options.DictionaryKeyPolicy is not null && (keyType == typeof(string) || keyType.IsEnum))
@@ -1066,6 +1123,16 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         foreach (var prop in info.Properties)
         {
             var pPath = path + "/" + prop.Name;
+            // under ReferenceHandler.Preserve System.Text.Json reads a property name that starts with '$' as reference metadata and throws
+            // ("Properties that start with '$' are not allowed in types that support metadata", observed on 10.0.12)
+            if (direction == WireDirection.ServerRead && ReferenceEquals(profile.Options.ReferenceHandler, ReferenceHandler.Preserve) && prop.Name.StartsWith('$'))
+            {
+                bag.Error(TisiliaCodes.ReferencePreserve, "SV20", pPath, $"'{type.Name}.{prop.Name}': under ReferenceHandler.Preserve, System.Text.Json reads a property name that starts with '$' as reference metadata and refuses the request", [id],
+                    "rename the JSON property, or read this body with a profile without reference preservation");
+                failed = true;
+                continue;
+            }
+
             if (prop.IsExtensionData)
             {
                 if (direction == WireDirection.ServerWrite && prop.PropertyType == typeof(JsonObject) && !JsonObjectExtensionDataWritesValidJson.Value)
@@ -1220,7 +1287,8 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         RecordTypeScope(type, typeBehaviorIds);
         var objectUse = builder.ObjectOf(id, variantTsName ?? ObjectTsName(BaseTsName(type), id, direction), CleanName(type), props, profile.NameMatchingId, profile.DuplicatePolicyId,
             readAdditional: additional, writeAdditional: additional, extension: extension,
-            emitRead: direction == WireDirection.ServerRead, emitWrite: direction == WireDirection.ServerWrite);
+            emitRead: direction == WireDirection.ServerRead, emitWrite: direction == WireDirection.ServerWrite,
+            writeReferenceMetadata: WritesReferenceMetadata(type, info.Converter, direction, path), readReferenceMetadata: ReadsReferenceMetadata(type, info, direction));
         Documented.Add(new DocumentedType(id, type, documented));
         if (computed.Count > 0)
         {
@@ -1317,7 +1385,8 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
             var derivedInfo = profile.Options.GetTypeInfo(derived.DerivedType);
             // the variant's own model: the same derived type used directly (declared type Dog, no discriminator on the wire) is a
             // different model, and the base type may be one of its own variants
-            var variantId = options.ApiId + "." + ProfileContext.IdPart(options.ApiId + ".", CleanName(type) + "." + tagText, "." + DirectionSuffix(direction), IdReserve) + "." + DirectionSuffix(direction);
+            // under the mapper's model scope like every other model: a profile with its own scope describes its variants itself
+            var variantId = ModelPrefix + ProfileContext.IdPart(ModelPrefix, CleanName(type) + "." + tagText, "." + DirectionSuffix(direction), IdReserve) + "." + DirectionSuffix(direction);
             var variantTsName = ObjectTsName(derived.DerivedType == type ? BaseTsName(type) + TagName(tagText) : BaseTsName(derived.DerivedType), variantId, direction, unionTsName);
             var derivedUse = MapDerivedWithDiscriminator(type, derived.DerivedType, derivedInfo, discriminator, tag, direction, path + "/" + derived.DerivedType.Name, variantId, variantTsName);
             if (derivedUse is null)
@@ -1352,7 +1421,10 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         builder.AddType(new Model { Id = id, TsName = unionTsName, ClrIdentity = CleanName(type), Shape = new UnionShape { Variants = variants } });
         Documented.Add(new DocumentedType(id, type, []));
         var wireId = id + (direction == WireDirection.ServerRead ? ".read" : ".write");
-        builder.AddWire(new Wire { Id = wireId, Direction = direction, Shape = new TaggedUnionWire { Discriminator = discriminator, Variants = wireVariants } });
+        // a value written before is {"$ref": id} whichever variant it is; each variant's own wire carries its $id
+        var unionInfo = profile.Options.GetTypeInfo(type);
+        var unionReferences = direction == WireDirection.ServerRead ? ReadsReferenceMetadata(type, unionInfo, direction, referenceOnly: true) : WritesReferenceMetadata(type, unionInfo.Converter, direction, path);
+        builder.AddWire(new Wire { Id = wireId, Direction = direction, Shape = new TaggedUnionWire { Discriminator = discriminator, Variants = wireVariants, ReferenceMetadata = unionReferences ? true : null } });
         var eqId = id + "." + DirectionSuffix(direction);
         builder.AddEquivalence(new Equivalence
         {
@@ -1528,8 +1600,17 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
             return null;
         }
 
-        var use = MapPaired(type, registration.ConverterType, path, numbers: NumberProfile.Strict);
-        return use is null ? null : (use, registration);
+        var outer = builder.ActiveProfileId;
+        builder.ActiveProfileId = profile.Profile.Id;
+        try
+        {
+            var use = MapPaired(type, registration.ConverterType, path, numbers: NumberProfile.Strict);
+            return use is null ? null : (use, registration);
+        }
+        finally
+        {
+            builder.ActiveProfileId = outer;
+        }
     }
 
     /// <summary>The converter of a paired registration with a key capability that System.Text.Json uses for <paramref name="keyType"/> at type level; null otherwise.</summary>

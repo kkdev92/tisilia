@@ -196,12 +196,40 @@
             },
             "use": {
               "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/typeUse"
+            },
+            "resume": {
+              "const": "last-event-id"
             }
           },
           "required": [
             "kind",
             "mediaType",
             "dataFormat",
+            "use"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "xml"
+            },
+            "mediaType": {
+              "type": "string",
+              "minLength": 1
+            },
+            "root": {
+              "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/xmlElementName"
+            },
+            "use": {
+              "$ref": "https://schemas.tisilia.invalid/0.1/common.schema.json#/$defs/typeUse"
+            }
+          },
+          "required": [
+            "kind",
+            "mediaType",
+            "root",
             "use"
           ],
           "additionalProperties": false
@@ -269,7 +297,8 @@
             "text",
             "custom",
             "binary",
-            "sse"
+            "sse",
+            "xml"
           ]
         },
         "implementation": {

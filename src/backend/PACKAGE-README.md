@@ -55,13 +55,17 @@ The generated `createShopClient(...).ordersGet({ id })` returns either the decla
 
 `Kkdev92.Tisilia.AspNetCore` changes no JSON, CORS or authentication setting. It turns on the XML documentation file of the
 project that references it, without warnings for missing comments, so that `///` comments reach the contract, the Explorer
-and the client's JSDoc; a project that sets `GenerateDocumentationFile` itself keeps its own setting.
+and the client's JSDoc; a project that sets `GenerateDocumentationFile` itself keeps its own setting. It also brings a
+source generator into that project's build, which reads the handlers of registered operations that declare no response
+types (`Results.Ok(value)`, an `IActionResult` action) so that export can describe their responses, and adds one internal
+class with what it read.
 
 ## Running code
 
 `export` and `conformance` start your application and `explorer build` runs a package build, so each refuses to without
 `--allow-execute-project`, `--allow-execute-adapters` or `--allow-execute-build`. `generate`, `check`, `validate`, `diff`,
-`init` and `watch` never execute anything, and no command fetches code from a contract or a remote origin.
+`init` and `watch` never execute anything, and no command fetches code from a contract or a remote origin. The source
+generator reads source in the compiler and executes nothing of the application.
 
 ## Documentation
 

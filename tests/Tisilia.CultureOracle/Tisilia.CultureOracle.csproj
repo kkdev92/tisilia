@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    A controller host for MvcFormCultureTests. MVC reads form values with the request culture, and the repository builds with
+    InvariantGlobalization, under which only the invariant culture exists; this program keeps ICU, so it can post one form body
+    under every culture. Tisilia.Contract.Tests references it to have it built next to the tests, and starts it.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\backend\Tisilia.AspNetCore\Tisilia.AspNetCore.csproj" />
+  </ItemGroup>
+
+</Project>

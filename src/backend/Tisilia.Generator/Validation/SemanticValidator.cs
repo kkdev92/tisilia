@@ -6,7 +6,7 @@ using Tisilia.Generator.Diagnostics;
 namespace Tisilia.Generator.Validation;
 
 /// <summary>
-/// Semantic validation (SV01–SV54 as far as they apply to a contract document). Runs after structural
+/// Semantic validation (SV01–SV55 as far as they apply to a contract document). Runs after structural
 /// schema validation and never downgrades an error to a warning. Every rule reports a JSON Pointer.
 /// </summary>
 public sealed partial class SemanticValidator
@@ -53,6 +53,7 @@ public sealed partial class SemanticValidator
         CheckBinders();
         CheckResultAdapters();
         CheckProfiles();
+        CheckReferenceMetadata();
         CheckOperations();
         CheckUsageGraph();
         CheckProductivity();

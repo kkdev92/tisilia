@@ -33,6 +33,7 @@ public static class TisiliaServiceCollectionExtensions
             services.AddSingleton<Microsoft.AspNetCore.Hosting.Server.IServer, ExportServer>();
         }
 
+        services.AddHostedService<ServerTimeZoneCheck>();
         services.AddHostedService<Conformance.TisiliaRunnerHostedService>();
         if (Conformance.TisiliaRunnerHostedService.IsRunnerMode)
         {
@@ -52,6 +53,17 @@ public static class TisiliaEndpointExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrWhiteSpace(operationId);
         builder.WithMetadata(new TisiliaOperationAttribute(operationId) { Tags = tags });
+        return builder;
+    }
+
+    /// <summary>
+    /// Declares that the endpoint's server-sent events resume after the event whose id a reconnecting client sends in
+    /// <c>Last-Event-ID</c> (<see cref="TisiliaEventResumeAttribute"/>; on a controller action, put the attribute on the action).
+    /// </summary>
+    public static TBuilder WithTisiliaEventResume<TBuilder>(this TBuilder builder) where TBuilder : IEndpointConventionBuilder
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.WithMetadata(new TisiliaEventResumeAttribute());
         return builder;
     }
 

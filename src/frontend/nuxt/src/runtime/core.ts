@@ -1,7 +1,7 @@
 // Framework-free core of the Nuxt adapter: header forwarding, request identity, hydration checks.
 // The Vue/Nuxt composables are thin wrappers so that this logic is unit-testable without a Nuxt runtime.
 import type { ClientOptions, EnvelopeCheck, EnvelopeFailureCode, EnvelopeMismatch, HydrationEnvelope, OperationDescriptor, OperationResult, PreparedRequest, RawOutcome, RequestIdentityRecord } from "@kkdev92/tisilia-runtime";
-import { checkHydrationEnvelope, computeRequestIdentity, computeRequestIdentityHmac, createRequestIdentityRecord, decodeResponse, encodeBase64, EnvelopeError, parseHydrationEnvelope, rawFromEnvelope } from "@kkdev92/tisilia-runtime";
+import { checkHydrationEnvelope, CodecError, computeRequestIdentity, computeRequestIdentityHmac, createRequestIdentityRecord, decodeResponse, encodeBase64, EnvelopeError, parseHydrationEnvelope, rawFromEnvelope } from "@kkdev92/tisilia-runtime";
 
 /** Headers that carry credentials: forwarded only through the credential provider, never through plain headers. */
 export const credentialHeaderNames: readonly string[] = ["authorization", "cookie", "proxy-authorization"];
@@ -43,14 +43,20 @@ export function operationHeaders(forwarded: ForwardedHeaders, operation: Operati
 
 /** The identity record of a prepared request; credentials are never part of it. */
 export function identityRecordOf(operation: OperationDescriptor, prepared: PreparedRequest, semanticHash: string, scopeNonce: string): RequestIdentityRecord {
+  if (prepared.bodyStream !== undefined) {
+    // its bytes are only known while it is sent: without them, two different uploads would share one identity
+    throw new CodecError("unsupported", "/body", "a streamed request body has no request identity: send it with the client, not as a hydrated operation");
+  }
+  const byteBody = operation.requestBody?.kind === "binary" || operation.requestBody?.kind === "form" || operation.requestBody?.kind === "xml";
   return createRequestIdentityRecord({
     operationId: operation.id,
     method: prepared.method,
     encodedPath: prepared.encodedPath,
     queryEntries: prepared.queryEntries.map((q) => ({ name: q.name, value: q.value })),
     selectedHeaderEntries: prepared.headers.map(([name, value]) => ({ name, value })),
-    bodyKind: prepared.bodyBytes === undefined ? "none" : operation.requestBody?.kind === "binary" || operation.requestBody?.kind === "form" ? "binary" : "json",
-    bodyText: (operation.requestBody?.kind === "binary" || operation.requestBody?.kind === "form") && prepared.bodyBytes !== undefined ? encodeBase64(prepared.bodyBytes) : prepared.bodyText ?? "",
+    // a body whose bytes are not JSON text is identified by its bytes (an XML body too: its identity is the document as sent)
+    bodyKind: prepared.bodyBytes === undefined ? "none" : byteBody ? "binary" : "json",
+    bodyText: byteBody && prepared.bodyBytes !== undefined ? encodeBase64(prepared.bodyBytes) : prepared.bodyText ?? "",
     semanticHash,
     scopeNonce,
   });

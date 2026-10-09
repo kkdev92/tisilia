@@ -10,7 +10,8 @@ export interface TransportRequest {
   readonly url: URL;
   readonly method: string;
   readonly headers: readonly (readonly [string, string])[];
-  readonly body?: Uint8Array;
+  /** A stream is sent as it is read (duplex "half"); only where {@link supportsRequestStreams} holds. */
+  readonly body?: Uint8Array | ReadableStream<Uint8Array>;
   readonly signal?: AbortSignal;
   readonly credentials?: RequestCredentials;
 }
@@ -33,6 +34,26 @@ export type TransportOutcome =
   | { readonly kind: "timeout" }
   | { readonly kind: "cancelled" }
   | { readonly kind: "limit-failure"; readonly limit: "maxBodyBytes"; readonly metadata: ResponseMetadata };
+
+/**
+ * Whether fetch here sends a ReadableStream request body as a stream: Node's fetch does. Browsers are never trusted with one:
+ * Firefox 155 sends the text "[object ReadableStream]", WebKit 26.6 passes the Fetch feature check (it reads `duplex` and sets no
+ * Content-Type) yet sends an empty body, both answered 200, and Chromium refuses the request over HTTP/1.1. Within Node the Fetch
+ * check still applies: a stream body asks for `duplex` and gets no Content-Type.
+ */
+export function supportsRequestStreams(): boolean {
+  if (typeof (globalThis as { process?: { versions?: { node?: unknown } } }).process?.versions?.node !== "string") {
+    return false;
+  }
+  let duplexAccessed = false;
+  try {
+    const init = { method: "POST", body: new ReadableStream(), get duplex() { duplexAccessed = true; return "half"; } };
+    const hasContentType = new Request("http://localhost/", init as RequestInit).headers.has("content-type");
+    return duplexAccessed && !hasContentType;
+  } catch {
+    return false;
+  }
+}
 
 export interface TransportOptions {
   readonly limits?: Partial<Limits>;
@@ -66,6 +87,8 @@ export async function send(request: TransportRequest, options: TransportOptions 
   };
   if (request.body !== undefined) {
     init.body = request.body as BodyInit;
+    // Fetch requires duplex "half" for a stream body (the request is sent while the response may already arrive)
+    if (request.body instanceof ReadableStream) { (init as RequestInit & { duplex?: "half" }).duplex = "half"; }
   }
   let response: Response | undefined;
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;

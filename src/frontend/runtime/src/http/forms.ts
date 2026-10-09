@@ -3,7 +3,7 @@ import { CodecError } from "../codec/errors.js";
 import type { ScalarName } from "../codec/scalars.js";
 import { ordinalUpper } from "../primitives/ordinalCasing.js";
 import { sha256 } from "../sha256.js";
-import { formatScalarForBinding } from "./binders.js";
+import { formatScalarForBinding, formatScalarForRequestCulture } from "./binders.js";
 import { encodeQueryComponent } from "./url.js";
 import { parseMediaType } from "./mediaType.js";
 
@@ -16,13 +16,18 @@ export interface UploadFile {
 
 export interface FormFieldDescriptor {
   readonly name: string;
-  readonly kind: "value" | "file" | "object";
+  /** `map`: a ReadonlyMap whose entries are written as `name[key]` (a root map as `[key]`), with the field's value scalar or format. */
+  readonly kind: "value" | "file" | "object" | "map";
+  /** The scalar of a map's keys (a string, an integer or a Guid), written as its invariant canonical text. */
+  readonly key?: ScalarName;
   readonly fields?: readonly FormFieldDescriptor[];
   readonly wireName?: "";
   readonly scalar?: ScalarName;
   readonly repeated: boolean;
   readonly rejectBlank?: boolean;
   readonly indexed?: boolean;
+  /** The server reads the value with the request culture (MVC): the scalar is written so that every culture reads it the same way. */
+  readonly requestCulture?: boolean;
   readonly format?: (value: unknown, context: CodecContext) => string;
   readonly presence: "required" | "optional";
 }
@@ -62,7 +67,7 @@ export function encodeForm(fields: readonly FormFieldDescriptor[], mediaType: st
       context.checkpoint();
       const ctx = context.child(field.name);
       const key = safeName(field.name, ctx.path, false);
-      if (field.wireName !== undefined && (field.wireName !== "" || depth !== 0 || field.indexed !== true)) { throw new CodecError("unsupported", ctx.path, "invalid root collection wire name"); }
+      if (field.wireName !== undefined && (field.wireName !== "" || depth !== 0 || (field.indexed !== true && field.kind !== "map"))) { throw new CodecError("unsupported", ctx.path, "invalid root collection wire name"); }
       const name = prefix + (field.wireName ?? key);
       const value = Object.hasOwn(body, key) ? body[key] : undefined;
       if (value === undefined) {
@@ -71,12 +76,34 @@ export function encodeForm(fields: readonly FormFieldDescriptor[], mediaType: st
       }
       if (field.repeated && !Array.isArray(value)) { throw new CodecError("type-mismatch", ctx.path, "repeated form field requires an array"); }
       if (field.indexed === true && (!field.repeated || (value as unknown[]).length === 0)) { throw new CodecError("grammar", ctx.path, "indexed form collections require at least one item; omit an optional collection instead"); }
-      let itemIndex = 0;
-      for (const item of field.repeated ? value as unknown[] : [value]) {
+      // each item with its wire name, and the path that owns that name (a repeated name has one owner; each map key owns its own)
+      const items: { readonly item: unknown; readonly wireName: string; readonly itemContext: CodecContext; readonly owner: string }[] = [];
+      if (field.kind === "map") {
+        if (!(value instanceof Map)) { throw new CodecError("type-mismatch", ctx.path, "form dictionary requires a Map"); }
+        if (value.size === 0) { throw new CodecError("grammar", ctx.path, "form dictionaries require at least one entry; omit an optional dictionary instead"); }
+        const keys = new Set<string>();
+        for (const [key, item] of value as ReadonlyMap<unknown, unknown>) {
+          context.checkpoint();
+          if (field.key === undefined) { throw new CodecError("unsupported", ctx.path, "form dictionary key scalar is not declared"); }
+          const keyText = formatScalarForBinding(field.key, key, ctx.path);
+          const itemContext = ctx.child(keyText);
+          // ASP.NET Core reads a key up to its first ']' and gathers keys ignoring case, merging the values of keys that differ only in case
+          if (keyText.includes("]")) { throw new CodecError("grammar", itemContext.path, "form dictionary keys cannot contain ']'"); }
+          if (keys.size === keys.add(ordinalUpper(keyText)).size) { throw new CodecError("grammar", itemContext.path, "form dictionary keys must differ ignoring case"); }
+          const wireName = `${name}[${keyText}]`;
+          // a multipart name carries the key: no quote, backslash or control character (an empty key still names Labels[])
+          if (multipart) { safeName(wireName, itemContext.path, false); }
+          items.push({ item, wireName, itemContext, owner: itemContext.path });
+        }
+      } else {
+        let itemIndex = 0;
+        for (const item of field.repeated ? value as unknown[] : [value]) {
+          items.push({ item, wireName: field.indexed === true ? `${name}[${itemIndex}]` : name, itemContext: field.repeated ? ctx.child(itemIndex) : ctx, owner: ctx.path });
+          itemIndex++;
+        }
+      }
+      for (const { item, wireName, itemContext, owner: itemOwner } of items) {
         context.checkpoint();
-        const wireName = field.indexed === true ? `${name}[${itemIndex}]` : name;
-        const itemContext = field.repeated ? ctx.child(itemIndex) : ctx;
-        itemIndex++;
         if (field.kind === "object") {
           if (field.fields === undefined || field.repeated !== (field.indexed === true)) { throw new CodecError("unsupported", ctx.path, "object form fields require children and indexed repetition"); }
           const before = emitted;
@@ -86,8 +113,8 @@ export function encodeForm(fields: readonly FormFieldDescriptor[], mediaType: st
         }
         const wireKey = ordinalUpper(wireName);
         const owner = wireOwners.get(wireKey);
-        if (owner !== undefined && owner !== ctx.path) { throw new CodecError("unsupported", itemContext.path, "form has overlapping wire names"); }
-        wireOwners.set(wireKey, ctx.path);
+        if (owner !== undefined && owner !== itemOwner) { throw new CodecError("unsupported", itemContext.path, "form has overlapping wire names"); }
+        wireOwners.set(wireKey, itemOwner);
         emitted++;
         let bytes: Uint8Array;
         let headers = `Content-Disposition: form-data; name="${wireName}"`;
@@ -106,7 +133,10 @@ export function encodeForm(fields: readonly FormFieldDescriptor[], mediaType: st
           headers += `; filename="${fileName}"\r\nContent-Type: ${type}`;
         } else {
           if (field.scalar === undefined && field.format === undefined) { throw new CodecError("unsupported", itemContext.path, "form scalar is not declared"); }
-          const text = field.format === undefined ? formatScalarForBinding(field.scalar!, item, itemContext.path) : field.format(item, itemContext);
+          const text = field.format !== undefined ? field.format(item, itemContext)
+            : (field.requestCulture === true ? formatScalarForRequestCulture : formatScalarForBinding)(field.scalar!, item, itemContext.path);
+          // binder text is never empty, as for parameters: ASP.NET Core skips an empty item of an optional array element type
+          if (field.format !== undefined && text.length === 0) { throw new CodecError("grammar", itemContext.path, "this form value cannot be empty"); }
           if (text.length > context.limits.maxBodyBytes) { throw new FormLimitError(); }
           // String.IsNullOrWhiteSpace includes NEL and excludes BOM, unlike JavaScript trim().
           if (field.rejectBlank === true && /^[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]*$/.test(text)) { throw new CodecError("grammar", itemContext.path, "this form binder converts blank strings to null; omit optional fields instead"); }

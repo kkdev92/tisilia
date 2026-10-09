@@ -222,6 +222,7 @@ public enum ResultAdapterKind
     [JsonStringEnumMemberName("binary")] Binary,
     [JsonStringEnumMemberName("custom")] Custom,
     [JsonStringEnumMemberName("sse")] Sse,
+    [JsonStringEnumMemberName("xml")] Xml,
 }
 
 public sealed record ResultAdapter

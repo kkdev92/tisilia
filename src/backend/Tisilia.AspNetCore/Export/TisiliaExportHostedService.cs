@@ -14,6 +14,8 @@ public sealed class TisiliaExportHostedService(IHostApplicationLifetime lifetime
     public const string OutputVariable = "TISILIA_EXPORT_OUTPUT";
     public const string DiagnosticsVariable = "TISILIA_EXPORT_DIAGNOSTICS";
     public const string DoctorVariable = "TISILIA_DOCTOR_OUTPUT";
+    /// <summary>Set to 1 by <c>tisilia doctor --allow-execute-binders</c>: the declared custom bindings are called with a recording request.</summary>
+    public const string ProbeBindersVariable = "TISILIA_DOCTOR_PROBE_BINDERS";
 
     /// <summary>The process was started by <c>tisilia export</c>.</summary>
     public static bool IsExportMode => !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(OutputVariable)) || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(DoctorVariable));
@@ -34,7 +36,7 @@ public sealed class TisiliaExportHostedService(IHostApplicationLifetime lifetime
             {
                 if (doctor is not null)
                 {
-                    var report = exporter.Diagnose();
+                    var report = exporter.Diagnose(probeBindings: Environment.GetEnvironmentVariable(ProbeBindersVariable) == "1");
                     File.WriteAllText(doctor, System.Text.Json.JsonSerializer.Serialize(report, TisiliaJson.IndentedOptions) + "\n");
                     Environment.ExitCode = report.ExitCode;
                     return;

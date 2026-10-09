@@ -8,6 +8,8 @@ This qualification covers codec behavior only. Routes, HTTP binding, binary tran
 HTTP-unobserved by this runner. A binary/bodyless operation with no codec closure has `codec-not-applicable` and `http-unobserved`
 coverage reasons, never a fictitious passed test. Development generation includes it; `qualified-only` still explicitly filters
 unqualified operations and explains an empty qualified selection. Mixed JSON/binary operations qualify only their codec scope.
+The runner does not observe XML bodies (MVC's XmlSerializer formatters) either: an XML codec gets domain validation only,
+and the suite lists its equivalences under `notApplicable` as `xml-not-observed`.
 The contract, Codec ABI and runner protocol use version 0.1; the standard suite uses version 0.1.0. Evidence must match the contract hash,
 closure, artifacts, issuer and environment. It cannot be migrated by replacing version strings.
 
@@ -69,6 +71,16 @@ float forms and swaps paired converters for the domain factory. That factory is 
 - `domain-validation:<type>` — `validate-domain` accepts a valid value and rejects every other AST kind / range violation
 - `oracle-discrimination:<type>` — two different values must not compare equal (the oracle has discriminating power)
 
+The JSON categories (round trips, negative wires and discrimination) apply to codecs that some request body, response body
+or JSON event data reaches. Key round trips apply to the codecs those bodies use as dictionary keys, under the profile of the
+body that carries the dictionary, never under `ReferenceHandler.Preserve`, which wraps a written dictionary in `$id` metadata.
+For the same reason a structured response round trip runs under another profile of the codec, or not at all: the expected
+wire of a round trip does not model reference metadata (Kestrel tests cover Preserve responses). Request round trips run
+under Preserve with generated values, which are trees and so carry no metadata; shared and cyclic values are covered by the
+Kestrel tests. A codec reached only from route, query or header parameters, form
+fields or text bodies travels through a binder or as plain text, never through the server's JSON converters, so it gets
+`domain-validation` cases only.
+
 `datetime-local-wire` and the Local variant of `datetime` have expectations that depend on the environment: System.Text.Json
 reads an offset form as `DateTimeOffset.LocalDateTime` (Kind Local in the server's zone) and writes that zone's offset
 back. The conformance command therefore builds the suite for the zone the .NET runner reports (`SuiteOptions.TimeZoneId`
@@ -78,7 +90,9 @@ for that recorded context only. `datetime-utc` (`Z`) and `datetime-unspecified` 
 forms of the other kinds are server-write negatives for those narrowed declarations. The default `datetime` union accepts
 all three forms. Its corpus interleaves the three Kinds and normalizes offset-bearing values and dictionary keys only;
 UTC and unspecified values remain unchanged. Multi-key DateTime request corpora use UTC/unspecified keys; Local singleton
-keys are also covered. Unknown server-zone collisions are refused by the client rather than silently overwriting an entry.
+keys are also covered, and several `datetime-local-wire` keys are more than 28 hours apart, so no zone makes two of them
+one key and the client sends them with or without a declared server time zone. Keys the server's zone could make one key
+are refused by the client rather than silently overwriting an entry.
 
 The suite also derives these from the contract rather than from the code:
 
@@ -136,8 +150,9 @@ any string), so they have their own sample source (`AdditionalModule.Sample`): t
 Int128/UInt128 limits, a 4096-character BigInteger, the largest, smallest subnormal and negative-zero binary16 values,
 IPv6 forms with an embedded IPv4 part and a scope, a supplementary-plane Rune — then seeded values, together with
 invalid samples for domain validation (out of range, leading zeros, uncompressed IPv6, two scalars …). Brands over a
-primitive get key round-trip cases like primitives do. The wire-negative heuristics (fractions and overflow for integer
-grammars, guid/date/base64 corpora) apply to builtin grammar ids only; a module grammar binding gets the token negatives.
+primitive that the contract uses as a dictionary key get key round-trip cases like primitives do. The wire-negative
+heuristics (fractions and overflow for integer grammars, guid/date/base64 corpora) apply to builtin grammar ids only; a
+module grammar binding gets the token negatives.
 
 ## Evidence and qualification (SV45/SV46/SV53)
 

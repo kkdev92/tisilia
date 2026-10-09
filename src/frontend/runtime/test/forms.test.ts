@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { execute, prepareRequest, type OperationDescriptor } from "../src/http/client.js";
+import type { FormFieldDescriptor } from "../src/http/forms.js";
+import { decimalFromString } from "../src/primitives/decimal.js";
+import { parseDateOnly, parseDateTime, parseDuration } from "../src/primitives/datetime.js";
 
 const operation: OperationDescriptor = {
   id: "form", method: "POST", route: "/form", parameters: [], requestExecution: "browser-allowed", requestHeaderAllowlist: [],
@@ -86,6 +89,65 @@ describe("encoded forms", () => {
     const op = { ...operation, requestBody: { ...operation.requestBody!, kind: "form" as const, mediaType: "application/x-www-form-urlencoded", fields: operation.requestBody!.kind === "form" ? operation.requestBody!.fields.slice(0, 2) : [] } };
     const prepared = prepareRequest(op, { body: { id: 9007199254740993n, tags: ["a +&=", "日本😀", ""] } }, base);
     expect([...new URLSearchParams(prepared.bodyText)]).toEqual([["id", "9007199254740993"], ["tags", "a +&="], ["tags", "日本😀"], ["tags", ""]]);
+  });
+
+  it("writes values the server reads with the request culture without decimal separators or bare dates", () => {
+    const fields = ([
+      ["dec", "decimal"], ["decWhole", "decimal"], ["decZero", "decimal"], ["dbl", "float64"], ["dblBig", "float64"], ["dblTiny", "float64"], ["dblMax", "float64"],
+      ["f32", "float32"], ["negative", "int32"], ["day", "date-only"], ["when", "datetime"], ["span", "duration"],
+    ] as const).map(([name, scalar]) => ({ name, kind: "value" as const, scalar, repeated: false, requestCulture: true, presence: "required" as const }));
+    const form = (requestCulture: boolean): OperationDescriptor => ({ ...operation, requestBody: { kind: "form", mediaType: "application/x-www-form-urlencoded", presence: "required", get: a => a,
+      fields: fields.map(f => ({ ...f, requestCulture })) } });
+    const args = {
+      dec: decimalFromString("-1.50"), decWhole: decimalFromString("100"), decZero: decimalFromString("0.00"), dbl: 1.5, dblBig: 1e21, dblTiny: 1.5e-7, dblMax: Number.MAX_VALUE,
+      f32: Math.fround(0.1), negative: -3, day: parseDateOnly("2026-10-08"), when: parseDateTime("2026-10-08T12:34:56.1234567Z"), span: parseDuration("-1.02:03:04.5000000"),
+    };
+    expect(Object.fromEntries(new URLSearchParams(prepareRequest(form(true), args, base).bodyText))).toEqual({
+      dec: "-150E-2", decWhole: "100", decZero: "0E-2", dbl: "15E-1", dblBig: "1" + "0".repeat(21), dblTiny: "15E-8", dblMax: "17976931348623157" + "0".repeat(292),
+      f32: "1E-1", negative: "-3", day: "2026-10-08T00:00:00", when: "2026-10-08T12:34:56.1234567Z", span: "-1.02:03:04.5000000",
+    });
+    // without requestCulture the same values keep the invariant canonical text
+    const invariant = new URLSearchParams(prepareRequest(form(false), args, base).bodyText);
+    expect([invariant.get("dec"), invariant.get("dbl"), invariant.get("day")]).toEqual(["-1.50", "1.5", "2026-10-08"]);
+  });
+
+  it.each(["application/x-www-form-urlencoded", "multipart/form-data"])("writes dictionary entries as name[key] and a root dictionary as [key]: %s", async mediaType => {
+    const op = (fields: FormFieldDescriptor[]): OperationDescriptor => ({ ...operation, requestBody: { kind: "form", mediaType, presence: "required", get: a => a, fields } });
+    const model = op([
+      { name: "Labels", kind: "map", key: "string", scalar: "string", repeated: false, presence: "optional" },
+      { name: "Counts", kind: "map", key: "int64", scalar: "int64", repeated: false, presence: "optional" },
+    ]);
+    const read = async (prepared: ReturnType<typeof prepareRequest>) => [...await new Response(prepared.bodyBytes as BodyInit, { headers: prepared.headers as [string, string][] }).formData()];
+    expect(await read(prepareRequest(model, { Labels: new Map([["a.b", "1"], ["x[y", "2"], ["", "empty"]]), Counts: new Map([[-9007199254740993n, 9007199254740993n]]) }, base)))
+      .toEqual([["Labels[a.b]", "1"], ["Labels[x[y]", "2"], ["Labels[]", "empty"], ["Counts[-9007199254740993]", "9007199254740993"]]);
+    const root = op([{ name: "values", kind: "map", key: "string", scalar: "string", repeated: false, wireName: "", presence: "required" }]);
+    expect(await read(prepareRequest(root, { values: new Map([["k", "v"]]) }, base))).toEqual([["[k]", "v"]]);
+    // the server reads a key up to its first ']' and merges keys that differ only in case; an empty map would send nothing
+    expect(() => prepareRequest(root, { values: new Map([["a]b", "v"]]) }, base)).toThrow("cannot contain ']'");
+    expect(() => prepareRequest(root, { values: new Map([["k", "1"], ["K", "2"]]) }, base)).toThrow("differ ignoring case");
+    expect(() => prepareRequest(root, { values: new Map() }, base)).toThrow("at least one entry");
+    expect(() => prepareRequest(root, { values: { k: "v" } }, base)).toThrow("requires a Map");
+    // a key never meets another field's name
+    const overlapping = op([
+      { name: "Labels", kind: "map", key: "string", scalar: "string", repeated: false, presence: "optional" },
+      { name: "Labels[x]", kind: "value", scalar: "string", repeated: false, presence: "optional" },
+    ]);
+    expect(() => prepareRequest(overlapping, { Labels: new Map([["X", "1"]]), "Labels[x]": "2" }, base)).toThrow("overlapping");
+  });
+
+  it.each(["application/x-www-form-urlencoded", "multipart/form-data"])("writes member names with path or index delimiters as exactly those keys: %s", async mediaType => {
+    const op: OperationDescriptor = { ...operation, requestBody: { kind: "form", mediaType, presence: "required", get: a => a, fields: [
+      { name: "a.b", kind: "value", scalar: "string", repeated: false, presence: "optional" },
+      { name: "x[y]", kind: "value", scalar: "string", repeated: false, presence: "optional" },
+      { name: "p]q", kind: "value", scalar: "string", repeated: false, presence: "optional" },
+      { name: "q[", kind: "value", scalar: "string", repeated: false, presence: "optional" },
+      { name: "Items", kind: "object", repeated: true, indexed: true, presence: "optional", fields: [
+        { name: "a.b", kind: "value", scalar: "string", repeated: false, presence: "required" },
+      ] },
+    ] } };
+    const prepared = prepareRequest(op, { "a.b": "1", "x[y]": "2", "p]q": "3", "q[": "4", Items: [{ "a.b": "5" }, { "a.b": "6" }] }, base);
+    const form = await new Response(prepared.bodyBytes as BodyInit, { headers: prepared.headers as [string, string][] }).formData();
+    expect([...form]).toEqual([["a.b", "1"], ["x[y]", "2"], ["p]q", "3"], ["q[", "4"], ["Items[0].a.b", "5"], ["Items[1].a.b", "6"]]);
   });
 
   it.each(["bad\r\nX: yes", 'bad"quote', "path/file", "bad\\name", "\ud800"])("rejects unsafe filenames before fetching: %j", async name => {

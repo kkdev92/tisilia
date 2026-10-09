@@ -76,9 +76,9 @@ const parameters = computed(() =>
 );
 const groups = computed(() => locations.map((location) => ({ location, params: parameters.value.filter((p) => p.location === location) })).filter((g) => g.params.length > 0));
 
-const bodyNode = computed(() => (props.op.requestBody.kind === "json" ? store.schema!.body(props.op.requestBody.use) : undefined));
-const bodyType = computed(() => (props.op.requestBody.kind === "json" ? store.schema!.typeLabel(props.op.requestBody.use.typeId) : ""));
-const bodyDoc = computed(() => (props.op.requestBody.kind === "json" ? docOf(store.model!.document, props.op.requestBody.use.typeId) : undefined));
+const bodyNode = computed(() => (props.op.requestBody.kind === "json" || props.op.requestBody.kind === "xml" ? store.schema!.body(props.op.requestBody.use) : undefined));
+const bodyType = computed(() => (props.op.requestBody.kind === "json" || props.op.requestBody.kind === "xml" ? store.schema!.typeLabel(props.op.requestBody.use.typeId) : ""));
+const bodyDoc = computed(() => (props.op.requestBody.kind === "json" || props.op.requestBody.kind === "xml" ? docOf(store.model!.document, props.op.requestBody.use.typeId) : undefined));
 const typedInput = computed(() => summary.value?.hasRequestInput !== false);
 const schemaView = ref(false);
 const bodyTab = computed<"json" | "form" | "schema">(() => (schemaView.value ? "schema" : draft.value.editor === "form" ? "form" : "json"));
@@ -322,7 +322,7 @@ watch(() => store.focusId, focusIfLinked);
             <p class="field-hint">{{ t().uploadHint }}</p>
             <span v-for="[path, message] in bodyErrors" :key="path" class="field-error">{{ path === "" ? "" : path + ": " }}{{ message }}</span>
           </div>
-          <div v-if="op.requestBody.kind === 'json' && bodyNode" class="body">
+          <div v-if="(op.requestBody.kind === 'json' || op.requestBody.kind === 'xml') && bodyNode" class="body">
             <div class="sub-head-row">
               <h4 class="sub-head">{{ t().body }}<span v-if="op.requestBody.presence !== 'optional'" class="req" :title="t().required">*</span></h4>
               <code class="body-type" :title="op.requestBody.mediaType">{{ bodyType }}</code>
@@ -334,6 +334,7 @@ watch(() => store.focusId, focusIfLinked);
               </div>
             </div>
             <RichText v-if="bodyDoc?.summary" class="body-doc" :text="bodyDoc.summary" inline />
+            <p v-if="op.requestBody.kind === 'xml'" class="field-hint">{{ t().xmlBodyHint(op.requestBody.mediaType) }}</p>
 
             <div v-if="bodyTab === 'schema'" class="type-tree"><TypeTree :node="bodyNode" /></div>
             <template v-else>
@@ -361,7 +362,7 @@ watch(() => store.focusId, focusIfLinked);
               <div class="body-tools">
                 <button v-if="formatted !== undefined" type="button" class="btn small ghost" :title="t().formatTitle" @click="formatBody"><Icon name="braces" :size="13" />{{ t().format }}</button>
                 <span class="grow" />
-                <label class="switch small" :title="t().sendAsWrittenTitle">
+                <label v-if="op.requestBody.kind === 'json'" class="switch small" :title="t().sendAsWrittenTitle">
                   <input v-model="draft.raw" type="checkbox" @change="draft.edited = true" />{{ t().sendAsWritten }}
                 </label>
               </div>
@@ -390,7 +391,7 @@ watch(() => store.focusId, focusIfLinked);
                   <span>{{ draft.raw ? t().bodyAsWritten : t().bodyFromEncoder }}</span>
                   <button v-if="!store.reveal" type="button" class="btn small ghost" @click="store.reveal = true"><Icon name="eye" :size="13" />{{ t().showValues }}</button>
                 </div>
-                <CodeBlock v-if="store.reveal" :code="previewed.prepared.bodyText" language="json" :lines="200" revealed wrap />
+                <CodeBlock v-if="store.reveal" :code="previewed.prepared.bodyText" :language="op.requestBody.kind === 'xml' ? 'text' : 'json'" :lines="200" revealed wrap />
                 <p v-else class="col-note">{{ t().valuesHidden(previewed.prepared.bodyBytes?.byteLength ?? 0) }}</p>
               </template>
               <p v-else-if="previewed.prepared.bodyBytes !== undefined" class="col-note">{{ t().valuesHidden(previewed.prepared.bodyBytes.byteLength) }}</p>

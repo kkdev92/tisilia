@@ -150,6 +150,8 @@ public static partial class Commands
         {
             environment["TISILIA_EXPORT_OUTPUT"] = "";
             environment["TISILIA_DOCTOR_OUTPUT"] = staging;
+            // the declared BindAsync / model binder code runs with a recording request only on this explicit flag
+            environment["TISILIA_DOCTOR_PROBE_BINDERS"] = cli.Flag("allow-execute-binders") ? "1" : "";
         }
         else { environment["TISILIA_DOCTOR_OUTPUT"] = ""; }
         // like conformance, without the launch profile: its applicationUrl would replace ASPNETCORE_URLS (a running development server
@@ -175,6 +177,13 @@ public static partial class Commands
                 {
                     var ids = string.Join(", ", cause!["operationIds"]!.AsArray().Select(id => id!.GetValue<string>()));
                     Console.WriteLine($"cause {cause["reasonCode"]}: {cause["message"]}; operations: {ids}; Fix: {cause["fix"]}");
+                }
+                foreach (var probe in report["bindingProbes"]?.AsArray().OfType<System.Text.Json.Nodes.JsonObject>() ?? [])
+                {
+                    static string List(System.Text.Json.Nodes.JsonNode? values) => string.Join(", ", values!.AsArray().Select(v => v!.GetValue<string>()));
+                    var detail = probe["status"]!.GetValue<string>() switch { "failed" => $": {probe["failure"]}", "mismatch" => $"; reads outside the declaration: {List(probe["undeclaredReads"])}", _ => "" };
+                    var unread = List(probe["unreadDeclarations"]);
+                    Console.WriteLine($"binding {probe["operationId"]} {probe["parameter"]} ({probe["binding"]}): {probe["status"]}{detail}" + (unread.Length > 0 ? $"; declared, not read on this call: {unread}" : ""));
                 }
                 foreach (var operation in report["operations"]!.AsArray().OfType<System.Text.Json.Nodes.JsonObject>())
                 {

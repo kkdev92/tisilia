@@ -151,7 +151,7 @@ window.addEventListener("hashchange", applyHash);
 // ---------------------------------------------------------------- drafts (inputs are live from the start: no "Try it out" step)
 
 function freshDraft(op: ContractOperation): Draft {
-  const body = op.requestBody.kind === "json" && store.schema !== undefined ? exampleOf(store.schema.body(op.requestBody.use)) : undefined;
+  const body = (op.requestBody.kind === "json" || op.requestBody.kind === "xml") && store.schema !== undefined ? exampleOf(store.schema.body(op.requestBody.use)) : undefined;
   return { formValues: Object.create(null) as Record<string, string>, formUploads: Object.create(null) as Draft["formUploads"], parameters: {}, body, bodyText: body === undefined ? "" : prettyJson(sanitize(body)), editor: "json", raw: false, jsonError: undefined, touched: {}, attempted: false, edited: false, binaryFile: undefined, binaryBody: undefined, binaryError: undefined, binaryLoading: false };
 }
 

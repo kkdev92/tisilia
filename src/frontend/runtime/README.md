@@ -2,10 +2,11 @@
 
 <!-- Tisilia artwork: enable the package banner after an anonymous public image URL is verified. -->
 
-The runtime of the TypeScript clients Tisilia generates from an ASP.NET Core API: a lossless JSON parser and writer, exact
-primitives for the .NET types JavaScript numbers cannot hold (`Int64`, `UInt64`, `Decimal`, `Guid`, `DateOnly`, `TimeOnly`,
-`DateTimeOffset`, `Duration`, …), the codecs a generated client is built from, and an HTTP pipeline that classifies every
-outcome instead of throwing.
+The runtime of the TypeScript clients Tisilia generates from an ASP.NET Core API: a lossless JSON parser and writer, a
+strict XML parser and writer for the bodies of MVC's XmlSerializer formatters, exact primitives for the .NET types
+JavaScript numbers cannot hold (`Int64`, `UInt64`, `Decimal`, `Guid`, `DateOnly`, `TimeOnly`, `DateTimeOffset`,
+`Duration`, …), the codecs a generated client is built from, and an HTTP pipeline that classifies every outcome instead of
+throwing.
 
 ```text
 npm install @kkdev92/tisilia-runtime@<version>   # the version of the CLI that generated the client: dotnet tisilia version

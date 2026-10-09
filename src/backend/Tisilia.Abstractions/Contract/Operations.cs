@@ -31,6 +31,7 @@ public sealed record Parameter
 [JsonDerivedType(typeof(JsonRequestBody), "json")]
 [JsonDerivedType(typeof(BinaryRequestBody), "binary")]
 [JsonDerivedType(typeof(FormRequestBody), "form")]
+[JsonDerivedType(typeof(XmlRequestBody), "xml")]
 public abstract record RequestBody
 {
     [JsonIgnore]
@@ -65,15 +66,33 @@ public sealed record JsonRequestBody : RequestBody
 public sealed record FormField
 {
     public required string Name { get; init; }
+    /// <summary>value, file, object, or map: a dictionary whose entries are written as <c>name[key]</c> with a value of <see cref="Use"/>.</summary>
     public required string Kind { get; init; }
     public TypeUse? Use { get; init; }
+    /// <summary>The key of a map field: a builtin string, integer or Guid scalar, written as its invariant canonical text.</summary>
+    public TypeUse? KeyUse { get; init; }
     public required bool Repeated { get; init; }
     public bool RejectBlank { get; init; }
     public bool Indexed { get; init; }
-    /// <summary>An empty wire name places a root collection at [0], [1], ... .</summary>
+    /// <summary>An empty wire name places a root collection at [0], [1], ..., or a root map at [key].</summary>
     public string? WireName { get; init; }
     public IReadOnlyList<FormField>? Fields { get; init; }
     public bool EnumDefinedOnly { get; init; }
+    /// <summary>
+    /// The grammar of a value whose codec is a module's: the client writes the request codec's canonical text, as a codec parameter
+    /// binder does, and the server reads it with the type's TryParse. Builtin scalars and enums have none.
+    /// </summary>
+    public string? GrammarId { get; init; }
+    /// <summary>
+    /// The server reads the value with the request culture (MVC form values): the client writes the scalar in a form every culture
+    /// reads as the same value or refuses — digits, a fraction as a mantissa with a negative exponent, a date with a time.
+    /// </summary>
+    public bool RequestCulture { get; init; }
+    /// <summary>
+    /// The server reads this string with the CLR type's own parser (TryParse, IParsable&lt;T&gt; or a TypeConverter): the contract does not
+    /// describe which texts it accepts, and the client does not check them.
+    /// </summary>
+    public bool ServerParsed { get; init; }
     public JsonValue? ServerDefault { get; init; }
     public bool HasServerDefault { get; init; }
     public required Presence Presence { get; init; }
@@ -99,12 +118,36 @@ public sealed record FormRequestBody : RequestBody
     public override string Kind => "form";
 }
 
+/// <summary>The name of an XML element: a local name and its namespace URI (absent for none).</summary>
+public sealed record XmlElementName
+{
+    public required string Name { get; init; }
+    public string? Namespace { get; init; }
+}
+
+/// <summary>
+/// A UTF-8 XML document read by MVC's XmlSerializerInputFormatter: the root element <see cref="Root"/> carries the value as the
+/// codec's XML wire describes it.
+/// </summary>
+public sealed record XmlRequestBody : RequestBody
+{
+    public required string MediaType { get; init; }
+    public required XmlElementName Root { get; init; }
+    public required TypeUse Use { get; init; }
+    public required Presence Presence { get; init; }
+    /// <summary>The deepest element nesting the server reads (the formatter's MaxDepth; the root element is level 1).</summary>
+    public required int MaxDepth { get; init; }
+    [JsonIgnore]
+    public override string Kind => "xml";
+}
+
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "kind")]
 [JsonDerivedType(typeof(NoResponseBody), "none")]
 [JsonDerivedType(typeof(JsonResponseBody), "json")]
 [JsonDerivedType(typeof(TextResponseBody), "text")]
 [JsonDerivedType(typeof(BinaryResponseBody), "binary")]
 [JsonDerivedType(typeof(SseResponseBody), "sse")]
+[JsonDerivedType(typeof(XmlResponseBody), "xml")]
 public abstract record ResponseBody
 {
     [JsonIgnore]
@@ -141,6 +184,16 @@ public sealed record BinaryResponseBody : ResponseBody
     public override string Kind => "binary";
 }
 
+/// <summary>An XML document written by MVC's XmlSerializerOutputFormatter: the root element <see cref="Root"/> carries the value.</summary>
+public sealed record XmlResponseBody : ResponseBody
+{
+    public required string MediaType { get; init; }
+    public required XmlElementName Root { get; init; }
+    public required TypeUse Use { get; init; }
+    [JsonIgnore]
+    public override string Kind => "xml";
+}
+
 /// <summary>UTF-8 server-sent events. JSON uses the declared profile for each event's data.</summary>
 public sealed record SseResponseBody : ResponseBody
 {
@@ -148,6 +201,11 @@ public sealed record SseResponseBody : ResponseBody
     public required string DataFormat { get; init; }
     public string? ProfileId { get; init; }
     public required TypeUse Use { get; init; }
+    /// <summary>
+    /// <c>last-event-id</c>: the server resumes after the event whose id a reconnecting client sends in <c>Last-Event-ID</c>
+    /// (declared with TisiliaEventResume); absent, a dropped stream is not resumed.
+    /// </summary>
+    public string? Resume { get; init; }
     [JsonIgnore]
     public override string Kind => "sse";
 }

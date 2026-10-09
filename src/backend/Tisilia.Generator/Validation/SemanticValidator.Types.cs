@@ -187,7 +187,18 @@ public sealed partial class SemanticValidator
                     }
 
                     break;
+                case XmlTextWire text:
+                    CheckXmlTextWire(wire, text, sp);
+                    break;
+                case XmlElementWire element:
+                    CheckXmlElementWire(wire, element, sp);
+                    break;
+                case XmlItemsWire items:
+                    CheckXmlItemsWire(wire, items, sp);
+                    break;
             }
+
+            CheckWireFamily(wire, sp);
         }
     }
 
@@ -406,6 +417,7 @@ public sealed partial class SemanticValidator
             {
                 CheckDeclaredDependencies(codec, cp);
                 CheckBuiltinObjectCorrespondence(codec, cp);
+                CheckXmlCodec(codec, cp);
             }
         }
     }

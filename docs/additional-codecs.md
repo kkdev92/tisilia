@@ -67,10 +67,18 @@ with a cast (`"42" as Int128`) and checked by the codec at the boundary; `Comple
   `CultureInfo` (their converters have no property-name form). `Half` keys are finite; the server treats `-0` and `0` as
   one key.
 - **Route, query and header parameters**: `Int128`, `UInt128`, `BigInteger`, `Half`, `Uri`, `Version`, `IPAddress` and
-  `IPNetwork`. The client writes the request codec's canonical text, which ASP.NET Core's `TryParse` (invariant culture)
-  or `Uri.TryCreate` reads unchanged. Absent repeated parameters bind as empty arrays. `Rune`, `Index`, `Range`,
+  `IPNetwork`, for minimal API endpoints and controller actions. The client writes the request codec's canonical text,
+  which ASP.NET Core's `TryParse` (invariant culture), the type's `TypeConverter` or `Uri.TryCreate` reads unchanged.
+  Absent repeated parameters bind as empty arrays.
+- **Minimal API form values**: the same types, written as the same text. A root value or array binds through the type's
+  `TryParse`; members of form models and other collections bind through the form mapper, which reads a value through
+  `IParsable<T>` or, for `Uri`, `Uri.TryCreate`. `Version` does not implement `IParsable<T>`, so the form mapper reads it as
+  a model: it works as a root `[FromForm] Version` or `Version[]` parameter, and is diagnosed as a member. An empty value
+  is refused before sending, as it is for a parameter. MVC reads form values with the request culture, so an MVC form value
+  of these types is text its parser reads, sent unchecked with a warning (SV30). `Rune`, `Index`, `Range`,
   `JsonValue`, `TimeZoneInfo` and `CultureInfo` have no `TryParse`, so ASP.NET Core cannot bind them as parameters;
-  `Complex` has one (`<real; imaginary>`), which no codec binder models — the exporter refuses such a parameter (SV30).
+  `Complex` has one (`<real; imaginary>`), which no codec binder models: such a parameter is sent as text its `TryParse`
+  reads, unchecked, with a warning (SV30).
 - **Uri requests** follow .NET's parser, not only RFC 3986: hosts are DNS names (labels of `[A-Za-z0-9_-]` starting with a
   letter or digit), IPv4 or bracketed IPv6 addresses; no one-letter scheme (`C:` is a drive); `file` URIs without
   userinfo, port or `:` in the path (a leading drive excepted); `mailto:local@domain` with no `/` in the local part.
@@ -114,8 +122,10 @@ The default builtin `datetime` handles every `Kind`: `DateTimeUtc | DateTimeUnsp
 `Utc` and `Unspecified` select `datetime-utc` / `datetime-unspecified`; `Local` selects `datetime-local-wire`;
 `Mixed` selects the union. Local JSON expectations depend on the server's zone.
 HTTP parameters accept the default union, but a fixed Local declaration is invalid (SV30): ASP.NET Core's
-`DateTimeStyles.AdjustToUniversal` converts offset input to UTC. Multiple mixed DateTime dictionary keys containing Local
-require a zone-aware codec because normalization/DST can collapse them. See [the DateTime guide](getting-started.md#6-what-the-types-say).
+`DateTimeStyles.AdjustToUniversal` converts offset input to UTC. The server converts DateTime dictionary keys with an
+offset to its own zone, which can make keys the client writes differently one key: `TisiliaOptions.DateTimes.ServerTimeZone`
+puts the zone's offsets in the contract, and the client refuses exactly those keys. See
+[the DateTime guide](getting-started.md#6-what-the-types-say).
 
 ## How it is checked
 

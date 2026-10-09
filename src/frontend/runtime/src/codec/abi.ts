@@ -1,6 +1,7 @@
 import type { JsonValue } from "../json/ast.js";
 import { resolveLimits, type Limits } from "../json/limits.js";
 import { CodecError, indexPath, propertyPath } from "./errors.js";
+import { ReferenceGraph } from "./graph.js";
 
 /**
  * Codec ABI 0.1. Each capability is an independent method; a codec implements only the ones it
@@ -36,6 +37,11 @@ export interface RequestKeyCodec<K> {
 
 export interface ResponseKeyCodec<K> {
   decodeKey(value: string, context: CodecContext): K;
+  /**
+   * Optional identity of a key the server wrote, when it differs from keyIdentity (the key as the server reads it): a DateTime key written
+   * with the server's offset is equal to the server's other keys by the ticks written, but read back it is converted again.
+   */
+  responseKeyIdentity?(value: K, context: CodecContext): string;
 }
 
 export interface RequestInputCodec<T> {
@@ -76,11 +82,30 @@ class Context implements CodecContext {
     readonly limits: Limits,
     readonly context: ReadonlyMap<string, string>,
     readonly checkpoint: () => void,
+    readonly graph: ReferenceGraph,
   ) {}
 
   child(segment: string | number): CodecContext {
-    return new Context(this.path + (typeof segment === "number" ? indexPath(segment) : propertyPath(segment)), this.profileId, this.limits, this.context, this.checkpoint);
+    return new Context(this.path + (typeof segment === "number" ? indexPath(segment) : propertyPath(segment)), this.profileId, this.limits, this.context, this.checkpoint, this.graph);
   }
+}
+
+const foreignGraphs = new WeakMap<CodecContext, ReferenceGraph>();
+
+/**
+ * The reference graph a context and its children share (ReferenceHandler.Preserve values of one call). A context that does not come
+ * from createCodecContext gets a graph of its own.
+ */
+export function graphOf(context: CodecContext): ReferenceGraph {
+  if (context instanceof Context) {
+    return context.graph;
+  }
+  let graph = foreignGraphs.get(context);
+  if (graph === undefined) {
+    graph = new ReferenceGraph();
+    foreignGraphs.set(context, graph);
+  }
+  return graph;
 }
 
 export function createCodecContext(options: CodecContextOptions = {}): CodecContext {
@@ -96,7 +121,7 @@ export function createCodecContext(options: CodecContextOptions = {}): CodecCont
       throw new CodecError("cancelled", "", "deadline exceeded");
     }
   };
-  return new Context("", options.profileId ?? "", limits, map, checkpoint);
+  return new Context("", options.profileId ?? "", limits, map, checkpoint, new ReferenceGraph());
 }
 
 /**
@@ -108,7 +133,7 @@ export function withContext(context: CodecContext, entries: Readonly<Record<stri
   for (const [name, value] of Object.entries(entries)) {
     merged.set(name, value);
   }
-  return new Context(context.path, context.profileId, context.limits, merged, context.checkpoint);
+  return new Context(context.path, context.profileId, context.limits, merged, context.checkpoint, graphOf(context));
 }
 
 export function requireRequest<T>(codec: Codec<T>): RequestCodec<T> {

@@ -163,6 +163,38 @@ public sealed class ProfileContext
             "converters=" + string.Join(",", o.Converters.Select(c => c.GetType().FullName)));
     }
 
+    /// <summary>
+    /// Whether two option sets describe every type alike, so that their profiles can share model ids: the settings the type mapper
+    /// reads are equal — naming and dictionary key policies (by instance), ignore conditions, read-only and field inclusion, number
+    /// handling, name matching, unmapped members, object creation, nullable annotations, required constructor parameters, duplicate
+    /// properties, metadata order, the reference handler (Preserve writes reference metadata), the converter types and the application's
+    /// resolvers. Depth limits, reading leniency and the encoder change no model. Two instances of one converter type with other
+    /// settings are not told apart here; their models differ, which the contract builder reports (ContractBuilder.ProfileConflicts).
+    /// </summary>
+    public static bool DescribeTypesAlike(JsonSerializerOptions first, JsonSerializerOptions second)
+    {
+        static List<object?> Key(JsonSerializerOptions source)
+        {
+            var o = new JsonSerializerOptions(source);
+            o.MakeReadOnly(populateMissingResolver: true);
+            var resolvers = o.TypeInfoResolverChain
+                .Where(r => r is not JsonSerializerContext context || !FrameworkResolvers.ContainsKey(context.GetType().FullName ?? ""))
+                .Select(r => r is DefaultJsonTypeInfoResolver { Modifiers.Count: 0 } ? "reflection" : (object)r).ToList();
+#pragma warning disable SYSLIB0020 // the obsolete setting still changes what is written
+            List<object?> key = [o.PropertyNamingPolicy, o.DictionaryKeyPolicy, o.DefaultIgnoreCondition, o.IgnoreNullValues, o.IgnoreReadOnlyProperties,
+                o.IgnoreReadOnlyFields, o.IncludeFields, o.NumberHandling, o.PropertyNameCaseInsensitive, o.UnmappedMemberHandling, o.PreferredObjectCreationHandling,
+                o.RespectNullableAnnotations, o.RespectRequiredConstructorParameters, o.AllowDuplicateProperties, o.AllowOutOfOrderMetadataProperties, o.ReferenceHandler];
+#pragma warning restore SYSLIB0020
+            key.Add(o.Converters.Count);
+            key.AddRange(o.Converters.Select(c => c.GetType()));
+            key.Add(resolvers.Count);
+            key.AddRange(resolvers);
+            return key;
+        }
+
+        return Key(first).SequenceEqual(Key(second));
+    }
+
     /// <summary>A read-only copy of the application's options used for metadata resolution (the app instance is never mutated).</summary>
     public JsonSerializerOptions Options { get; }
 

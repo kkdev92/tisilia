@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createHydrationEnvelope, prepareRequest, scalarCodec, webNumbers, type OperationDescriptor, type PreparedRequest, type RawOutcome } from "@kkdev92/tisilia-runtime";
+import { createHydrationEnvelope, prepareRequest, scalarCodec, webNumbers, xmlElementCodec, xmlTextCodec, type OperationDescriptor, type PreparedRequest, type RawOutcome } from "@kkdev92/tisilia-runtime";
 import { asyncDataKeyOf, decodeIdentityKey, envelopeMatchesScope, hiddenGuardHeader, hydrate, identityOf, identityRecordOf, operationHeaders, partitionForwardedHeaders } from "../src/runtime/core.js";
 
 const semanticHash = "sha256:" + "a".repeat(64);
@@ -30,6 +30,19 @@ it("binds raw upload identities to exact bytes and distinguishes empty from omit
   expect(asyncDataKeyOf(a)).not.toBe(asyncDataKeyOf(b));
   expect(await identityOf(a, false, undefined)).not.toBe(await identityOf(b, false, undefined));
   expect(asyncDataKeyOf(record(new Uint8Array()))).not.toBe(asyncDataKeyOf(record()));
+  // a streamed body's bytes are not known before it is sent: it has no identity, rather than the identity of an omitted body
+  const streamed = prepareRequest(upload, new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new Uint8Array([1])); c.close(); } }), options);
+  expect(() => identityRecordOf(upload, streamed, semanticHash, "scope")).toThrow(/no request identity/);
+});
+
+it("identifies an XML body by the document it sends", async () => {
+  const name = xmlTextCodec({ id: "std.string.xml-string", typeId: "std.string", scalar: "string", grammar: "xml-string" });
+  const item = xmlElementCodec({ id: "item", typeId: "item", attributes: [], elements: [{ property: "Name", name: "Name", codec: name, presence: "optional", wirePresence: "optional", nullable: false }], request: true, response: false });
+  const post: OperationDescriptor = { ...operation, method: "POST", requestBody: { kind: "xml", mediaType: "application/xml", codec: item, root: { name: "Item" }, presence: "required", maxDepth: 32, get: args => (args as { body: unknown }).body } };
+  const record = (value: string) => identityRecordOf(post, prepareRequest(post, { body: { Name: value } }, options), semanticHash, "scope");
+  expect(record("a").bodyKind).toBe("binary");
+  expect(new TextDecoder().decode(Uint8Array.from(atob(record("a").bodyText), c => c.charCodeAt(0)))).toBe("<Item><Name>a</Name></Item>");
+  expect(asyncDataKeyOf(record("a"))).not.toBe(asyncDataKeyOf(record("b")));
 });
 
 function raw(status: number, caseId: string, body: string): RawOutcome {

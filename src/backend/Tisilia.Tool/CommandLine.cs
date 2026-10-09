@@ -44,7 +44,7 @@ public sealed class CommandLine
         Positional = positional;
     }
 
-    private static bool IsFlag(string name) => name is "allow-execute-project" or "allow-execute-adapters" or "allow-execute-build" or "force" or "help" or "version" or "verbose" or "write";
+    private static bool IsFlag(string name) => name is "allow-execute-project" or "allow-execute-adapters" or "allow-execute-binders" or "allow-execute-build" or "force" or "help" or "version" or "verbose" or "write";
 
     public IReadOnlyList<string> Positional { get; }
 

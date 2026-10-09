@@ -157,6 +157,29 @@ export async function runHttpCases(runtime, operations, client, baseUrl, browser
     results.push(id);
   }
   equal([...(await call("upload.optional")).data.bytes], [], "omitted optional raw body");
+  // A streamed raw body: Node's fetch streams it. A browser never gets one from the runtime — Firefox sends a stream as text and
+  // WebKit as an empty body (both answered 200), Chromium refuses it over HTTP/1.1 — so nothing reaches the server.
+  const streamOf = bytes => new ReadableStream({ start(c) { c.enqueue(bytes.subarray(0, 2)); c.enqueue(bytes.subarray(2)); c.close(); } });
+  const calls = async () => (await (await fetch(new URL("/counts", baseUrl))).json()).calls;
+  for (const id of ["upload.stream", "upload.pipe"]) {
+    if (!browser) {
+      const result = await call(id, { body: streamOf(new Uint8Array(known)) });
+      equal(result.kind, "response", id + " streamed");
+      equal([...result.data.bytes], known, id + " streamed bytes");
+      equal((await call(id, { body: streamOf(new Uint8Array(known)) }, { limits: { maxBodyBytes: 4 } })).kind, "limit-failure", id + " streamed limit");
+    } else {
+      const before = await calls();
+      let refused;
+      try { runtime.prepareRequest(operations.get(id), { body: streamOf(new Uint8Array(known)) }, { baseUrl }); } catch (error) { refused = error.code; }
+      equal(refused, "unsupported", id + " stream refused when the request is prepared");
+      const name = id.replace(/[.-]([a-z])/g, (_, c) => c.toUpperCase());
+      const args = { body: streamOf(new Uint8Array(known)) };
+      const result = client ? await client[name](args) : await runtime.execute(operations.get(id), args, { baseUrl });
+      equal([result.kind, result.reason], ["transport-failure", "request-encoding"], id + " stream refused before sending");
+      equal(await calls(), before, id + " nothing sent");
+    }
+  }
+  results.push(browser ? "upload streams refused" : "upload streams");
   for (const id of ["file.get", "file.empty", "file.gzip", "file.partial"]) {
     const chunks = [];
     const result = await runtime.download(operations.get(id), {}, { baseUrl }, async chunk => { chunks.push(...chunk); });

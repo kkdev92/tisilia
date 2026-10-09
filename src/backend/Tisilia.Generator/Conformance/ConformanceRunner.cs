@@ -77,7 +77,8 @@ public sealed class ConformanceExecutor(RunnerClient dotnet, RunnerClient node, 
 
     private IReadOnlyList<NameValue> ContextFor(string codecId)
     {
-        if (index.Codecs.TryGetValue(codecId, out var codec) && index.Bindings.TryGetValue(codec.BindingId, out var binding))
+        // a builtin codec's binding context (the server's time zone of the DateTime codecs) is in the generated registry already
+        if (index.Codecs.TryGetValue(codecId, out var codec) && codec.Origin != CodecOrigin.Builtin && index.Bindings.TryGetValue(codec.BindingId, out var binding))
         {
             return binding.Context.Where(e => !e.Confidential).Select(e => new NameValue { Name = e.Name, Value = e.Value }).ToList();
         }

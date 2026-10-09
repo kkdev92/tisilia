@@ -92,6 +92,38 @@ export function formatScalarForBinding(name: ScalarName, value: unknown, path: s
 }
 
 /**
+ * Text of a builtin scalar the server reads with the request culture (MVC form values): every culture reads it as the same value
+ * or refuses it. Digits with an optional leading '-' read the same everywhere ('-' is refused where the culture's sign carries a
+ * direction mark); a fraction is written as an integer mantissa with a negative exponent (1.5 → 15E-1, 1.50 → 150E-2), never with
+ * a decimal separator; a date carries a time (2026-10-08T00:00:00), which a non-Gregorian calendar does not read as its own date.
+ */
+export function formatScalarForRequestCulture(name: ScalarName, value: unknown, path: string): string {
+  const text = formatScalarForBinding(name, value, path);
+  switch (name) {
+    case "decimal":
+    case "float32":
+    case "float64":
+      return withoutDecimalSeparator(text);
+    case "date-only":
+      return text + "T00:00:00";
+    default:
+      return text;
+  }
+}
+
+/** `-12.34`, `1.5e-7`, `1e+21` as digits with an exponent only when the value has a fraction: `-1234E-2`, `15E-8`, `1000…0`. */
+function withoutDecimalSeparator(text: string): string {
+  const m = /^(-?)([0-9]+)(?:\.([0-9]+))?(?:[eE]([+-]?[0-9]+))?$/.exec(text);
+  if (m === null) {
+    throw new Error(`unexpected number text '${text}'`);
+  }
+  const [, sign, whole, fraction = "", exponent = "0"] = m;
+  const digits = (whole! + fraction).replace(/^0+(?=[0-9])/, "");
+  const scale = fraction.length - Number(exponent);
+  return scale > 0 ? `${sign}${digits}E-${scale}` : sign + digits + "0".repeat(-scale);
+}
+
+/**
  * The binder of a parameter whose type a module codec carries (an additional codec such as Int128 or Version): the canonical text is
  * the request codec's wire — its string value or its number lexeme — which the server's TryParse-invariant binding reads.
  */

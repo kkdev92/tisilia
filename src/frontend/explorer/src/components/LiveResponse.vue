@@ -54,13 +54,16 @@ const size = computed(() => {
   return n === undefined ? "" : n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB`;
 });
 
+// a declared XML case: its body is the XML the server wrote, shown as text and named as XML
+const xml = computed(() => raw.value?.kind === "raw" && raw.value.bodyKind === "xml");
+
 const decoded = computed<DisplayNode | undefined>(() => {
   if (file.value !== undefined) { return undefined; }
   const r = result.value;
   if (r === undefined || isFailure(r) || !("data" in r)) {
     return undefined;
   }
-  return redactTree(describeValue((r as { data: unknown }).data, ""), store.reveal ? "reveal" : "mask");
+  return redactTree(describeValue((r as { data: unknown }).data, "", 0, new Map(), "#", xml.value ? "XML" : "JSON"), store.reveal ? "reveal" : "mask");
 });
 
 const bodyText = computed<{ text: string; json: boolean } | undefined>(() => {
@@ -74,6 +77,10 @@ const bodyText = computed<{ text: string; json: boolean } | undefined>(() => {
     text = new TextDecoder("utf-8", { fatal: true }).decode(b);
   } catch {
     return { text: t().bytesNotUtf8(b.byteLength), json: false };
+  }
+  if (xml.value) {
+    // XML is not masked value by value here: it is hidden whole unless shown (the decoded view masks each value)
+    return { text: store.reveal ? text : t().bytesXmlHidden(b.byteLength), json: false };
   }
   let json: JsonValue;
   try {
@@ -191,7 +198,7 @@ const declaredDenied = computed(() => failure.value === undefined && (status.val
     <div v-else-if="bodyText || decoded" class="result-body">
       <div class="result-body-head">
         <div v-if="decoded" class="tabs" role="tablist" :aria-label="t().bodyView">
-          <button type="button" role="tab" :aria-selected="bodyView === 'json'" :class="{ on: bodyView === 'json' }" @click="bodyView = 'json'">JSON</button>
+          <button type="button" role="tab" :aria-selected="bodyView === 'json'" :class="{ on: bodyView === 'json' }" @click="bodyView = 'json'">{{ xml ? "XML" : "JSON" }}</button>
           <button type="button" role="tab" :aria-selected="bodyView === 'decoded'" :class="{ on: bodyView === 'decoded' }" @click="bodyView = 'decoded'">{{ t().decoded }}</button>
         </div>
         <span v-else class="sub-head">{{ t().body }}</span>

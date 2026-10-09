@@ -187,14 +187,25 @@ public sealed class AdoptionPlanTests
     }
 
     [Fact]
-    public async Task Preserve_still_refuses_structured_JSON_and_custom_reference_handlers()
+    public async Task Preserve_marks_where_the_server_writes_reference_metadata_and_custom_reference_handlers_stay_refused()
     {
         await using var structured = await App(a =>
         {
             a.MapGet("/object", () => new { value = 1 }).WithTisiliaOperation("object");
             a.MapGet("/array", () => new[] { 1, 2 }).WithTisiliaOperation("array");
+            a.MapGet("/list", () => new List<int> { 1, 2 }).WithTisiliaOperation("list");
         }, b => b.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.ReferenceHandler = ReferenceHandler.Preserve));
-        Assert.Contains(Export(structured).Diagnostics.Items, d => d.Code == TisiliaCodes.ReferencePreserve);
+        var index = Success(structured).Index!;
+        bool Marked(string op)
+        {
+            var body = (Tisilia.Contract.JsonResponseBody)index.Operations[op].Responses.Single().Body!;
+            return index.Wires[index.Codecs[body.Use.CodecId].Capabilities.Response!.Wire.WireId].Shape
+                is Tisilia.Contract.ObjectWire { ReferenceMetadata: true } or Tisilia.Contract.ArrayWire { ReferenceMetadata: true };
+        }
+        // System.Text.Json writes $id on an object and a List<T> inside {"$id","$values"}; an array carries no metadata
+        Assert.True(Marked("object"));
+        Assert.False(Marked("array"));
+        Assert.True(Marked("list"));
         await using var custom = await App(a => a.MapGet("/number", () => 1).WithTisiliaOperation("number"),
             b => b.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.ReferenceHandler = new UnknownReferenceHandler()));
         Assert.Contains(Export(custom).Diagnostics.Items, d => d.Code == TisiliaCodes.ReferencePreserve && d.Message.Contains("custom ReferenceHandler", StringComparison.Ordinal));

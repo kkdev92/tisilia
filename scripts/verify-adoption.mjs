@@ -122,6 +122,16 @@ try {
       for (const cause of doctor.causes) { assert(human.stdout.includes(cause.message)); for (const id of cause.operationIds) assert(human.stdout.includes(id)); }
     }
   }
+  // declared custom bindings run only on --allow-execute-binders; the fixture's Paging.BindAsync also reads size, which its declaration leaves out
+  const unprobed = JSON.parse((await command(["doctor", "--project", project, "--no-build", "--allow-execute-project", "--format", "json", "--output", resolve(out, "doctor-binders-unprobed.json")], 0, { ADOPTION_MODE: "binders" })).stdout);
+  assert.equal(unprobed.bindingProbesRun, false); assert.deepEqual(unprobed.bindingProbes, []);
+  const probed = JSON.parse((await command(["doctor", "--project", project, "--no-build", "--allow-execute-project", "--allow-execute-binders", "--format", "json", "--output", resolve(out, "doctor-binders.json")], 3, { ADOPTION_MODE: "binders" })).stdout);
+  assert.equal(probed.bindingProbesRun, true);
+  assert.deepEqual(probed.bindingProbes.map(p => [p.operationId, p.parameter, p.status, p.undeclaredReads]), [["binders.paging", "paging", "mismatch", ["query:size"]]]);
+  assert(probed.causes.some(c => c.reasonCode === "binding-declaration-mismatch" && c.operationIds.includes("binders.paging")));
+  const probedHuman = await command(["doctor", "--project", project, "--no-build", "--allow-execute-project", "--allow-execute-binders", "--output", resolve(out, "doctor-binders-human.json")], 3, { ADOPTION_MODE: "binders" });
+  assert(probedHuman.stdout.includes("binding binders.paging paging (Paging.BindAsync): mismatch; reads outside the declaration: query:size"), probedHuman.stdout);
+  report.diagnostics.push({ mode: "binders", code: 3, selected: probed.selectedCount, analyzed: probed.analyzedCount, bindingProbes: probed.bindingProbes.length });
   const probe = { ADOPTION_MODE: "valid", ADOPTION_STARTUP_PROBE: "http://127.0.0.1:4179/startup" };
   await command(["doctor", "--project", project], 7, probe); assert.equal(startupProbes, 0);
   await command(["doctor", "--project", project, "--no-build", "--allow-execute-project", "--output", resolve(out, "doctor-probe.json")], 0, probe); assert.equal(startupProbes, 1);

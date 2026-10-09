@@ -210,22 +210,31 @@ export function fetchSnippet(prepared: PreparedRequest, options: SnippetOptions)
   return lines.join("\n");
 }
 
-/** Form values carry CLR scalar types even when their JavaScript primitives have no runtime brand. */
-function formLiteral(fields: readonly ContractFormField[], value: unknown, helpers: Set<string>, document: ContractDocument, indent: string): string {
+/**
+ * Form values carry CLR scalar types even when their JavaScript primitives have no runtime brand. A module type (Int128, Uri, …) is a
+ * brand in the generated models, so its literal is cast to that type, which `types` collects for the import.
+ */
+function formLiteral(fields: readonly ContractFormField[], value: unknown, helpers: Set<string>, document: ContractDocument, indent: string, types: Set<string>): string {
   const body = value as Record<string, unknown>;
   const inner = indent + "  ";
   const lines: string[] = [];
   for (const field of fields) {
     const value = body[field.name];
     if (value === undefined) { continue; }
-    const itemLiteral = (item: unknown, padding: string): string => {
-      if (field.kind === "object") { return formLiteral(field.fields ?? [], item, helpers, document, padding); }
-      const shape = document.types.find(t => t.id === field.use?.typeId)?.shape;
+    // a scalar of the field's type: branded integers and Guids through their helpers, module types cast to their brands
+    const scalarLiteral = (typeId: string | undefined, item: unknown, padding: string): string => {
+      const model = document.types.find(t => t.id === typeId);
+      const shape = model?.shape;
+      if (model !== undefined && shape?.kind === "brand") { types.add(model.tsName); return `${tsLiteral(item, helpers, padding)} as ${model.tsName}`; }
       const helper = shape?.kind === "primitive" ? ({ "tisilia.int64@0.1": "int64", "tisilia.uint64@0.1": "uint64", "tisilia.guid@0.1": "guid" } as Readonly<Record<string, string>>)[shape.primitiveId] : undefined;
       if (helper !== undefined) { helpers.add(helper); return `${helper}(${tsLiteral(item, helpers, padding)})`; }
       return tsLiteral(item, helpers, padding);
     };
-    const literal = field.repeated && (value as readonly unknown[]).length === 0 ? "[]" : field.repeated
+    const itemLiteral = (item: unknown, padding: string): string =>
+      field.kind === "object" ? formLiteral(field.fields ?? [], item, helpers, document, padding, types) : scalarLiteral(field.use?.typeId, item, padding);
+    const literal = field.kind === "map"
+      ? "new Map([\n" + [...(value as ReadonlyMap<unknown, unknown>)].map(([k, v]) => `${inner}  [${scalarLiteral(field.keyUse?.typeId, k, inner + "  ")}, ${scalarLiteral(field.use?.typeId, v, inner + "  ")}]`).join(",\n") + `,\n${inner}])`
+      : field.repeated && (value as readonly unknown[]).length === 0 ? "[]" : field.repeated
       ? "[\n" + (value as readonly unknown[]).map(item => inner + "  " + itemLiteral(item, inner + "  ")).join(",\n") + `,\n${inner}]`
       : itemLiteral(value, inner);
     lines.push(`${inner}${propertyKey(field.name)}: ${literal}`);
@@ -236,6 +245,7 @@ function formLiteral(fields: readonly ContractFormField[], value: unknown, helpe
 /** The call through the generated client (typed mode): the same arguments the Explorer built, as TypeScript. */
 export function clientSnippet(options: SnippetOptions): string {
   const helpers = new Set<string>();
+  const types = new Set<string>();
   const factory = clientFactoryName(options.apiId);
   const method = operationMethodName(options.operationId);
   const credentials = credentialPlaceholders(options.credentials);
@@ -245,13 +255,13 @@ export function clientSnippet(options: SnippetOptions): string {
   } else if (options.reveal) {
     const body = options.document?.operations.find(op => op.id === options.operationId)?.requestBody;
     args = body?.kind === "form" && options.args["body"] !== undefined
-      ? "{\n" + Object.keys(options.args).filter(k => options.args![k] !== undefined).map(k => `  ${propertyKey(k)}: ${k === "body" ? formLiteral(body.fields, options.args![k], helpers, options.document!, "  ") : tsLiteral(options.args![k], helpers, "  ")}`).join(",\n") + "\n}"
+      ? "{\n" + Object.keys(options.args).filter(k => options.args![k] !== undefined).map(k => `  ${propertyKey(k)}: ${k === "body" ? formLiteral(body.fields, options.args![k], helpers, options.document!, "  ", types) : tsLiteral(options.args![k], helpers, "  ")}`).join(",\n") + "\n}"
       : tsLiteral(options.args, helpers);
   } else {
     const keys = Object.keys(options.args).filter((k) => options.args![k] !== undefined);
     args = keys.length === 0 ? "{}" : "{ " + keys.map((k) => `${propertyKey(k)}: …`).join(", ") + " }";
   }
-  const lines: string[] = [`import { ${factory} } from "./api/index.js";`];
+  const lines: string[] = [`import { ${[factory, ...[...types].sort().map(t => "type " + t)].join(", ")} } from "./api/index.js";`];
   if (helpers.size > 0) {
     lines.push(`import { ${[...helpers].sort().join(", ")} } from "@kkdev92/tisilia-runtime";`);
   }

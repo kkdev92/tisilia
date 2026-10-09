@@ -40,6 +40,16 @@ public sealed class DateTimeBindingCollection
     /// <summary>The wire of every DateTime that no member declaration names; null selects the mixed wire for JSON and HTTP parameters.</summary>
     public DateTimeWire? Default { get; set; }
 
+    /// <summary>
+    /// The time zone the server runs in (its <see cref="TimeZoneInfo.Local"/>). System.Text.Json converts a DateTime read with an offset to
+    /// that zone, so DateTime dictionary keys written with different offsets can be one key on the server, and it keeps the last value.
+    /// With the declaration the contract carries the zone's UTC offsets for 1900–2199, as .NET computes them, and the client refuses
+    /// exactly the keys that become one. Without it, the client sends several keys that include an offset only when no time zone can
+    /// make two of them one: offsets are at most 14 hours. Declare the zone of production; outside Development, the application logs a
+    /// warning when its own zone has other offsets.
+    /// </summary>
+    public TimeZoneInfo? ServerTimeZone { get; set; }
+
     internal IReadOnlyList<string> DescribeMembers() => _members.OrderBy(p => p.Key.Type.FullName, StringComparer.Ordinal)
         .ThenBy(p => p.Key.Member, StringComparer.Ordinal).Select(p => $"{p.Key.Type.FullName}.{p.Key.Member}: {p.Value}").ToArray();
 

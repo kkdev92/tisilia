@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.tisilia.invalid/0.1/contract.schema.json",
   "title": "Tisilia Contract IR 0.1",
-  "$comment": "Contract 0.1. Structure only: semantic validation (SV01–SV54) runs after it. Codec ABI is 0.1.",
+  "$comment": "Contract 0.1. Structure only: semantic validation (SV01–SV55) runs after it. Codec ABI is 0.1.",
   "type": "object",
   "properties": {
     "format": {

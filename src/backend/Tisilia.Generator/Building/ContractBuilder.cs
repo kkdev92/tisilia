@@ -28,6 +28,25 @@ public enum Direction
 /// <summary>One property of an object model as seen by the builder: domain use/presence and per-direction wire presence.</summary>
 public sealed record PropertySpec(string Name, TypeUse Use, Presence DomainPresence, Presence ReadPresence, Presence WritePresence);
 
+/// <summary>Two JSON profiles describe the model or wire <paramref name="Id"/> differently; the first description is kept.</summary>
+public sealed record ProfileConflict(string Id, string? FirstProfileId, string? SecondProfileId);
+
+public enum XmlMemberKind
+{
+    Attribute,
+    Element,
+    Text,
+}
+
+/// <summary>
+/// One member of a class's XML content: the domain property it carries and how the XML writes it. A repeated member's
+/// <paramref name="Use"/> is the collection and <paramref name="ItemUse"/> each value's; <paramref name="WirePresence"/> says whether the
+/// member may be absent, <paramref name="DomainPresence"/> whether the decoded value always has the property (an absent member then reads
+/// as null, its <paramref name="Default"/>, or an empty collection).
+/// </summary>
+public sealed record XmlMemberSpec(string Property, XmlMemberKind Kind, string? Name, string? Namespace, TypeUse Use, TypeUse? ItemUse, Presence DomainPresence, Presence WirePresence,
+    bool Nillable, bool Repeated, string? Default);
+
 /// <summary>
 /// Assembles a <c>tisilia.contract</c> document from standard building blocks. Used by the ASP.NET Core exporter and by
 /// tests; it only produces data and computes the contract's digests at the end.
@@ -61,8 +80,69 @@ public sealed class ContractBuilder
     // ------------------------------------------------------------------ registries
 
     public void AddProfile(Profile profile) => _profiles[profile.Id] = profile;
-    public void AddType(Model model) => _types[model.Id] = model;
-    public void AddWire(Wire wire) => _wires[wire.Id] = wire;
+
+    /// <summary>
+    /// The JSON profile whose type mapper is adding models (the exporter sets it while it maps a type). Model ids name a CLR type and a
+    /// direction: when another profile reaches an id with other content — options that describe the type differently — the first
+    /// content stays and <see cref="ProfileConflicts"/> records it, so a model is never silently the description of another profile.
+    /// </summary>
+    public string? ActiveProfileId { get; set; }
+
+    public IReadOnlyList<ProfileConflict> ProfileConflicts => _profileConflicts;
+
+    private readonly List<ProfileConflict> _profileConflicts = [];
+    private readonly Dictionary<string, (string? ProfileId, string Content)> _claims = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// True when this profile is the first to describe <paramref name="id"/> and the caller adds it; otherwise compares
+    /// <paramref name="content"/> (what this profile would add) with the first profile's and records a difference.
+    /// </summary>
+    private bool Claim(string id, object content)
+    {
+        var text = JsonSerializer.Serialize(content, TisiliaJson.Options);
+        if (_claims.TryGetValue(id, out var first))
+        {
+            if (first.ProfileId != ActiveProfileId && first.Content != text && !_profileConflicts.Any(c => c.Id == id && c.SecondProfileId == ActiveProfileId))
+            {
+                _profileConflicts.Add(new ProfileConflict(id, first.ProfileId, ActiveProfileId));
+            }
+
+            return false;
+        }
+
+        _claims[id] = (ActiveProfileId, text);
+        return true;
+    }
+
+    /// <summary>Adds or (from the profile that added it) replaces a model; another profile's different model is a conflict.</summary>
+    public void AddType(Model model)
+    {
+        if (Replaces("type:" + model.Id, model))
+        {
+            _types[model.Id] = model;
+        }
+    }
+
+    /// <summary>Adds or (from the profile that added it) replaces a wire; another profile's different wire is a conflict.</summary>
+    public void AddWire(Wire wire)
+    {
+        if (Replaces("wire:" + wire.Id, wire))
+        {
+            _wires[wire.Id] = wire;
+        }
+    }
+
+    private bool Replaces(string key, object content)
+    {
+        if (_claims.TryGetValue(key, out var first) && first.ProfileId != ActiveProfileId)
+        {
+            Claim(key, content);
+            return false;
+        }
+
+        _claims[key] = (ActiveProfileId, JsonSerializer.Serialize(content, TisiliaJson.Options));
+        return true;
+    }
     public void AddCodec(Codec codec)
     {
         if (_pendingProfileTags.Remove(codec.Id, out var tags))
@@ -157,6 +237,37 @@ public sealed class ContractBuilder
 
     // ------------------------------------------------------------------ standard scalars
 
+    private Binding? _serverTimeZone;
+
+    /// <summary>
+    /// Binds the builtin DateTime codecs that can carry an offset (the mixed-Kind union and the Local wire) to the server's time zone: the
+    /// codecs name <paramref name="binding"/>, whose context holds the zone's offsets (<see cref="ServerTimeZoneTable"/>), and the client reads
+    /// from it which dictionary keys the server reads as one. Call it before the first DateTime is mapped.
+    /// </summary>
+    public void BindServerTimeZone(Binding binding)
+    {
+        ArgumentNullException.ThrowIfNull(binding);
+        if (_codecs.Values.Any(c => ReadsServerTimeZone(c.TypeId)))
+        {
+            throw new InvalidOperationException("bind the server time zone before the first DateTime codec is created");
+        }
+
+        _serverTimeZone = binding;
+    }
+
+    private static bool ReadsServerTimeZone(string typeId) => typeId is StdPrefix + "datetime" or StdPrefix + "datetime-local-wire";
+
+    private string ScalarBindingId(string name)
+    {
+        if (_serverTimeZone is null || !ReadsServerTimeZone(StdPrefix + name))
+        {
+            return Builtins.BindingFor(name);
+        }
+
+        _bindings.TryAdd(_serverTimeZone.Id, _serverTimeZone);
+        return _serverTimeZone.Id;
+    }
+
     /// <summary>Ensures model, wires, codec and equivalences for a builtin scalar exist and returns a type use.</summary>
     public TypeUse Scalar(string name, NumberProfile numberProfile = default, bool nullable = false)
     {
@@ -173,19 +284,8 @@ public sealed class ContractBuilder
             np = np with { NamedLiterals = false };
         }
 
-        var typeId = StdPrefix + name;
-        if (!_types.ContainsKey(typeId))
-        {
-            _types[typeId] = new Model
-            {
-                Id = typeId,
-                TsName = TsNameOf(name),
-                ClrIdentity = ClrIdentityOf(name),
-                Shape = new PrimitiveShape { PrimitiveId = Builtins.Scalar(name) },
-            };
-            EnsureScalarEquivalences(name, typeId);
-        }
-
+        var typeId = EnsureScalarModel(name);
+        EnsureScalarEquivalences(name, typeId);
         var codecId = typeId + ".codec" + np.Suffix;
         if (!_codecs.ContainsKey(codecId))
         {
@@ -236,7 +336,7 @@ public sealed class ContractBuilder
                 Id = codecId,
                 TypeId = typeId,
                 Origin = CodecOrigin.Builtin,
-                BindingId = Builtins.BindingFor(name),
+                BindingId = ScalarBindingId(name),
                 ValidateDomain = new BuiltinImpl { Id = Builtins.CodecImpl(name, "validate") },
                 Capabilities = caps,
                 Dependencies = [],
@@ -245,6 +345,29 @@ public sealed class ContractBuilder
         }
 
         return new TypeUse { TypeId = typeId, CodecId = codecId, SemanticNullable = nullable };
+    }
+
+    /// <summary>The domain model of a builtin scalar (<c>std.&lt;name&gt;</c>), which its JSON and XML codecs share.</summary>
+    private string EnsureScalarModel(string name)
+    {
+        if (Array.IndexOf(Builtins.ScalarNames, name) < 0)
+        {
+            throw new ArgumentException($"'{name}' is not a builtin scalar", nameof(name));
+        }
+
+        var typeId = StdPrefix + name;
+        if (!_types.ContainsKey(typeId))
+        {
+            _types[typeId] = new Model
+            {
+                Id = typeId,
+                TsName = TsNameOf(name),
+                ClrIdentity = ClrIdentityOf(name),
+                Shape = new PrimitiveShape { PrimitiveId = Builtins.Scalar(name) },
+            };
+        }
+
+        return typeId;
     }
 
     /// <summary>A scalar use whose wire is nullable in the given direction (token-union with a null branch); the codec passes null through (bypass).</summary>
@@ -527,31 +650,40 @@ public sealed class ContractBuilder
 
     // ------------------------------------------------------------------ composite standard codecs
 
-    public TypeUse ArrayOf(string id, string tsName, string clrIdentity, TypeUse element, bool nullable = false)
+    /// <summary>
+    /// Array model + wires + builtin array codec; with <paramref name="writeReferenceMetadata"/> the server writes the array inside
+    /// <c>$id</c>/<c>$values</c> metadata, and with <paramref name="readReferenceMetadata"/> it reads such metadata in a request
+    /// (ReferenceHandler.Preserve).
+    /// </summary>
+    public TypeUse ArrayOf(string id, string tsName, string clrIdentity, TypeUse element, bool nullable = false, bool writeReferenceMetadata = false, bool readReferenceMetadata = false)
     {
-        if (!_types.ContainsKey(id))
+        if (Claim(id, new { kind = "array", element, writeReferenceMetadata, readReferenceMetadata }) && !_types.ContainsKey(id))
         {
             _types[id] = new Model { Id = id, TsName = tsName, ClrIdentity = clrIdentity, Shape = new ArrayShape { Element = element } };
             var elementRead = ChildWireId(element, WireDirection.ServerRead);
             var elementWrite = ChildWireId(element, WireDirection.ServerWrite);
-            var readWire = elementRead is null ? null : EnsureArrayWire(id, elementRead, WireDirection.ServerRead);
-            var writeWire = elementWrite is null ? null : EnsureArrayWire(id, elementWrite, WireDirection.ServerWrite);
+            var readWire = elementRead is null ? null : EnsureArrayWire(id, elementRead, WireDirection.ServerRead, readReferenceMetadata);
+            var writeWire = elementWrite is null ? null : EnsureArrayWire(id, elementWrite, WireDirection.ServerWrite, writeReferenceMetadata);
             AddStructuralCodec(id, "array", readWire, writeWire, [element.CodecId]);
         }
 
         return new TypeUse { TypeId = id, CodecId = id + ".codec", SemanticNullable = nullable };
     }
 
-    private string EnsureArrayWire(string typeId, string elementWireId, WireDirection direction)
+    private string EnsureArrayWire(string typeId, string elementWireId, WireDirection direction, bool referenceMetadata)
     {
         var id = typeId + (direction == WireDirection.ServerRead ? ".read" : ".write");
-        _wires.TryAdd(id, new Wire { Id = id, Direction = direction, Shape = new ArrayWire { Element = new WireRef { WireId = elementWireId, Direction = direction } } });
+        _wires.TryAdd(id, new Wire { Id = id, Direction = direction, Shape = new ArrayWire { Element = new WireRef { WireId = elementWireId, Direction = direction }, ReferenceMetadata = referenceMetadata ? true : null } });
         return id;
     }
 
-    public TypeUse MapOf(string id, string tsName, string clrIdentity, TypeUse key, TypeUse value, string comparerId, bool nullable = false)
+    /// <summary>
+    /// Map model + wires + builtin map codec; with <paramref name="writeReferenceMetadata"/> the server writes <c>$id</c> before the
+    /// entries, and with <paramref name="readReferenceMetadata"/> it reads such metadata in a request (ReferenceHandler.Preserve).
+    /// </summary>
+    public TypeUse MapOf(string id, string tsName, string clrIdentity, TypeUse key, TypeUse value, string comparerId, bool nullable = false, bool writeReferenceMetadata = false, bool readReferenceMetadata = false)
     {
-        if (!_types.ContainsKey(id))
+        if (Claim(id, new { kind = "map", key, value, comparerId, writeReferenceMetadata, readReferenceMetadata }) && !_types.ContainsKey(id))
         {
             _types[id] = new Model { Id = id, TsName = tsName, ClrIdentity = clrIdentity, Shape = new MapShape { Key = key, Value = value, ComparerId = comparerId } };
             var keyCodec = _codecs[key.CodecId];
@@ -561,12 +693,12 @@ public sealed class ContractBuilder
             string? writeWire = null;
             if (valueRead is not null && keyCodec.Capabilities.RequestKey is { } rk)
             {
-                readWire = EnsureMapWire(id, valueRead, rk.GrammarId, WireDirection.ServerRead);
+                readWire = EnsureMapWire(id, valueRead, rk.GrammarId, WireDirection.ServerRead, readReferenceMetadata);
             }
 
             if (valueWrite is not null && keyCodec.Capabilities.ResponseKey is { } sk)
             {
-                writeWire = EnsureMapWire(id, valueWrite, sk.GrammarId, WireDirection.ServerWrite);
+                writeWire = EnsureMapWire(id, valueWrite, sk.GrammarId, WireDirection.ServerWrite, writeReferenceMetadata);
             }
 
             AddStructuralCodec(id, "map", readWire, writeWire, [key.CodecId, value.CodecId]);
@@ -612,7 +744,7 @@ public sealed class ContractBuilder
     }
 
     /// <summary>A map is an object wire with no fixed properties whose additional members are captured with the value wire.</summary>
-    private string EnsureMapWire(string typeId, string valueWireId, string keyGrammarId, WireDirection direction)
+    private string EnsureMapWire(string typeId, string valueWireId, string keyGrammarId, WireDirection direction, bool referenceMetadata)
     {
         var id = typeId + (direction == WireDirection.ServerRead ? ".read" : ".write");
         _wires.TryAdd(id, new Wire
@@ -625,6 +757,7 @@ public sealed class ContractBuilder
                 Additional = new CaptureAdditional { Wire = new WireRef { WireId = valueWireId, Direction = direction } },
                 DuplicatePolicyId = Builtins.DuplicatesReject,
                 NameMatchingId = Builtins.NamesOrdinal,
+                ReferenceMetadata = referenceMetadata ? true : null,
             },
         });
         return id;
@@ -650,12 +783,15 @@ public sealed class ContractBuilder
 
     /// <summary>
     /// Object model + wires + builtin object codec. Wire property names equal domain property names (effective JSON names).
-    /// Directions without any use can be suppressed with <paramref name="emitRead"/>/<paramref name="emitWrite"/>.
+    /// Directions without any use can be suppressed with <paramref name="emitRead"/>/<paramref name="emitWrite"/>;
+    /// <paramref name="writeReferenceMetadata"/>: the server writes <c>$id</c> first; <paramref name="readReferenceMetadata"/>: it reads
+    /// <c>$id</c> and <c>{"$ref"}</c> in a request and makes the object before its members (ReferenceHandler.Preserve).
     /// </summary>
     public TypeUse ObjectOf(string id, string tsName, string clrIdentity, IReadOnlyList<PropertySpec> properties, string nameMatchingId, string duplicatePolicyId,
-        AdditionalPolicy? readAdditional = null, AdditionalPolicy? writeAdditional = null, Extension? extension = null, bool emitRead = true, bool emitWrite = true, bool nullable = false)
+        AdditionalPolicy? readAdditional = null, AdditionalPolicy? writeAdditional = null, Extension? extension = null, bool emitRead = true, bool emitWrite = true, bool nullable = false,
+        bool writeReferenceMetadata = false, bool readReferenceMetadata = false)
     {
-        if (!_types.ContainsKey(id))
+        if (Claim(id, new { kind = "object", properties, nameMatchingId, duplicatePolicyId, readAdditional, writeAdditional, extension, emitRead, emitWrite, writeReferenceMetadata, readReferenceMetadata }) && !_types.ContainsKey(id))
         {
             _types[id] = new Model
             {
@@ -688,6 +824,7 @@ public sealed class ContractBuilder
                         Additional = readAdditional ?? new IgnoreAdditional(),
                         DuplicatePolicyId = duplicatePolicyId,
                         NameMatchingId = nameMatchingId,
+                        ReferenceMetadata = readReferenceMetadata ? true : null,
                     },
                 };
             }
@@ -710,6 +847,7 @@ public sealed class ContractBuilder
                         Additional = writeAdditional ?? new IgnoreAdditional(),
                         DuplicatePolicyId = Builtins.DuplicatesReject,
                         NameMatchingId = Builtins.NamesOrdinal,
+                        ReferenceMetadata = writeReferenceMetadata ? true : null,
                     },
                 };
             }
@@ -728,7 +866,7 @@ public sealed class ContractBuilder
 
     public TypeUse EnumOf(string id, string tsName, string clrIdentity, string underlying, IReadOnlyList<EnumMember> members, bool flags, bool stringForm, bool nullable = false)
     {
-        if (!_types.ContainsKey(id))
+        if (Claim(id, new { kind = "enum", underlying, members, flags, stringForm }) && !_types.ContainsKey(id))
         {
             _types[id] = new Model
             {
@@ -857,6 +995,236 @@ public sealed class ContractBuilder
 
     public Wire? GetWire(string id) => _wires.GetValueOrDefault(id);
 
+    // ------------------------------------------------------------------ XML (MVC's XmlSerializer formatters)
+
+    /// <summary>
+    /// The XML text codec of a builtin scalar: the scalar's own domain type, written and read in the XML grammar <paramref name="grammar"/>
+    /// (<see cref="Builtins.XmlGrammarNames"/>). Its equivalences are G1: the conformance runner does not observe XML.
+    /// </summary>
+    public TypeUse XmlScalar(string name, string grammar)
+    {
+        if (Array.IndexOf(Builtins.XmlGrammarNames, grammar) < 0 || grammar is "xml-enum" or "xml-flags")
+        {
+            throw new ArgumentException($"'{grammar}' is not an XML scalar grammar", nameof(grammar));
+        }
+
+        var typeId = EnsureScalarModel(name);
+        var codecId = typeId + "." + grammar;
+        if (!_codecs.ContainsKey(codecId))
+        {
+            var readWire = codecId + ".read";
+            var writeWire = codecId + ".write";
+            _wires.TryAdd(readWire, new Wire { Id = readWire, Direction = WireDirection.ServerRead, Shape = new XmlTextWire { GrammarId = Builtins.Grammar(grammar) } });
+            _wires.TryAdd(writeWire, new Wire { Id = writeWire, Direction = WireDirection.ServerWrite, Shape = new XmlTextWire { GrammarId = Builtins.Grammar(grammar) } });
+            // XmlWriter replaces the line breaks of element content with its NewLineChars (NewLineHandling.Replace), which an XML parser
+            // reads as line feeds; the client writes a carriage return as a character reference, which the server keeps
+            string[] requestNotPreserved = grammar switch
+            {
+                "xml-decimal" => ["negative-zero-sign"],
+                "xml-float" => ["nan-payload"],
+                "xml-guid" => ["hex-case"],
+                _ => [],
+            };
+            string[] responseNotPreserved = grammar == "xml-string" ? ["line-breaks"] : requestNotPreserved;
+            EnsureXmlEquivalences(codecId, typeId, Builtins.DomainRule(name), name == "decimal" ? Builtins.OracleNumeric : Builtins.OracleStructural, ["value"], requestNotPreserved, responseNotPreserved);
+            _codecs[codecId] = new Codec
+            {
+                Id = codecId,
+                TypeId = typeId,
+                Origin = CodecOrigin.Builtin,
+                BindingId = Builtins.BindingXmlSerializer,
+                ValidateDomain = new BuiltinImpl { Id = Builtins.CodecImpl(name, "validate") },
+                Capabilities = new Capabilities
+                {
+                    Request = new ValueCapability
+                    {
+                        Wire = new WireRef { WireId = readWire, Direction = WireDirection.ServerRead },
+                        Implementation = new BuiltinImpl { Id = Builtins.CodecImpl("xml-text", "encode") },
+                        NullBehavior = NullBehavior.Reject,
+                        EquivalenceId = codecId + ".request",
+                        DomainRuleId = Builtins.DomainRule(name),
+                    },
+                    Response = new ValueCapability
+                    {
+                        Wire = new WireRef { WireId = writeWire, Direction = WireDirection.ServerWrite },
+                        Implementation = new BuiltinImpl { Id = Builtins.CodecImpl("xml-text", "decode") },
+                        NullBehavior = NullBehavior.Reject,
+                        EquivalenceId = codecId + ".response",
+                        DomainRuleId = Builtins.DomainRule(name),
+                    },
+                    RequestInput = new InputCapability { Implementation = new BuiltinImpl { Id = Builtins.CodecImpl(name, "parse-input") }, InputKind = InputKind.Text, EditorId = Builtins.EditorText },
+                },
+                Dependencies = [],
+                ProfileIds = [],
+            };
+        }
+
+        return new TypeUse { TypeId = typeId, CodecId = codecId, SemanticNullable = false };
+    }
+
+    /// <summary>
+    /// The XML codec of an enum: its values are the defined constants (and, for flags, their combinations), written as the constants'
+    /// XML names in both directions (XmlSerializer refuses other values).
+    /// </summary>
+    public TypeUse XmlEnumOf(string id, string tsName, string clrIdentity, string underlying, IReadOnlyList<EnumMember> members, bool flags, IReadOnlyList<XmlEnumName> names)
+    {
+        if (Claim(id, new { kind = "xml-enum", underlying, members, flags, names }) && !_types.ContainsKey(id))
+        {
+            _types[id] = new Model
+            {
+                Id = id,
+                TsName = tsName,
+                ClrIdentity = clrIdentity,
+                Shape = new EnumShape { UnderlyingPrimitiveId = Builtins.Scalar(underlying), Flags = flags, AllowUndefinedInteger = false, Members = members },
+            };
+            var grammar = Builtins.Grammar(flags ? "xml-flags" : "xml-enum");
+            var readWire = id + ".read";
+            var writeWire = id + ".write";
+            _wires[readWire] = new Wire { Id = readWire, Direction = WireDirection.ServerRead, Shape = new XmlTextWire { GrammarId = grammar, Names = names } };
+            _wires[writeWire] = new Wire { Id = writeWire, Direction = WireDirection.ServerWrite, Shape = new XmlTextWire { GrammarId = grammar, Names = names } };
+            AddXmlCodec(id, "enum", "xml-text", readWire, writeWire, [], InputKind.Text, Builtins.EditorText, ["value"], [], []);
+        }
+
+        return new TypeUse { TypeId = id, CodecId = id + ".codec", SemanticNullable = false };
+    }
+
+    /// <summary>
+    /// The XML codec of a class in one direction: an object model of the members' domain properties, an xml-element wire of the
+    /// attributes, child elements and character content in the order XmlSerializer writes them, and the builtin xml-element codec.
+    /// </summary>
+    public TypeUse XmlObjectOf(string id, string tsName, string clrIdentity, WireDirection direction, IReadOnlyList<XmlMemberSpec> members)
+    {
+        if (Claim(id, new { kind = "xml-object", direction, members }) && !_types.ContainsKey(id))
+        {
+            _types[id] = new Model
+            {
+                Id = id,
+                TsName = tsName,
+                ClrIdentity = clrIdentity,
+                Shape = new ObjectShape { Properties = members.Select(m => new DomainProperty { Name = m.Property, Use = m.Use, Presence = m.DomainPresence }).ToList(), Extension = new NoExtension() },
+            };
+            XmlMember Member(XmlMemberSpec m) => new()
+            {
+                Property = m.Property,
+                Name = m.Name,
+                Namespace = string.IsNullOrEmpty(m.Namespace) ? null : m.Namespace,
+                Wire = new WireRef
+                {
+                    WireId = ChildWireId(m.Repeated ? m.ItemUse ?? throw new ArgumentException($"repeated member '{m.Property}' needs its item use", nameof(members)) : m.Use, direction)
+                        ?? throw new InvalidOperationException($"codec '{m.Use.CodecId}' has no {(direction == WireDirection.ServerRead ? "request" : "response")} capability"),
+                    Direction = direction,
+                },
+                Presence = m.WirePresence,
+                Nillable = m.Nillable ? true : null,
+                Repeated = m.Repeated ? true : null,
+                Default = m.Default,
+            };
+            var wireId = id + (direction == WireDirection.ServerRead ? ".read" : ".write");
+            _wires[wireId] = new Wire
+            {
+                Id = wireId,
+                Direction = direction,
+                Shape = new XmlElementWire
+                {
+                    Attributes = members.Where(m => m.Kind == XmlMemberKind.Attribute).Select(Member).ToList(),
+                    Elements = members.Where(m => m.Kind == XmlMemberKind.Element).Select(Member).ToList(),
+                    Text = members.FirstOrDefault(m => m.Kind == XmlMemberKind.Text) is { } text ? Member(text) : null,
+                },
+            };
+            AddXmlCodec(id, "object", "xml-element", direction == WireDirection.ServerRead ? wireId : null, direction == WireDirection.ServerWrite ? wireId : null,
+                members.Select(m => m.Use.CodecId).Where(d => d != id + ".codec").Distinct(StringComparer.Ordinal).ToList(), InputKind.JsonValue, Builtins.EditorJson, ["structure", "member-values"], ["reference-identity"], ["reference-identity"]);
+        }
+
+        return new TypeUse { TypeId = id, CodecId = id + ".codec", SemanticNullable = false };
+    }
+
+    /// <summary>The XML codec of a collection in one direction: one item element per value (XmlSerializer's ArrayMapping).</summary>
+    public TypeUse XmlArrayOf(string id, string tsName, string clrIdentity, WireDirection direction, TypeUse element, string itemName, string? itemNamespace, bool itemNillable)
+    {
+        if (Claim(id, new { kind = "xml-array", direction, element, itemName, itemNamespace, itemNillable }) && !_types.ContainsKey(id))
+        {
+            _types[id] = new Model { Id = id, TsName = tsName, ClrIdentity = clrIdentity, Shape = new ArrayShape { Element = element } };
+            var wireId = id + (direction == WireDirection.ServerRead ? ".read" : ".write");
+            _wires[wireId] = new Wire
+            {
+                Id = wireId,
+                Direction = direction,
+                Shape = new XmlItemsWire
+                {
+                    Item = new XmlItem
+                    {
+                        Name = itemName,
+                        Namespace = string.IsNullOrEmpty(itemNamespace) ? null : itemNamespace,
+                        Wire = new WireRef { WireId = ChildWireId(element, direction) ?? throw new InvalidOperationException($"codec '{element.CodecId}' has no capability in this direction"), Direction = direction },
+                        Nillable = itemNillable ? true : null,
+                    },
+                },
+            };
+            AddXmlCodec(id, "array", "xml-items", direction == WireDirection.ServerRead ? wireId : null, direction == WireDirection.ServerWrite ? wireId : null,
+                element.CodecId == id + ".codec" ? [] : [element.CodecId], InputKind.JsonValue, Builtins.EditorJson, ["structure", "member-values"], ["reference-identity"], ["reference-identity"]);
+        }
+
+        return new TypeUse { TypeId = id, CodecId = id + ".codec", SemanticNullable = false };
+    }
+
+    private void AddXmlCodec(string id, string structure, string xmlCodec, string? readWire, string? writeWire, IReadOnlyList<string> dependencies, InputKind inputKind, string editorId,
+        IReadOnlyList<string> preserved, IReadOnlyList<string> requestNotPreserved, IReadOnlyList<string> responseNotPreserved)
+    {
+        EnsureXmlEquivalences(id, id, Builtins.DomainRule(structure), Builtins.OracleStructural, preserved, requestNotPreserved, responseNotPreserved);
+        AddCodec(new Codec
+        {
+            Id = id + ".codec",
+            TypeId = id,
+            Origin = CodecOrigin.Builtin,
+            BindingId = Builtins.BindingXmlSerializer,
+            ValidateDomain = new BuiltinImpl { Id = Builtins.CodecImpl(structure, "validate") },
+            Capabilities = new Capabilities
+            {
+                Request = readWire is null ? null : new ValueCapability
+                {
+                    Wire = new WireRef { WireId = readWire, Direction = WireDirection.ServerRead },
+                    Implementation = new BuiltinImpl { Id = Builtins.CodecImpl(xmlCodec, "encode") },
+                    NullBehavior = NullBehavior.Reject,
+                    EquivalenceId = id + ".request",
+                    DomainRuleId = Builtins.DomainRule(structure),
+                },
+                Response = writeWire is null ? null : new ValueCapability
+                {
+                    Wire = new WireRef { WireId = writeWire, Direction = WireDirection.ServerWrite },
+                    Implementation = new BuiltinImpl { Id = Builtins.CodecImpl(xmlCodec, "decode") },
+                    NullBehavior = NullBehavior.Reject,
+                    EquivalenceId = id + ".response",
+                    DomainRuleId = Builtins.DomainRule(structure),
+                },
+                RequestInput = new InputCapability { Implementation = new BuiltinImpl { Id = Builtins.CodecImpl(structure, "parse-input") }, InputKind = inputKind, EditorId = editorId },
+            },
+            Dependencies = dependencies,
+            ProfileIds = [],
+        });
+    }
+
+    /// <summary>G1 equivalences of an XML codec: the server reads what the client writes and the client decodes what the server writes, unobserved by the conformance runner.</summary>
+    private void EnsureXmlEquivalences(string idStem, string typeId, string domainRuleId, string oracle, IReadOnlyList<string> preserved, IReadOnlyList<string> requestNotPreserved, IReadOnlyList<string> responseNotPreserved)
+    {
+        foreach (var (suffix, scope, notPreserved) in new[] { ("request", EquivalenceScope.Request, requestNotPreserved), ("response", EquivalenceScope.Response, responseNotPreserved) })
+        {
+            _equivalences.TryAdd(idStem + "." + suffix, new Equivalence
+            {
+                Id = idStem + "." + suffix,
+                Version = "0.1.0",
+                DomainTypeId = typeId,
+                Scope = scope,
+                Grade = Grade.G1,
+                DomainRuleId = domainRuleId,
+                DotnetOracle = new BuiltinImpl { Id = oracle },
+                TypescriptOracle = new BuiltinImpl { Id = oracle },
+                NormalizationId = Builtins.NormalizeIdentity,
+                Preserved = preserved,
+                NotPreserved = notPreserved,
+            });
+        }
+    }
+
     // ------------------------------------------------------------------ binders / result adapters
 
     /// <summary>Standard binder for a scalar parameter at a location; the server acceptance is the invariant TryParse of the CLR type.</summary>
@@ -935,6 +1303,23 @@ public sealed class ContractBuilder
         return id;
     }
 
+    /// <summary>
+    /// The binder of a value the application's own code parses — a parameter whose type has its own parser (a string the client does
+    /// not check), or a value a declared BindAsync or model binder reads (the scalar's canonical text): the server answers the texts
+    /// that code refuses (server acceptance <c>server-parsed</c>).
+    /// </summary>
+    public string ServerParsedBinder(string scalarName, ParameterLocation location, Cardinality cardinality = Cardinality.Single, NullPolicy nullPolicy = NullPolicy.Reject)
+    {
+        var standard = StandardBinder(scalarName, location, cardinality, nullPolicy);
+        var id = standard.Replace(StdPrefix + "binder.", StdPrefix + "binder.server-parsed.", StringComparison.Ordinal);
+        if (!_binders.ContainsKey(id))
+        {
+            _binders[id] = _binders[standard] with { Id = id, ServerAcceptanceId = Builtins.AcceptServerParsed };
+        }
+
+        return id;
+    }
+
     public string StandardBinder(string scalarName, ParameterLocation location, Cardinality cardinality = Cardinality.Single, NullPolicy nullPolicy = NullPolicy.Reject, EmptyPolicy emptyPolicy = EmptyPolicy.Reject)
     {
         var use = Scalar(scalarName);
@@ -980,6 +1365,7 @@ public sealed class ContractBuilder
             ResultAdapterKind.Text => Builtins.ResultTextUtf8,
             ResultAdapterKind.Binary => Builtins.ResultBinaryBuffered,
             ResultAdapterKind.Sse => Builtins.ResultSse,
+            ResultAdapterKind.Xml => Builtins.ResultXmlSerializer,
             _ => throw new ArgumentException("custom adapters need explicit bindings", nameof(kind)),
         };
         var suffix = kind switch
@@ -991,6 +1377,7 @@ public sealed class ContractBuilder
             ResultAdapterKind.Bodyless => "bodyless",
             ResultAdapterKind.Binary => "binary",
             ResultAdapterKind.Sse => "sse",
+            ResultAdapterKind.Xml => "xml",
             _ => "text",
         };
         var id = StdPrefix + "result." + suffix + (profileIds is { Count: > 0 } ? "." + string.Join("+", profileIds) : "");

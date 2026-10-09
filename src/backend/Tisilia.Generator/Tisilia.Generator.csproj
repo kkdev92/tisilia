@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <PackageId>Kkdev92.Tisilia.Generator</PackageId>
-    <Description>Tisilia's contract validation (schemas and the SV01–SV54 rules), canonical hashing, TypeScript client generation and portable codec generation. It executes no user code.</Description>
+    <Description>Tisilia's contract validation (schemas and the SV01–SV55 rules), canonical hashing, TypeScript client generation and portable codec generation. It executes no user code.</Description>
     <RootNamespace>Tisilia.Generator</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IsPackable>true</IsPackable>

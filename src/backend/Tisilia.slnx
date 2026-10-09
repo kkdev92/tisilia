@@ -2,11 +2,14 @@
   <Folder Name="/src/">
     <Project Path="Tisilia.Abstractions/Tisilia.Abstractions.csproj" />
     <Project Path="Tisilia.AspNetCore/Tisilia.AspNetCore.csproj" />
+    <Project Path="Tisilia.AspNetCore.SourceGenerator/Tisilia.AspNetCore.SourceGenerator.csproj" />
     <Project Path="Tisilia.Explorer/Tisilia.Explorer.csproj" />
     <Project Path="Tisilia.Generator/Tisilia.Generator.csproj" />
     <Project Path="Tisilia.Tool/Tisilia.Tool.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="../../tests/Tisilia.Contract.Tests/Tisilia.Contract.Tests.csproj" />
+    <Project Path="../../tests/Tisilia.CultureOracle/Tisilia.CultureOracle.csproj" />
+    <Project Path="../../tests/Tisilia.InferenceFixture/Tisilia.InferenceFixture.csproj" />
   </Folder>
 </Solution>

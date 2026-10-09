@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.tisilia.invalid/0.1/common.schema.json",
   "title": "Tisilia 0.1 common normative definitions",
-  "$comment": "Reserved non-resolving identifier. Load the bundled schemas locally. Structural validation must be followed by semantic validation (SV01–SV54).",
+  "$comment": "Reserved non-resolving identifier. Load the bundled schemas locally. Structural validation must be followed by semantic validation (SV01–SV55).",
   "$defs": {
     "id": {
       "type": "string",
@@ -597,6 +597,9 @@
             },
             "element": {
               "$ref": "#/$defs/wireRef"
+            },
+            "referenceMetadata": {
+              "const": true
             }
           },
           "required": [
@@ -685,6 +688,9 @@
             },
             "nameMatchingId": {
               "$ref": "#/$defs/id"
+            },
+            "referenceMetadata": {
+              "const": true
             }
           },
           "required": [
@@ -800,6 +806,9 @@
                 "additionalProperties": false
               },
               "minItems": 1
+            },
+            "referenceMetadata": {
+              "const": true
             }
           },
           "required": [
@@ -822,6 +831,76 @@
           "required": [
             "kind",
             "grammarId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "xml-text"
+            },
+            "grammarId": {
+              "$ref": "#/$defs/id"
+            },
+            "names": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/xmlEnumName"
+              },
+              "minItems": 1
+            }
+          },
+          "required": [
+            "kind",
+            "grammarId"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "xml-element"
+            },
+            "attributes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/xmlMember"
+              },
+              "minItems": 0
+            },
+            "elements": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/xmlMember"
+              },
+              "minItems": 0
+            },
+            "text": {
+              "$ref": "#/$defs/xmlMember"
+            }
+          },
+          "required": [
+            "kind",
+            "attributes",
+            "elements"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "xml-items"
+            },
+            "item": {
+              "$ref": "#/$defs/xmlItem"
+            }
+          },
+          "required": [
+            "kind",
+            "item"
           ],
           "additionalProperties": false
         }
@@ -1880,6 +1959,41 @@
             "fields"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "xml"
+            },
+            "mediaType": {
+              "type": "string",
+              "minLength": 1
+            },
+            "root": {
+              "$ref": "#/$defs/xmlElementName"
+            },
+            "use": {
+              "$ref": "#/$defs/typeUse"
+            },
+            "presence": {
+              "$ref": "#/$defs/presence"
+            },
+            "maxDepth": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          },
+          "required": [
+            "kind",
+            "mediaType",
+            "root",
+            "use",
+            "presence",
+            "maxDepth"
+          ],
+          "additionalProperties": false
         }
       ]
     },
@@ -2640,10 +2754,14 @@
           "enum": [
             "value",
             "file",
-            "object"
+            "object",
+            "map"
           ]
         },
         "use": {
+          "$ref": "#/$defs/typeUse"
+        },
+        "keyUse": {
           "$ref": "#/$defs/typeUse"
         },
         "repeated": {
@@ -2659,6 +2777,15 @@
           "type": "boolean"
         },
         "enumDefinedOnly": {
+          "type": "boolean"
+        },
+        "grammarId": {
+          "$ref": "#/$defs/id"
+        },
+        "requestCulture": {
+          "type": "boolean"
+        },
+        "serverParsed": {
           "type": "boolean"
         },
         "serverDefault": {
@@ -2683,6 +2810,105 @@
         "kind",
         "repeated",
         "presence"
+      ],
+      "additionalProperties": false
+    },
+    "xmlName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "xmlNamespace": {
+      "type": "string",
+      "minLength": 1
+    },
+    "xmlElementName": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/xmlName"
+        },
+        "namespace": {
+          "$ref": "#/$defs/xmlNamespace"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "xmlEnumName": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "string",
+          "pattern": "^-?[0-9]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "value",
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "xmlMember": {
+      "type": "object",
+      "properties": {
+        "property": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "$ref": "#/$defs/xmlName"
+        },
+        "namespace": {
+          "$ref": "#/$defs/xmlNamespace"
+        },
+        "wire": {
+          "$ref": "#/$defs/wireRef"
+        },
+        "presence": {
+          "$ref": "#/$defs/presence"
+        },
+        "nillable": {
+          "const": true
+        },
+        "repeated": {
+          "const": true
+        },
+        "default": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "property",
+        "wire",
+        "presence"
+      ],
+      "additionalProperties": false
+    },
+    "xmlItem": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/xmlName"
+        },
+        "namespace": {
+          "$ref": "#/$defs/xmlNamespace"
+        },
+        "wire": {
+          "$ref": "#/$defs/wireRef"
+        },
+        "nillable": {
+          "const": true
+        }
+      },
+      "required": [
+        "name",
+        "wire"
       ],
       "additionalProperties": false
     }

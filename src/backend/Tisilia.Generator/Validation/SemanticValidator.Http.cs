@@ -99,6 +99,7 @@ public sealed partial class SemanticValidator
                     ResultAdapterKind.Text => Builtins.ResultTextUtf8,
                     ResultAdapterKind.Binary => Builtins.ResultBinaryBuffered,
                     ResultAdapterKind.Sse => Builtins.ResultSse,
+                    ResultAdapterKind.Xml => Builtins.ResultXmlSerializer,
                     _ => null,
                 };
                 if (expected is not null && impl.Id != expected)
@@ -269,7 +270,28 @@ public sealed partial class SemanticValidator
                 Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "only one root collection can own the form's index space", [op.Id]);
             }
             var wirePaths = new List<string[]>();
+            // a map writes name[key] for keys the contract does not know: any other field whose wire name starts with name[ may meet one
+            var mapPrefixes = new List<(string Prefix, FormField Map)>();
+            var flatNames = new List<(string Name, FormField Field)>();
             CheckFormFields(form.Fields, 0, "");
+            foreach (var (mapPrefix, map) in mapPrefixes)
+            {
+                if (flatNames.Any(other => !ReferenceEquals(other.Field, map) && other.Name.StartsWith(mapPrefix, StringComparison.OrdinalIgnoreCase)))
+                {
+                    Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "form fields have overlapping wire names", [op.Id]);
+                }
+            }
+            // ASP.NET Core 10.0.0 to 10.0.11 loops forever reading a form with a dictionary and a key with a '[' that no ']' follows
+            // (FormDataReader.ProcessFormKeys, dotnet/aspnetcore#66674). Map keys are always closed; field names are checked here.
+            if (mapPrefixes.Count > 0 && flatNames.Any(f => HasUnclosedBracket(f.Name)))
+            {
+                Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "a form with a dictionary cannot have a field name with a '[' that no ']' follows: ASP.NET Core before 10.0.12 does not answer such a request", [op.Id]);
+            }
+            static bool HasUnclosedBracket(string name)
+            {
+                var open = name.LastIndexOf('[');
+                return open >= 0 && name.IndexOf(']', open) < 0;
+            }
             void CheckFormFields(IReadOnlyList<FormField> fields, int depth, string prefix)
             {
                 if (depth > 16) { Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "form fields exceed maximum nesting", [op.Id]); return; }
@@ -279,6 +301,8 @@ public sealed partial class SemanticValidator
                     var wireName = prefix + (field.WireName ?? field.Name) + (field.Indexed ? "[]" : "");
                     if (field.Kind != "object")
                     {
+                        flatNames.Add((wireName, field));
+                        if (field.Kind == "map") { mapPrefixes.Add((wireName + "[", field)); }
                         // [] is an emitted variable index; distinct literal indexes remain distinct form names.
                         var parts = System.Text.RegularExpressions.Regex.Split(wireName, @"(\[(?:0|[1-9][0-9]*)?\])");
                         if (wirePaths.Any(other => other.Length == parts.Length && parts.Select((part, i) =>
@@ -288,13 +312,20 @@ public sealed partial class SemanticValidator
                         }
                         wirePaths.Add(parts);
                     }
-                    if (field.WireName is not null && (field.WireName != "" || depth != 0 || !field.Indexed))
+                    if (field.WireName is not null && (field.WireName != "" || depth != 0 || !(field.Indexed || field.Kind == "map")))
                     {
-                        Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "an empty wire name is reserved for indexed root collections", [op.Id]);
+                        Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "an empty wire name is reserved for indexed root collections and root maps", [op.Id]);
+                    }
+                    if (field.Kind == "map" ? field.KeyUse is null || field.Repeated || field.Indexed || field.HasServerDefault || field.EnumDefinedOnly || field.RejectBlank || field.RequestCulture
+                        || !CheckTypeUse(field.KeyUse, bp + "/fields/keyUse") || field.KeyUse.SemanticNullable || _index.Codecs[field.KeyUse.CodecId].Origin != CodecOrigin.Builtin
+                        || _index.Types[field.KeyUse.TypeId].Shape is not PrimitiveShape { PrimitiveId: var keyScalar } || !HttpRules.FormMapKeyScalars.Contains(keyScalar)
+                        : field.KeyUse is not null)
+                    {
+                        Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "map form fields require a string, integer or Guid key and one unrepeated value; only map fields have a key", [op.Id]);
                     }
                     if (field.Kind == "object")
                     {
-                        if (field.Use is not null || field.Fields is not { Count: > 0 } || field.Repeated != field.Indexed || field.HasServerDefault || field.EnumDefinedOnly || field.RejectBlank)
+                        if (field.Use is not null || field.Fields is not { Count: > 0 } || field.Repeated != field.Indexed || field.HasServerDefault || field.EnumDefinedOnly || field.RejectBlank || field.GrammarId is not null || field.RequestCulture || field.ServerParsed)
                         {
                             Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "object form fields require child fields and indexed repetition without scalar options", [op.Id]);
                         }
@@ -315,29 +346,60 @@ public sealed partial class SemanticValidator
                     if (field.Kind == "object") { continue; }
                     if (field.Kind == "file")
                     {
-                        if (field.Use is not null || form.MediaType != "multipart/form-data")
+                        if (field.Use is not null || field.GrammarId is not null || field.RequestCulture || field.ServerParsed || form.MediaType != "multipart/form-data")
                         {
                             Error(TisiliaCodes.TextBodyRule, "SV29", bp + "/fields", "file fields require multipart without a scalar use", [op.Id]);
                         }
                     }
-                    else if (field.Kind != "value" || field.Use is null)
+                    else if (field.Kind is not ("value" or "map") || field.Use is null)
                     {
-                        Error(TisiliaCodes.TextBodyRule, "SV29", bp + "/fields", "value fields require a scalar use", [op.Id]);
+                        Error(TisiliaCodes.TextBodyRule, "SV29", bp + "/fields", "value and map fields require a scalar use", [op.Id]);
                     }
                     else if (CheckTypeUse(field.Use, bp + "/fields/use"))
                     {
                         var shape = _index.Types[field.Use.TypeId].Shape;
-                        if (field.Use.SemanticNullable || _index.Codecs[field.Use.CodecId].Origin != CodecOrigin.Builtin || shape is not (PrimitiveShape or EnumShape)
-                            || shape is PrimitiveShape scalar && new[] { "bytes", "json-value", "datetime-local-wire" }.Any(s => scalar.PrimitiveId == Builtins.Scalar(s))
-                            || field.EnumDefinedOnly && shape is not EnumShape)
+                        var codec = _index.Codecs[field.Use.CodecId];
+                        if (codec.Origin == CodecOrigin.Paired)
                         {
-                            Error(TisiliaCodes.TextBodyRule, "SV29", bp + "/fields/use", "form values require non-null builtin HTTP scalars or enums; omit optional fields instead of null", [op.Id]);
+                            // a module type's value is its request codec's canonical text, which the server reads with the type's TryParse,
+                            // as a codec parameter binder writes it; the grammar names that text
+                            if (field.GrammarId is null || field.Use.SemanticNullable || field.EnumDefinedOnly || field.RequestCulture || field.ServerParsed || codec.Capabilities.Request is null
+                                || shape is not BrandShape { Base: var brandBase } || !_index.Types.TryGetValue(brandBase.TypeId, out var baseType) || baseType.Shape is not PrimitiveShape)
+                            {
+                                Error(TisiliaCodes.TextBodyRule, "SV29", bp + "/fields/use", "form values of a module codec require its parameter grammar (grammarId), a request capability and a non-null brand over a builtin scalar", [op.Id]);
+                            }
+                            else
+                            {
+                                RequireBuiltinOrBinding(field.GrammarId, bp + "/fields/grammarId", "form value grammar", [BuiltinKind.Grammar, BuiltinKind.KeyGrammar], [BindingKind.Grammar]);
+                            }
+                        }
+                        else if (field.GrammarId is not null || field.Use.SemanticNullable || codec.Origin != CodecOrigin.Builtin || shape is not (PrimitiveShape or EnumShape)
+                            || shape is PrimitiveShape scalar && new[] { "bytes", "json-value", "datetime-local-wire" }.Any(s => scalar.PrimitiveId == Builtins.Scalar(s))
+                            || field.EnumDefinedOnly && shape is not EnumShape
+                            // the scalars whose request-culture text every culture reads as the same value or refuses
+                            || field.RequestCulture && (shape is not PrimitiveShape cultured || !HttpRules.RequestCultureScalars.Contains(cultured.PrimitiveId))
+                            // a string the server reads with the type's own parser
+                            || field.ServerParsed && (shape is not PrimitiveShape { PrimitiveId: var parsed } || parsed != Builtins.Scalar("string") || field.RequestCulture || field.RejectBlank || field.EnumDefinedOnly))
+                        {
+                            Error(TisiliaCodes.TextBodyRule, "SV29", bp + "/fields/use", "form values require non-null builtin HTTP scalars, enums or module codecs with a parameter grammar; omit optional fields instead of null", [op.Id]);
                         }
                     }
                 }
             }
             return;
         }
+        if (op.RequestBody is XmlRequestBody xml)
+        {
+            if (!HttpRules.IsXmlMediaType(xml.MediaType))
+            {
+                Error(TisiliaCodes.MediaTypeInvalid, "SV29", JsonPointer.Append(bp, "mediaType"), $"operation '{op.Id}': XML request media type '{xml.MediaType}' must be application/xml, text/xml or a concrete application/…+xml type with UTF-8 or no charset", [op.Id]);
+            }
+
+            CheckXmlRoot(xml.Root, JsonPointer.Append(bp, "root"), op.Id);
+            CheckXmlBodyUse(xml.Use, JsonPointer.Append(bp, "use"), op.Id, request: true);
+            return;
+        }
+
         var body = (JsonRequestBody)op.RequestBody;
         var media = HttpRules.ParseMediaType(body.MediaType);
         if (media is null || !HttpRules.JsonMediaEssences.Contains(media.Essence) || (media.Charset is not null && media.Charset != "utf-8"))
@@ -521,6 +583,31 @@ public sealed partial class SemanticValidator
                     {
                         Error(TisiliaCodes.TextBodyRule, "SV29", rp + "/hydration", "binary must be server-only for automatic hydration", [op.Id, r.Id]);
                     }
+                    break;
+                }
+                case XmlResponseBody xml:
+                {
+                    var media = HttpRules.ParseMediaType(xml.MediaType);
+                    caseKey = r.Status + "|" + (media?.Essence ?? xml.MediaType);
+                    bodyStatuses.Add(r.Status);
+                    if (!HttpRules.IsXmlMediaType(xml.MediaType))
+                    {
+                        Error(TisiliaCodes.MediaTypeInvalid, "SV29", rp + "/body/mediaType", $"operation '{op.Id}': XML media type '{xml.MediaType}' must be application/xml, text/xml or a concrete application/…+xml type with UTF-8 or no charset", [op.Id, r.Id]);
+                    }
+                    if (HttpRules.IsBodylessStatus(r.Status) || op.Method == HttpMethodKind.HEAD)
+                    {
+                        Error(TisiliaCodes.BodylessStatusMismatch, "SV27", rp + "/body", "this status / method must be bodyless", [op.Id, r.Id]);
+                    }
+                    if (adapter is not null && (adapter.Kind != ResultAdapterKind.Xml || adapter.ProfileIds.Count != 0 || adapter.BehaviorIds.Count != 0))
+                    {
+                        Error(TisiliaCodes.PipelineOrResultClosure, "SV34", rp + "/resultAdapterId", "an XML case requires the XmlSerializer result adapter without JSON dependencies", [op.Id, r.Id]);
+                    }
+                    if (r.Hydration != Hydration.ServerOnly)
+                    {
+                        Error(TisiliaCodes.TextBodyRule, "SV29", rp + "/hydration", "XML responses are server-only for automatic hydration", [op.Id, r.Id]);
+                    }
+                    CheckXmlRoot(xml.Root, rp + "/body/root", op.Id);
+                    CheckXmlBodyUse(xml.Use, rp + "/body/use", op.Id, request: false);
                     break;
                 }
                 default:
