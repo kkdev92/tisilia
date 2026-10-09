@@ -312,7 +312,7 @@ function builtinName(id: string): string | undefined {
  */
 export function createContractRegistry(document: ContractDocument, options: ContractRegistryOptions = {}): ContractRegistry {
   if (document.format !== "tisilia.contract" || document.version !== "0.1") {
-    throw new Error("expected tisilia.contract 0.1: re-export with Tisilia 0.1.0-alpha; other contract versions are not supported");
+    throw new Error("expected tisilia.contract 0.1: re-export with matching Tisilia tooling; other contract versions are not supported");
   }
   const types = new Map(document.types.map((t) => [t.id, t] as const));
   const wires = new Map(document.wires.map((w) => [w.id, w] as const));

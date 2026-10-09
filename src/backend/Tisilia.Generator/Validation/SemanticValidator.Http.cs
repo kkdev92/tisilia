@@ -135,7 +135,7 @@ public sealed partial class SemanticValidator
         var rp = JsonPointer.Append(opPath, "route");
         if (op.RoutePlan is null)
         {
-            Error(TisiliaCodes.ParameterRouteMismatch, "SV30", rp, "contract 0.1 requires a resolved routePlan; re-export with Tisilia 0.1.0-alpha", [op.Id]);
+            Error(TisiliaCodes.ParameterRouteMismatch, "SV30", rp, "contract 0.1 requires a resolved routePlan; re-export with matching Tisilia tooling", [op.Id]);
         }
         else
         {

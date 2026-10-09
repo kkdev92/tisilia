@@ -76,7 +76,7 @@ export async function loadExplorer(options: ExplorerLoadOptions): Promise<Explor
   // control documents hold only safe integers (SV01); JSON literals inside are ASTs, so the native parser is exact here
   const document = JSON.parse(await response.text()) as ContractDocument;
   if (document.format !== "tisilia.contract" || document.version !== "0.1") {
-    throw new Error("expected tisilia.contract 0.1: re-export with Tisilia 0.1.0-alpha; other contract versions are not supported");
+    throw new Error("expected tisilia.contract 0.1: re-export with matching Tisilia tooling; other contract versions are not supported");
   }
   const modules = new Map<string, Readonly<Record<string, unknown>>>();
   const moduleErrors: string[] = [];

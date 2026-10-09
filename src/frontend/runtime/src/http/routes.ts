@@ -17,7 +17,7 @@ export interface RoutePlan { readonly segments: readonly { readonly parts: reado
 function error(message: string, id = ""): never { throw new CodecError("grammar", id, message); }
 
 export function validateRoutePlan(plan: RoutePlan, route: string, parameters: readonly { readonly id?: string; readonly name: string; readonly location: string; readonly presence: string }[]): void {
-  if (!plan || !Array.isArray(plan.segments)) { error("contract 0.1 requires a resolved routePlan; re-export with Tisilia 0.1.0-alpha"); }
+  if (!plan || !Array.isArray(plan.segments)) { error("contract 0.1 requires a resolved routePlan; re-export with matching Tisilia tooling"); }
   const used = new Set<string>();
   for (const [i, segment] of plan.segments.entries()) {
     if (!Array.isArray(segment.parts) || segment.parts.length === 0) { error("empty or invalid route segment"); }

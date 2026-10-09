@@ -1,6 +1,6 @@
 {
   "name": "@kkdev92/tisilia-nuxt",
-  "version": "0.1.0-alpha",
+  "version": "0.2.0-alpha",
   "description": "The Nuxt 4 module for Tisilia clients: request-scoped clients, allowlisted header forwarding during SSR, and hydration envelopes that keep exact values from the server render to the browser.",
   "license": "MIT",
   "author": {
@@ -50,7 +50,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@kkdev92/tisilia-runtime": "0.1.0-alpha",
+    "@kkdev92/tisilia-runtime": "0.2.0-alpha",
     "@nuxt/kit": "4.5.2",
     "defu": "6.1.7"
   },

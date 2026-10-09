@@ -1,7 +1,7 @@
 {
   "name": "tisilia-workspace",
   "private": true,
-  "version": "0.1.0-alpha",
+  "version": "0.2.0-alpha",
   "description": "Tisilia workspace: runtime, Nuxt integration and Explorer packages (TypeScript 6 / Node 24).",
   "type": "module",
   "workspaces": [

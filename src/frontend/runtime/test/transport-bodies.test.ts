@@ -2,7 +2,7 @@ import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { send } from "../src/http/transport.js";
 
-// Tisilia 0.1.0-alpha requires a Web stream or a native null body. Unbounded arrayBuffer fallback is intentionally unsupported.
+// Tisilia requires a Web stream or a native null body. Unbounded arrayBuffer fallback is intentionally unsupported.
 function responseLike(body: unknown, text: string, status = 200): Response {
   const bytes = new TextEncoder().encode(text);
   return {
