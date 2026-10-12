@@ -13,6 +13,17 @@ updates:
         patterns:
           - "xunit*"
           - "Microsoft.NET.Test.Sdk"
+    ignore:
+      # The source generator compiles against this package, and a compiler does not load a generator compiled against
+      # a newer version of itself. The version is the oldest compiler a .NET 10 SDK runs in (see Directory.Packages.props),
+      # so a newer one passes CI, which builds with a current SDK, and breaks the generator for anyone building with an
+      # older SDK or Visual Studio. Only version updates are ignored; security updates still open. Move the version by
+      # hand when that oldest compiler changes.
+      - dependency-name: "Microsoft.CodeAnalysis.CSharp"
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+          - version-update:semver-patch
     # The packages under src/backend take no third-party runtime dependency. A bot pull request that adds a package
     # reference to one of them is wrong by construction and must be closed rather than merged.
 
