@@ -47,8 +47,8 @@ jobs:
           results_format: sarif
           publish_results: true
 
-      # Pinned to the commit v4.38.2 points at, not to the tag object: the annotated tag's own SHA is a different object,
-      # and a pin is only a pin when it names a commit.
+      # Pinned to the commit the release tag points at, not to the tag object: the annotated tag's own SHA is a different
+      # object, and a pin is only a pin when it names a commit.
       - name: Upload to code scanning
         uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
