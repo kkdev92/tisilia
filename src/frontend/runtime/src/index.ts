@@ -16,8 +16,8 @@ export { createCodecContext, requireRequest, requireResponse, withContext } from
 export type { Codec, CodecContext, CodecContextOptions, RequestCodec, ResponseCodec, RequestKeyCodec, ResponseKeyCodec, RequestInputCodec, DomainValidator } from "./codec/abi.js";
 export { scalarCodec, strictNumbers, webNumbers } from "./codec/scalars.js";
 export type { ScalarName, ScalarOptions, NumberProfile } from "./codec/scalars.js";
-export { objectCodec, arrayCodec, mapCodec, nullableCodec, enumCodec, taggedUnionCodec, tokenUnionCodec, brandCodec } from "./codec/structural.js";
-export type { CodecRef, ObjectCodecDescriptor, PropertyDescriptor, ArrayCodecDescriptor, MapCodecDescriptor, EnumCodecDescriptor, EnumMember, TaggedUnionDescriptor, TaggedUnionVariant, TokenUnionBranch, Presence, NameMatching, DuplicatePolicy, AdditionalPolicy } from "./codec/structural.js";
+export { objectCodec, arrayCodec, mapCodec, nullableCodec, enumCodec, enumNameCodec, taggedUnionCodec, tokenUnionCodec, brandCodec } from "./codec/structural.js";
+export type { CodecRef, ObjectCodecDescriptor, PropertyDescriptor, ArrayCodecDescriptor, MapCodecDescriptor, EnumCodecDescriptor, EnumNameCodecDescriptor, EnumMember, TaggedUnionDescriptor, TaggedUnionVariant, TokenUnionBranch, Presence, NameMatching, DuplicatePolicy, AdditionalPolicy } from "./codec/structural.js";
 export { xmlTextCodec, xmlEnumCodec, xmlElementCodec, xmlItemsCodec, isXmlCodec, isNil, readXmlBody, writeXmlBody } from "./codec/xml.js";
 export type { XmlCodec, XmlContent, XmlTextCodecDescriptor, XmlEnumCodecDescriptor, XmlElementCodecDescriptor, XmlItemsCodecDescriptor, XmlMemberDescriptor, XmlRoot } from "./codec/xml.js";
 export { parseXml, parseXmlBytes, XmlParseError } from "./xml/parser.js";
@@ -78,6 +78,7 @@ export { suggestedFileName, safeFileName } from "./http/filename.js";
 export { standardBinder, codecBinder, enumBinder, formatScalarForBinding, formatScalarForRequestCulture } from "./http/binders.js";
 export type { Binder, ParameterLocation, NullPolicy, StandardBinderOptions, EnumBinderOptions } from "./http/binders.js";
 export { send } from "./http/transport.js";
+export { AdapterFailure } from "./http/adapterFailure.js";
 export type { TransportRequest, TransportResponse, TransportOutcome, TransportOptions } from "./http/transport.js";
 export { execute, executeWithRaw, download, subscribe, prepareRequest, fetchResponse, decodeResponse } from "./http/client.js";
 export { supportsRequestStreams } from "./http/transport.js";

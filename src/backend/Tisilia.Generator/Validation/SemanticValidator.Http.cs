@@ -653,6 +653,14 @@ public sealed partial class SemanticValidator
             {
                 Error(TisiliaCodes.UnsafeRouteOrHeader, "SV32", hp, $"operation '{op.Id}': hop-by-hop header '{h}' is never forwarded", [op.Id]);
             }
+            else if (HttpRules.IsForbiddenRequestHeader(h))
+            {
+                Error(TisiliaCodes.UnsafeRouteOrHeader, "SV32", hp, $"operation '{op.Id}': allowlisted header '{h}' is one a browser cannot set or a credential, which only the credential provider supplies", [op.Id]);
+            }
+            else if (op.Parameters.Any(p => p.Location == ParameterLocation.Header && string.Equals(p.Name, h, StringComparison.OrdinalIgnoreCase)))
+            {
+                Error(TisiliaCodes.UnsafeRouteOrHeader, "SV32", hp, $"operation '{op.Id}': allowlisted header '{h}' is also a header parameter of the operation, which the client writes from its arguments", [op.Id]);
+            }
         }
 
         if (op.Security.Redaction.Default != "mask")

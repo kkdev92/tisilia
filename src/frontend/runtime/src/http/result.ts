@@ -33,9 +33,11 @@ export interface CodecFailure {
 export interface TransportFailure {
   readonly kind: "transport-failure";
   readonly operationId: string;
-  readonly reason: "network" | "redirect" | "read" | "request-encoding" | "url" | "cors";
+  readonly reason: "network" | "redirect" | "read" | "request-encoding" | "url" | "cors" | "adapter";
   readonly message: string;
   readonly metadata?: ResponseMetadata;
+  /** With reason "adapter": the value the fetch adapter wrapped in an `AdapterFailure`, as it was thrown. */
+  readonly cause?: unknown;
 }
 
 export interface Cancelled {

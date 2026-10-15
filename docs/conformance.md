@@ -54,7 +54,8 @@ which must equal the contract file's.
 Both runners project public values with the same rules (`DomainAst` in C#, `DomainBridge` in TypeScript):
 integers and decimals are number lexemes (decimal scale preserved, no exponent, no sign on zero), binary floats use the
 .NET shortest round-trip text (`NaN`/`Infinity`/`-Infinity` as strings), guids are lowercase `D`, bytes base64,
-dates/times/durations the System.Text.Json writer text, enums their integer value, objects carry members in model
+dates/times/durations the System.Text.Json writer text, enums their integer value (an enum held by name the name the server
+writes for it), objects carry members in model
 order (absent members omitted, captured extension data under `extensions`), maps use the key codec's canonical text,
 unions carry the discriminator first. Values are rebuilt from the AST by trusted factories — the registration's
 `Construct` for paired types, and for everything else a copy of the profile options that reads canonical number/named

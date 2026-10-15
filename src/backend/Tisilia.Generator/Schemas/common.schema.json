@@ -348,6 +348,9 @@
                 "additionalProperties": false
               },
               "minItems": 1
+            },
+            "nameDomain": {
+              "const": true
             }
           },
           "required": [
@@ -1332,6 +1335,29 @@
             "$ref": "#/$defs/id"
           },
           "minItems": 0
+        },
+        "presenceWrapper": {
+          "type": "object",
+          "properties": {
+            "clrType": {
+              "type": "string",
+              "minLength": 1
+            },
+            "presentMember": {
+              "type": "string",
+              "minLength": 1
+            },
+            "valueMember": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "clrType",
+            "presentMember",
+            "valueMember"
+          ],
+          "additionalProperties": false
         }
       },
       "required": [
