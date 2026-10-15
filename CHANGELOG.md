@@ -8,6 +8,14 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+## [0.3.0-alpha] - 2026-10-15
+
+One callback now binds the closed types a converter factory serializes, an enum can be held by the names the server
+writes, a presence wrapper tells a member that a request leaves out from one it sets to null, and values that middleware
+or an endpoint filter reads can be declared as parameters of the operation. `tisilia doctor` lists each converter without
+a binding once, and a fetch adapter can hand its own failure back to the caller. The format versions are unchanged, but
+contracts exported by this version can use variants that 0.2.0-alpha tools reject (see Compatibility).
+
 ### Added
 
 - **Paired converter factories.** `TisiliaOptions.Codecs.AddPairedFactory<TFactory>(type => registration)` binds the closed
@@ -65,6 +73,10 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 - The fix SV30 gives for a route, query, header or form value that the server reads with its type's own parser now names
   the other way to a value the client checks: a paired registration of the type whose `ParameterGrammarId` names the
   grammar of the text that parser reads.
+- `@kkdev92/tisilia-nuxt` depends on `@nuxt/kit` 4.6.1 instead of 4.5.2.
+- `@kkdev92/tisilia-explorer` depends on `vue` 3.5.44 instead of 3.5.43, `vite` 8.3.4 instead of 8.3.2 and
+  `@vitejs/plugin-vue` 6.0.10 instead of 6.0.9. The Explorer page that `Kkdev92.Tisilia.Explorer` serves bundles Vue
+  3.5.44.
 
 ### Fixed
 
@@ -88,6 +100,15 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 - A response that a fetch adapter returned just as a call's deadline passed was dropped without its body being cancelled, so
   an adapter that does not end the response on the abort signal kept it open. The runtime cancels that body, as it already
   did for a response that arrives later.
+
+### Compatibility
+
+- Enum shapes may carry `nameDomain`, and member scopes `presenceWrapper`; 0.2.0-alpha tools reject both. The format
+  versions stay 0.1.
+- A member with an ignore condition whose `ShouldSerialize` predicate a type info modifier set, which earlier versions
+  exported as the ignore condition describes it, now fails export (SV19) until a should-serialize behavior describes the
+  predicate.
+- Use matching **0.3.0-alpha** NuGet and npm packages when exporting contracts and generating clients.
 
 ## [0.2.0-alpha] - 2026-10-09
 
@@ -310,6 +331,7 @@ The first preview.
 - Custom fetch adapters must expose a Web `ReadableStream` or a native `null` body.
 - The .NET packages and `@kkdev92/tisilia-runtime` have no third-party runtime dependencies.
 
-[Unreleased]: https://github.com/kkdev92/tisilia/compare/v0.2.0-alpha...HEAD
+[Unreleased]: https://github.com/kkdev92/tisilia/compare/v0.3.0-alpha...HEAD
+[0.3.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.3.0-alpha
 [0.2.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.2.0-alpha
 [0.1.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.1.0-alpha
