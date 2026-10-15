@@ -11,11 +11,11 @@ every envelope against the contract before it hydrates).
 
 | rule | what it checks | enforced in |
 |---|---|---|
-| SV01 | format/version exact, control numbers are safe integers, unknown fields rejected | `TisiliaSchemas`, `ContractLoader`, `Jcs`, `SemanticValidator` |
+| SV01 | format/version exact, control numbers are safe integers, unknown fields rejected | `TisiliaSchemas`, `ContractLoader`, `Jcs`, `SemanticValidator`, `PairedRegistrationRules` (a paired registration's ids, export names, TypeScript name and version, reported with the registration's field) |
 | SV02 | ids unique across registries, module dependency/file names too; one documentation entry per target | `SemanticValidator`, `ContractIndex`, `CodecBindingCollection` (duplicate model id) |
 | SV03 | id references resolve by kind, WireRef direction matches; documentation entries target ids of the contract | `SemanticValidator*`, `ClrTypeMapper` (DateTime application converters without bindings, unknown converters, an application converter on a builtin scalar type, .NET framework types without a converter — BigInteger, IPAddress, Rune, IPNetwork, Index, Range, Complex, TimeZoneInfo and CultureInfo point at the converters Tisilia ships —, `JsonValue` under System.Text.Json's own converter (an object or array is a 500) points at `JsonValueJsonConverter`, `Nullable<T>` dictionary keys, `[JsonExtensionData] JsonObject` in responses while System.Text.Json writes it as invalid JSON — dotnet/runtime#97225, observed at startup), `PortableProjectLoader` |
 | SV04 | `TypeUse.codecId` belongs to `TypeUse.typeId` | `SemanticValidator.Types/.Profiles` |
-| SV05 | request positions need request capability, responses response, map keys key capability | `SemanticValidator.Types/.Profiles`, `ClrTypeMapper` (unbound converters; a type-level registration naming a converter System.Text.Json does not use there — BigInteger without `AddTisiliaAdditionalConverters()` — with the fix; map keys of module types only through a registration's key capability — none for `Uri`, whose `Uri.Equals` merges keys; types System.Text.Json cannot read — read-only/abstract collections, interfaces, abstract classes, types without a usable constructor — have no request capability) |
+| SV05 | request positions need request capability, responses response, map keys key capability | `SemanticValidator.Types/.Profiles`, `ClrTypeMapper` (unbound converters, a factory's product named by its factory; the closed types of a paired factory (`AddPairedFactory`), with the reason when it gives none; a type-level registration naming a converter System.Text.Json does not use there — BigInteger without `AddTisiliaAdditionalConverters()` — with the fix; map keys of module types only through a registration's key capability — none for `Uri`, whose `Uri.Equals` merges keys; types System.Text.Json cannot read — read-only/abstract collections, interfaces, abstract classes, types without a usable constructor — have no request capability) |
 | SV06 | semanticNullable / wire null branch / nullBehavior consistency | `SemanticValidator.Types/.Profiles` |
 | SV07 | child TypeUses of array/map/union/brand/extension checked recursively | `SemanticValidator.Profiles` (usage graph) |
 | SV08 | map keys non-null, comparer resolves, collision policy reject | `SemanticValidator.Types/.Profiles` |
@@ -34,7 +34,7 @@ every envelope against the contract before it hydrates).
 | SV21 | equivalence domain/direction matches capability, round trip needs a bridge | `SemanticValidator.Types`, `PortableProjectLoader` |
 | SV22 | projection source/target match the usage, preserved/notPreserved consistent | `SemanticValidator.Types`, portable generators |
 | SV23 | module exports resolve with role/target, builtin ids whitelisted | `SemanticValidator*`, `TsGenerator` |
-| SV24 | one claim per binding scope, settings/context never hidden | `SemanticValidator*`, `CodecBindingCollection`, `BehaviorBindingCollection`, `ContractBuilder.FindEquivalentBinding` |
+| SV24 | one claim per binding scope, settings/context never hidden | `SemanticValidator*`, `CodecBindingCollection`, `BehaviorBindingCollection`, `ContractBuilder.FindEquivalentBinding`, `ClrTypeMapper.RegisterPaired` (a factory's closed converters are `factory` bindings with the closed type in their settings digest, one scope each) |
 | SV25 | comparer meaning explicit | `SemanticValidator.Types` |
 | SV26 | GET/HEAD have no request body | `SemanticValidator.Http` |
 | SV27 | HEAD / 204 / 205 / 304 bodyless, 1xx excluded | `SemanticValidator.Http` |
