@@ -52,14 +52,14 @@ _Built for teams that need consistent value semantics across .NET and TypeScript
 
 - **A Contract From the Application Itself**: `tisilia export` builds and starts the application, records the endpoints it registered for Tisilia and the serializer options each one uses, and stops it again
 - **Exact Values**: `long`, `ulong`, `decimal`, `Guid`, `DateOnly`, `TimeOnly`, `DateTime`, `DateTimeOffset` and `TimeSpan` arrive as exact TypeScript values (bigint, scaled decimal, 100 ns ticks), never through a JavaScript `number` that cannot hold them
-- **Types That Say What the Server Does**: nullability as the serializer writes it, enums by name or number, dictionaries with their key codecs, polymorphic types as tagged unions with literal discriminators, and one result type per declared response case
+- **Types That Say What the Server Does**: nullability as the serializer writes it, enums by name or number (a union of the names where the server reads and writes names alone), members a request can leave out, set to null or set (`Optional<T>`), dictionaries with their key codecs, polymorphic types as tagged unions with literal discriminators, and one result type per declared response case
 - **Responses Read From the Handlers**: a handler that returns `Results.Ok(value)` or an `IActionResult` declares no response types; a source generator reads its return paths at build time, and export describes them as the typed declaration would
 - **Fail Closed**: a converter without a binding, or a response whose wire format cannot be determined exactly — anything the contract cannot describe exactly is a diagnostic with a fix, checked by 55 semantic rules (SV01–SV55)
-- **Calls That Return, Not Throw**: a call gives a declared response case or a named failure — `unexpected-response`, `codec-failure`, `transport-failure`, `timeout`, `limit-failure`, `contract-mismatch` — and never follows a redirect
+- **Calls That Return, Not Throw**: a call gives a declared response case or a named failure — `unexpected-response`, `codec-failure`, `transport-failure`, `timeout`, `limit-failure`, `contract-mismatch` — and never follows a redirect; a fetch adapter of your own that throws an `AdapterFailure` gets its cause back in the `transport-failure`
 - **File Transfers**: raw uploads to `Stream` / `PipeReader` endpoints — finite bytes everywhere, and streamed from Node — buffered downloads, and incremental downloads to an asynchronous sink, with byte limits and cancellation
 - **Forms and Events**: URL-encoded and multipart forms with nested models, constructor parameters, enums, exact scalar values, indexed collections and file parts; typed SSE subscriptions with incremental decoding, backpressure and cancellation, reconnecting with `Last-Event-ID` where the server declares that it resumes
 - **Endpoint JSON Options**: `WithTisiliaJsonOptions<T>` exports and enforces the settings used by `TypedResults.Json` and MVC `JsonResult`, with separate request, response and error profiles
-- **Custom Converters Included**: a hand-written `JsonConverter` is paired with a TypeScript codec module, or both sides are generated from a portable codec definition; the contract pins each module by its digest
+- **Custom Converters Included**: a hand-written `JsonConverter` is paired with a TypeScript codec module — a `JsonConverterFactory` with one callback for every closed type it creates — or both sides are generated from a portable codec definition; the contract pins each module by its digest
 - **Conformance You Can Show**: `tisilia conformance` runs a suite derived from the contract through the server's real converters and the generated client, and records the result as evidence that marks operations qualified
 - **Explorer**: a page the application serves that runs every call through the generated client's own codecs — request and response side by side, an Authorize dialog, the API's own documentation, Japanese and English
 - **Nuxt**: request-scoped clients, allowlisted header forwarding during SSR, and hydration envelopes that carry exact values from the server render to the browser
@@ -201,12 +201,23 @@ as part of development and CI. It generates clients for ASP.NET Core APIs and re
   other keys, MVC dictionaries and file lists at the endpoint root other than `IFormFileCollection` are diagnosed.
 - **Values the server parses itself.** A route, query, header or form value of a type that the server reads with its
   own `TryParse`, `IParsable<T>` or (MVC) `TypeConverter`, and that no codec describes, is sent as text: the contract
-  does not say which texts the server accepts, the client does not check them, and export warns (SV30).
+  does not say which texts the server accepts, the client does not check them, and export warns (SV30). A paired
+  registration of the type whose `ParameterGrammarId` names the grammar of that text makes it a value the client checks.
 - **Custom binding.** A parameter bound by its type's `BindAsync` (`IBindableFromHttpContext<T>`) or by an MVC
   `[ModelBinder]` reads the request in its own code, so it is exported as `TisiliaOptions.CustomBinding` declares: each
   value it reads becomes a parameter that code parses. An undeclared one is diagnosed. `tisilia doctor
   --allow-execute-binders` calls the declared code with a request that records the query values, headers, cookies, body
-  and form it reads, and reports reads outside the declaration; route values are not recorded.
+  and form it reads, and reports reads outside the declaration; route values are not recorded. Export does not see what a
+  middleware or an endpoint filter reads outside the endpoint's parameters: `WithTisiliaRequestReads` declares those
+  values, and `WithTisiliaRequestHeaders` the headers a caller passes through without a type.
+- **Enums.** An enum is a number in TypeScript, because `JsonStringEnumConverter` also reads integers and writes a value
+  no member defines as an integer. Only an enum the server reads and writes by name alone (`allowIntegerValues: false`)
+  can be held by its names (`TisiliaOptions.Enums`); one whose converter reads integers and a `[Flags]` enum keep their
+  integers, with a warning (SV49).
+- **Members a request leaves out.** A presence wrapper (`TisiliaOptions.PresenceWrappers`) makes an object member
+  optional in both directions; inside a collection, a dictionary or a body it is a converter like any other. A response
+  member whose absent state System.Text.Json would write, and a request member the server holds as present when it is
+  left out, are refused (SV19).
 - **Bodies.** A request carries JSON, XML, a form, or a minimal API `Stream` / `PipeReader` body with one declared media
   type; a response carries JSON, XML, text, finite binary content or server-sent events. XML bodies are the ones MVC's
   XmlSerializer formatters read and write, described with XmlSerializer's own mapping. A type with a form the client
