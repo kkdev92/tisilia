@@ -16,8 +16,8 @@ export { createCodecContext, requireRequest, requireResponse, withContext } from
 export type { Codec, CodecContext, CodecContextOptions, RequestCodec, ResponseCodec, RequestKeyCodec, ResponseKeyCodec, RequestInputCodec, DomainValidator } from "./codec/abi.js";
 export { scalarCodec, strictNumbers, webNumbers } from "./codec/scalars.js";
 export type { ScalarName, ScalarOptions, NumberProfile } from "./codec/scalars.js";
-export { objectCodec, arrayCodec, mapCodec, nullableCodec, enumCodec, taggedUnionCodec, tokenUnionCodec, brandCodec } from "./codec/structural.js";
-export type { CodecRef, ObjectCodecDescriptor, PropertyDescriptor, ArrayCodecDescriptor, MapCodecDescriptor, EnumCodecDescriptor, EnumMember, TaggedUnionDescriptor, TaggedUnionVariant, TokenUnionBranch, Presence, NameMatching, DuplicatePolicy, AdditionalPolicy } from "./codec/structural.js";
+export { objectCodec, arrayCodec, mapCodec, nullableCodec, enumCodec, enumNameCodec, taggedUnionCodec, tokenUnionCodec, brandCodec } from "./codec/structural.js";
+export type { CodecRef, ObjectCodecDescriptor, PropertyDescriptor, ArrayCodecDescriptor, MapCodecDescriptor, EnumCodecDescriptor, EnumNameCodecDescriptor, EnumMember, TaggedUnionDescriptor, TaggedUnionVariant, TokenUnionBranch, Presence, NameMatching, DuplicatePolicy, AdditionalPolicy } from "./codec/structural.js";
 export { xmlTextCodec, xmlEnumCodec, xmlElementCodec, xmlItemsCodec, isXmlCodec, isNil, readXmlBody, writeXmlBody } from "./codec/xml.js";
 export type { XmlCodec, XmlContent, XmlTextCodecDescriptor, XmlEnumCodecDescriptor, XmlElementCodecDescriptor, XmlItemsCodecDescriptor, XmlMemberDescriptor, XmlRoot } from "./codec/xml.js";
 export { parseXml, parseXmlBytes, XmlParseError } from "./xml/parser.js";

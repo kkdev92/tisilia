@@ -703,8 +703,9 @@ public sealed class SuiteBuilder
             if (prop.Presence == Presence.Optional)
             {
                 // request: the server reads a missing optional member as its CLR default; only nullable members have a
-                // representable expectation (null), so only those are omitted
-                omit = mode == GenMode.Request && prop.Use.SemanticNullable && (index == 1 || (index > 1 && _rng.Chance(30)));
+                // representable expectation (null), so only those are omitted — and, in both directions, members a presence wrapper
+                // holds, whose absent state the server keeps and leaves out
+                omit = (KeepsAbsence(model, prop.Name, profileId) || (mode == GenMode.Request && prop.Use.SemanticNullable)) && (index == 1 || (index > 1 && _rng.Chance(30)));
                 // recursion terminates through optional members
                 if (depth > 4 && prop.Use.SemanticNullable)
                 {
@@ -837,6 +838,13 @@ public sealed class SuiteBuilder
     private JsonValue EnumValue(EnumShape e, int index)
     {
         var members = e.Members;
+        if (e.NameDomain == true)
+        {
+            // the client holds the names the server writes
+            var named = members[index < members.Count ? index : _rng.Next(members.Count)];
+            return DomainAst.String(named.SerializedName ?? named.Name);
+        }
+
         if (e.Flags && index >= members.Count && members.Count > 1)
         {
             var a = BigInteger.Parse(members[_rng.Next(members.Count)].Value, CultureInfo.InvariantCulture);
@@ -1272,12 +1280,15 @@ public sealed class SuiteBuilder
                         continue;
                     }
 
-                    if (entry.Value is JsonNullValue && ignore is IgnoreCondition.WhenWritingNull or IgnoreCondition.WhenWritingDefault)
+                    // a presence wrapper is a struct whose default is its absent state, which is a member left out already: what it holds
+                    // when present is never null or the default to System.Text.Json
+                    var wrapped = KeepsAbsence(model, prop.Name, profileId);
+                    if (!wrapped && entry.Value is JsonNullValue && ignore is IgnoreCondition.WhenWritingNull or IgnoreCondition.WhenWritingDefault)
                     {
                         continue;
                     }
 
-                    if (ignore == IgnoreCondition.WhenWritingDefault && IsDefaultLike(entry.Value))
+                    if (!wrapped && ignore == IgnoreCondition.WhenWritingDefault && IsDefaultLike(entry.Value))
                     {
                         continue;
                     }
@@ -1344,7 +1355,7 @@ public sealed class SuiteBuilder
                     var present = DomainAst.Entry(obj, prop.Name);
                     if (present is null)
                     {
-                        if (prop.Use.SemanticNullable && !KeepsConstructedValue(model, prop.Name, profileId))
+                        if (prop.Use.SemanticNullable && !KeepsConstructedValue(model, prop.Name, profileId) && !KeepsAbsence(model, prop.Name, profileId))
                         {
                             entries.Add((prop.Name, DomainAst.Null));
                         }
@@ -1404,6 +1415,14 @@ public sealed class SuiteBuilder
         return profile.Scopes.Any(s => (s.Kind == ScopeKind.Member && s.ClrPath == clrPath && (s.EffectiveObjectCreationHandling == ObjectCreationHandling.Populate || Constructs(s)))
             || (s.Kind == ScopeKind.Type && s.ClrPath == model.ClrIdentity && Constructs(s)));
     }
+
+    /// <summary>
+    /// A member a presence wrapper holds (its member scope records one): the server keeps a member left out as the wrapper's absent
+    /// state, and a response leaves that state out.
+    /// </summary>
+    private bool KeepsAbsence(Model model, string propertyName, string profileId)
+        => _index.Profiles.TryGetValue(profileId, out var profile)
+            && profile.Scopes.Any(s => s.Kind == ScopeKind.Member && s.ClrPath == model.ClrIdentity + "." + propertyName && s.PresenceWrapper is not null);
 
     /// <summary>default(T) as System.Text.Json's WhenWritingDefault sees it, on the projected AST.</summary>
     public static bool IsDefaultLike(JsonValue value) => value switch
@@ -1711,6 +1730,7 @@ public sealed class SuiteBuilder
                 "json-value" => (JsonToken?)null,
                 _ => JsonToken.Number,
             },
+            EnumShape { NameDomain: true } => JsonToken.String,
             EnumShape => JsonToken.Number,
             ObjectShape or MapShape or UnionShape => JsonToken.Object,
             ArrayShape => JsonToken.Array,
@@ -1733,6 +1753,18 @@ public sealed class SuiteBuilder
         if (!use.SemanticNullable)
         {
             yield return (DomainAst.Null, "null");
+        }
+
+        if (model.Shape is EnumShape { NameDomain: true } names)
+        {
+            // a string that names no member
+            var unknown = "not-a-member";
+            while (names.Members.Any(m => (m.SerializedName ?? m.Name) == unknown))
+            {
+                unknown += "_";
+            }
+
+            yield return (DomainAst.String(unknown), "unknown-name");
         }
 
         if (model.Shape is PrimitiveShape ps)

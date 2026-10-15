@@ -84,7 +84,7 @@ decoding; a mismatch yields `{ kind: "hydration-mismatch" }` and Nuxt's normal c
 During SSR only the headers named in `forwardHeaders` are read from the incoming request. Hop-by-hop and
 connection headers are never copied even when listed; credentials (`authorization`, `cookie`,
 `proxy-authorization`) go through the runtime's credential provider, other headers must also be allowlisted by the
-operation (`requestHeaderAllowlist`). Requests always go to the configured origin (`serverBaseUrl` on the server,
+operation (`requestHeaderAllowlist`, which `WithTisiliaRequestHeaders` declares on the endpoint or its group). Requests always go to the configured origin (`serverBaseUrl` on the server,
 `baseUrl` in the browser); the runtime rejects redirects and absolute-URL injection.
 
 In the browser (client navigation, `refreshNuxtData`, `lazy`/`server: false` operations) the page calls `baseUrl` itself:

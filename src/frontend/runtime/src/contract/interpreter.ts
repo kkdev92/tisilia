@@ -5,7 +5,7 @@ import { createCodecContext, withContext, type Codec, type CodecContext } from "
 import { CodecError } from "../codec/errors.js";
 import { CodecRegistry } from "../codec/registry.js";
 import { scalarCodec, type NumberProfile, type ScalarName } from "../codec/scalars.js";
-import { arrayCodec, brandCodec, enumCodec, mapCodec, nullableCodec, objectCodec, taggedUnionCodec, type AdditionalPolicy, type DuplicatePolicy, type EnumMember, type NameMatching, type Presence, type PropertyDescriptor } from "../codec/structural.js";
+import { arrayCodec, brandCodec, enumCodec, enumNameCodec, mapCodec, nullableCodec, objectCodec, taggedUnionCodec, type AdditionalPolicy, type DuplicatePolicy, type EnumMember, type NameMatching, type Presence, type PropertyDescriptor } from "../codec/structural.js";
 import { xmlElementCodec, xmlEnumCodec, xmlItemsCodec, xmlTextCodec, type XmlMemberDescriptor } from "../codec/xml.js";
 import type { XmlScalarGrammar } from "../xml/lexical.js";
 import type { KeyComparer } from "../codec/map.js";
@@ -43,7 +43,7 @@ export interface ContractDomainProperty {
 
 export type ContractShape =
   | { readonly kind: "primitive"; readonly primitiveId: string }
-  | { readonly kind: "enum"; readonly underlyingPrimitiveId: string; readonly flags: boolean; readonly allowUndefinedInteger: boolean; readonly members: readonly { readonly name: string; readonly value: string; readonly serializedName?: string }[] }
+  | { readonly kind: "enum"; readonly underlyingPrimitiveId: string; readonly flags: boolean; readonly allowUndefinedInteger: boolean; readonly members: readonly { readonly name: string; readonly value: string; readonly serializedName?: string }[]; readonly nameDomain?: true }
   | { readonly kind: "object"; readonly properties: readonly ContractDomainProperty[]; readonly extension: { readonly kind: "none" } | { readonly kind: "capture"; readonly value: ContractTypeUse; readonly collision: string } }
   | { readonly kind: "array"; readonly element: ContractTypeUse }
   | { readonly kind: "map"; readonly key: ContractTypeUse; readonly value: ContractTypeUse; readonly comparerId: string }
@@ -280,6 +280,11 @@ export interface ContractRegistry {
   readonly registry: CodecRegistry;
   readonly operations: ReadonlyMap<string, OperationDescriptor>;
   readonly document: ContractDocument;
+}
+
+/** An enum's members as its binder reads them: the C# name and the value, and in a name domain also the name the client holds. */
+function binderMembers(shape: Extract<ContractShape, { readonly kind: "enum" }>): readonly (readonly [string, bigint] | readonly [string, bigint, string])[] {
+  return shape.members.map((m) => (shape.nameDomain === true ? ([m.name, BigInt(m.value), m.serializedName ?? m.name] as const) : ([m.name, BigInt(m.value)] as const)));
 }
 
 function scalarNameOf(primitiveId: string): ScalarName {
@@ -550,6 +555,10 @@ export function createContractRegistry(document: ContractDocument, options: Cont
           ...(read?.kind === "object" && read.referenceMetadata === true ? { requestReferenceMetadata: true } : {}) }) as Codec<unknown>;
       }
       case "enum": {
+        if (shape.nameDomain === true) {
+          // the client holds the names the server writes
+          return enumNameCodec({ id: codec.id, typeId: codec.typeId, names: [...new Set(shape.members.map((m) => m.serializedName ?? m.name))] }) as Codec<unknown>;
+        }
         const stringForm = wireShape(caps.response?.wire)?.kind === "token-union";
         const members: EnumMember[] = shape.members.map((m) => ({ name: m.name, value: BigInt(m.value), ...(m.serializedName !== undefined ? { serializedName: m.serializedName } : {}) }));
         return enumCodec({
@@ -622,7 +631,7 @@ export function createContractRegistry(document: ContractDocument, options: Cont
           model?.shape.kind === "primitive"
             ? standardBinder(scalarNameOf(model.shape.primitiveId), p.location, binderOptions)
             : model?.shape.kind === "enum"
-              ? enumBinder(() => registry.get(valueCodec), model.shape.members.map((m) => [m.name, BigInt(m.value)] as const), p.location, { ...binderOptions, flags: model.shape.flags, definedOnly: binder.grammarId === "tisilia.grammar.enum-name@0.1" })
+              ? enumBinder(() => registry.get(valueCodec), binderMembers(model.shape), p.location, { ...binderOptions, flags: model.shape.flags, definedOnly: binder.grammarId === "tisilia.grammar.enum-name@0.1" })
               : codecBinder(() => registry.get(valueCodec), p.location, binderOptions),
         presence: p.presence,
         nullable: p.use.semanticNullable,
@@ -660,7 +669,7 @@ export function createContractRegistry(document: ContractDocument, options: Cont
       // a module type's value is its request codec's canonical text, as its parameter binder writes it
       const value = f.kind !== "value" && f.kind !== "map" ? {} : f.grammarId !== undefined ? { format: codecBinder(() => registry.get(f.use!.codecId), "query").format }
         : shape?.kind === "primitive" ? { scalar: scalarNameOf(shape.primitiveId) }
-        : shape?.kind === "enum" ? { format: enumBinder(() => registry.get(f.use!.codecId), shape.members.map(m => [m.name, BigInt(m.value)] as const), "query", { flags: shape.flags, definedOnly: f.enumDefinedOnly === true }).format } : {};
+        : shape?.kind === "enum" ? { format: enumBinder(() => registry.get(f.use!.codecId), binderMembers(shape), "query", { flags: shape.flags, definedOnly: f.enumDefinedOnly === true }).format } : {};
       return { name: f.name, kind: f.kind, repeated: f.repeated, ...(f.rejectBlank === true ? { rejectBlank: true } : {}), ...(f.requestCulture === true ? { requestCulture: true } : {}), presence: f.presence, ...(f.indexed === true ? { indexed: true } : {}), ...(f.wireName === undefined ? {} : { wireName: f.wireName }), ...(f.fields === undefined ? {} : { fields: f.fields.map(formDescriptor) }), ...(keyShape?.kind === "primitive" ? { key: scalarNameOf(keyShape.primitiveId) } : {}), ...value };
     };
     const requestBody = op.requestBody;
