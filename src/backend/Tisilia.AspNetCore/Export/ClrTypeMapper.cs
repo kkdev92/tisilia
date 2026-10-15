@@ -1365,18 +1365,19 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
     }
 
     /// <summary>
-    /// Whether System.Text.Json leaves a presence wrapper's absent state out of what it writes: [JsonIgnore(Condition = WhenWritingDefault)]
-    /// (the absent state is the struct's default), or a ShouldSerialize predicate that answers false for it, asked with an instance of the
-    /// type that no constructor ran for.
+    /// Whether System.Text.Json leaves a presence wrapper's absent state out of what it writes. A ShouldSerialize predicate decides when
+    /// the member has one — [JsonIgnore(Condition = WhenWritingDefault)] on the member is one, and one a type info modifier sets replaces
+    /// any ignore condition (dotnet/runtime v10.0.0, <c>JsonPropertyInfo.ShouldSerialize</c>) — asked with an instance of the type that no
+    /// constructor ran for. Without one, the options' WhenWritingDefault leaves the default out, which the absent state is.
     /// </summary>
     private static bool OmitsAbsentState(Type type, JsonPropertyInfo prop, IgnoreCondition ignore)
     {
-        if (ignore == IgnoreCondition.WhenWritingDefault)
+        if (prop.ShouldSerialize is not { } predicate)
         {
-            return true;
+            return ignore == IgnoreCondition.WhenWritingDefault;
         }
 
-        if (prop.ShouldSerialize is not { } predicate || type.IsAbstract)
+        if (type.IsAbstract)
         {
             return false;
         }

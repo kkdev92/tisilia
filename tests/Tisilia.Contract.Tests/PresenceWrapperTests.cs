@@ -87,6 +87,17 @@ public sealed class PresenceWrapperTests : IDisposable
     }
 
     [Fact]
+    public async Task A_predicate_that_writes_the_absent_state_overrides_an_ignore_condition()
+    {
+        // a ShouldSerialize a modifier sets replaces [JsonIgnore(Condition = WhenWritingDefault)]: the absent state is written after all
+        await using var app = await StartAsync(writeSince: true);
+        var export = Export(app);
+        var refusal = Assert.Single(export.Diagnostics.Items, d => d.Rule == "SV19" && d.Severity == DiagnosticSeverity.Error);
+        Assert.Contains("'ItemPatch.since'", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains("writes the wrapper's absent state too", refusal.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_member_that_is_present_when_left_out_is_refused()
     {
         await using var app = await StartAsync(defaulted: true);
@@ -199,7 +210,7 @@ public sealed class PresenceWrapperTests : IDisposable
         return document.RootElement.GetProperty("data").GetRawText();
     }
 
-    internal static async Task<WebApplication> StartAsync(bool declare = true, bool omitAbsent = true, bool defaulted = false, bool ignoreNulls = false)
+    internal static async Task<WebApplication> StartAsync(bool declare = true, bool omitAbsent = true, bool defaulted = false, bool ignoreNulls = false, bool writeSince = false)
     {
         var builder = WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
         IJsonTypeInfoResolver? resolver = null;
@@ -211,7 +222,7 @@ public sealed class PresenceWrapperTests : IDisposable
                 o.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
             }
 
-            resolver = (o.SerializerOptions.TypeInfoResolver ?? new DefaultJsonTypeInfoResolver()).WithAddedModifier(info => MaybeMembers(info, omitAbsent));
+            resolver = (o.SerializerOptions.TypeInfoResolver ?? new DefaultJsonTypeInfoResolver()).WithAddedModifier(info => MaybeMembers(info, omitAbsent, writeSince));
             o.SerializerOptions.TypeInfoResolver = resolver;
         });
         builder.Services.AddTisilia(o =>
@@ -244,7 +255,7 @@ public sealed class PresenceWrapperTests : IDisposable
     private static ExportResult Export(WebApplication app) => app.Services.GetRequiredService<TisiliaContractExporter>().ExportFresh();
 
     /// <summary>The usual modifier: a response leaves the absent state out, and a non-nullable reference value refuses null.</summary>
-    private static void MaybeMembers(JsonTypeInfo info, bool omitAbsent)
+    private static void MaybeMembers(JsonTypeInfo info, bool omitAbsent, bool writeSince)
     {
         if (info.Kind != JsonTypeInfoKind.Object)
         {
@@ -261,6 +272,10 @@ public sealed class PresenceWrapperTests : IDisposable
             if (omitAbsent && property.AttributeProvider?.IsDefined(typeof(JsonIgnoreAttribute), inherit: true) != true)
             {
                 property.ShouldSerialize = static (_, value) => value is IMaybe { HasValue: true };
+            }
+            else if (writeSince && property.Name == "since")
+            {
+                property.ShouldSerialize = static (_, _) => true;
             }
 
             var valueType = property.PropertyType.GetGenericArguments()[0];
