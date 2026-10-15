@@ -137,6 +137,26 @@ public sealed record Scope
     public required ObjectCreationHandling EffectiveObjectCreationHandling { get; init; }
     public required IgnoreCondition EffectiveIgnoreCondition { get; init; }
     public required IReadOnlyList<string> BehaviorIds { get; init; }
+
+    /// <summary>The presence wrapper a member's type is, when it is one; absent otherwise.</summary>
+    public PresenceWrapper? PresenceWrapper { get; init; }
+}
+
+/// <summary>
+/// A member whose type is a presence wrapper: a generic struct that holds whether the member was sent, such as <c>Optional&lt;T&gt;</c>.
+/// The member is its value in the contract and optional; a member the request leaves out is the wrapper's absent state, which the
+/// server keeps, and a response leaves the absent state out.
+/// </summary>
+public sealed record PresenceWrapper
+{
+    /// <summary>The wrapper's generic type definition.</summary>
+    public required string ClrType { get; init; }
+
+    /// <summary>The wrapper's boolean property or field that answers whether the member was sent.</summary>
+    public required string PresentMember { get; init; }
+
+    /// <summary>The wrapper's property or field that holds what was sent.</summary>
+    public required string ValueMember { get; init; }
 }
 
 public sealed record Profile

@@ -8,6 +8,17 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+### Added
+
+- **Members a request can leave out, set to null or set.** `TisiliaOptions.PresenceWrappers.Add(typeof(Optional<>))`
+  declares a generic struct that holds whether an object member was sent, by its `HasValue` and `Value` or the members
+  named. A member of a closed wrapper type is its value in the contract, optional in both directions:
+  `Optional<string?> Name` is `name?: string | null` in TypeScript, and leaving it out sends nothing. Export asks each
+  member's converter whether JSON null reads as a present wrapper that holds null, and refuses (SV19) a response member
+  whose absent state System.Text.Json would write and a request member the server holds as present when it is left out.
+  Member scopes record the wrapper (`presenceWrapper`), which 0.2.0-alpha tools do not read; the conformance suite leaves
+  wrapped members out in both directions and expects them left out.
+
 ## [0.2.0-alpha] - 2026-10-09
 
 Many endpoints that 0.1.0-alpha refused to export, or described wrongly, are now described as the server reads and

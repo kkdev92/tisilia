@@ -111,6 +111,11 @@ public sealed partial class SemanticValidator
                     Error(TisiliaCodes.IgnoreCondition, "SV18", JsonPointer.Append(sp, "effectiveIgnoreCondition"), $"scope '{s.Id}': 'Always' applies to members, not to types", [s.Id]);
                 }
 
+                if (s.PresenceWrapper is not null && s.Kind != ScopeKind.Member)
+                {
+                    Error(TisiliaCodes.BehaviorEffect, "SV19", JsonPointer.Append(sp, "presenceWrapper"), $"scope '{s.Id}': a presence wrapper is the type of an object member, which a request may leave out; this scope is not a member", [s.Id]);
+                }
+
                 var hasOpaque = false;
                 for (var k = 0; k < s.BehaviorIds.Count; k++)
                 {

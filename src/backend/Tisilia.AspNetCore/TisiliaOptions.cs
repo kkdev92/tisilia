@@ -45,6 +45,12 @@ public sealed class TisiliaOptions
     public DateTimeBindingCollection DateTimes { get; } = new();
 
     /// <summary>
+    /// Generic structs that hold whether an object member was sent (<c>Optional&lt;T&gt;</c>), so that a request can leave a member out,
+    /// send null or send a value. A member of a declared wrapper type is the wrapper's value in the contract, and optional.
+    /// </summary>
+    public PresenceWrapperCollection PresenceWrappers { get; } = new();
+
+    /// <summary>
     /// What a type's <c>BindAsync</c> or an MVC model binder reads from the request. A parameter bound by such code is exported only
     /// as declared; an undeclared one is an export error.
     /// </summary>

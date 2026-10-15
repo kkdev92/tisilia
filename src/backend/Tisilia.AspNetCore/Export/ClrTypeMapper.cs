@@ -1196,16 +1196,27 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
             var alwaysWritten = ignore == IgnoreCondition.Never && memberInfo?.GetCustomAttribute<JsonIgnoreAttribute>(inherit: true) is { Condition: JsonIgnoreCondition.Never };
             var memberName = (prop.AttributeProvider as MemberInfo)?.Name;
             var memberRegistration = options.Behaviors.FindMember(type, memberName, prop.Name);
+            // a member of a declared presence wrapper type (Optional<T>) is the wrapper's value, which a request may leave out; a response
+            // must leave the absent state out too, or the client could not tell a member never set from one sent
+            var wrapper = options.PresenceWrappers.Find(prop.PropertyType);
+            if (wrapper is not null && direction == WireDirection.ServerWrite && !OmitsAbsentState(type, prop, ignore))
+            {
+                bag.Error(TisiliaCodes.BehaviorEffect, "SV19", pPath, $"member '{type.Name}.{prop.Name}' holds presence wrapper '{CleanName(wrapper.OpenType)}', and System.Text.Json writes the wrapper's absent state too: a response would carry a value for a member never set", [id],
+                    "leave the absent state out of responses: a ShouldSerialize predicate that answers false for it (a type info modifier), or [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] on the member");
+                failed = true;
+                continue;
+            }
+
             // Source-generated metadata expresses [JsonIgnore(Condition = WhenWritingNull/Default)] as a ShouldSerialize predicate;
             // only a predicate that no ignore condition explains is an undescribed delegate and needs a registration
-            if (direction == WireDirection.ServerWrite && prop.ShouldSerialize is not null && !conditional && !alwaysWritten && memberRegistration?.Kind != BehaviorKind.ShouldSerialize)
+            if (direction == WireDirection.ServerWrite && prop.ShouldSerialize is not null && !conditional && !alwaysWritten && memberRegistration?.Kind != BehaviorKind.ShouldSerialize && wrapper is null)
             {
                 bag.Error(TisiliaCodes.BehaviorEffect, "SV19", pPath, $"property '{type.Name}.{prop.Name}' has a ShouldSerialize delegate whose condition is not described; register a BehaviorRegistration of kind 'should-serialize' for the member", [id]);
                 failed = true;
                 continue;
             }
 
-            var use = Map(prop.PropertyType, direction, pPath, isRoot: false, prop);
+            var use = wrapper is not null ? MapWrapped(prop, wrapper, direction, pPath) : Map(prop.PropertyType, direction, pPath, isRoot: false, prop);
             if (use is null)
             {
                 failed = true;
@@ -1226,9 +1237,19 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
                 continue;
             }
 
+            // An omitted wrapper member is the wrapper's absent state: an initializer or constructor that sets it changes the received value
+            if (wrapper is not null && constructedFromEmpty is not null && presence == Presence.Optional && !populate && memberRegistration is null
+                && constructedFromEmpty.Value is { } built && prop.Get?.Invoke(built) is { } held && wrapper.IsPresent(held))
+            {
+                bag.Error(TisiliaCodes.BehaviorEffect, "SV19", pPath, $"member '{type.Name}.{prop.Name}' is optional in the request, but when the client leaves it out the server holds a present '{CleanName(wrapper.OpenType)}' instead of its absent state (an initializer, a constructor default or constructor logic)", [id],
+                    "remove the default, or make the member required");
+                failed = true;
+                continue;
+            }
+
             // An omitted optional nullable member reads as null (the suite's request oracle); an initializer, a constructor
             // default or constructor logic that constructs something else changes the received value and must be registered
-            if (constructedFromEmpty is not null && presence == Presence.Optional && use.SemanticNullable && !populate && memberRegistration is null
+            if (wrapper is null && constructedFromEmpty is not null && presence == Presence.Optional && use.SemanticNullable && !populate && memberRegistration is null
                 && ConstructedMemberValue(prop, constructedFromEmpty.Value) is { } constructed)
             {
                 bag.Error(TisiliaCodes.BehaviorEffect, "SV19", pPath, $"member '{type.Name}.{prop.Name}' is optional and nullable in the request, but when the client omits it the server constructs {constructed} instead of null (an initializer, a constructor default or constructor logic)", [id],
@@ -1275,6 +1296,10 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
             // id and the scope merges the two when the type is used both ways (SV20)
             profile.AddScope(CleanName(type) + "." + prop.Name, ScopeKind.Member, canRead && direction == WireDirection.ServerRead ? use.CodecId : null, canWrite && direction == WireDirection.ServerWrite ? use.CodecId : null, prop.IsRequired,
                 prop.IsGetNullable ? Nullability.Yes : Nullability.No, prop.IsSetNullable ? Nullability.Yes : Nullability.No, creation, ignore, behaviorIds);
+            if (wrapper is not null)
+            {
+                profile.SetPresenceWrapper(CleanName(type) + "." + prop.Name, new Contract.PresenceWrapper { ClrType = CleanName(wrapper.OpenType), PresentMember = wrapper.PresentMember, ValueMember = wrapper.ValueMember });
+            }
             props.Add(new PropertySpec(prop.Name, use, presence, presence, presence));
             documented.Add(new DocumentedMember(prop.Name, prop.PropertyType, memberInfo, prop.AssociatedParameter?.AttributeProvider, OptionsFor(prop)));
         }
@@ -1314,6 +1339,56 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         }
 
         return objectUse;
+    }
+
+    /// <summary>
+    /// The value of a presence wrapper member: the wrapper's type argument as the wrapper's converter reads and writes it, with the
+    /// profile's options, and nullable when the member's own converter reads JSON null as a present wrapper that holds null (observed).
+    /// </summary>
+    private TypeUse? MapWrapped(JsonPropertyInfo prop, PresenceWrapperRegistration wrapper, WireDirection direction, string path)
+    {
+        var value = prop.PropertyType.GetGenericArguments()[0];
+        var nullable = ReadsNullAsPresent(prop, wrapper);
+        return Map(nullable ? value : Nullable.GetUnderlyingType(value) ?? value, direction, path, isRoot: false, member: null, nullableRoot: nullable);
+    }
+
+    private bool ReadsNullAsPresent(JsonPropertyInfo prop, PresenceWrapperRegistration wrapper)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize("null", prop.PropertyType, OptionsFor(prop)) is { } read && wrapper.IsPresent(read) && wrapper.ValueOf(read) is null;
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Whether System.Text.Json leaves a presence wrapper's absent state out of what it writes: [JsonIgnore(Condition = WhenWritingDefault)]
+    /// (the absent state is the struct's default), or a ShouldSerialize predicate that answers false for it, asked with an instance of the
+    /// type that no constructor ran for.
+    /// </summary>
+    private static bool OmitsAbsentState(Type type, JsonPropertyInfo prop, IgnoreCondition ignore)
+    {
+        if (ignore == IgnoreCondition.WhenWritingDefault)
+        {
+            return true;
+        }
+
+        if (prop.ShouldSerialize is not { } predicate || type.IsAbstract)
+        {
+            return false;
+        }
+
+        try
+        {
+            return !predicate(System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(type), Activator.CreateInstance(prop.PropertyType));
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

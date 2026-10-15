@@ -251,6 +251,25 @@ public sealed class GeneratedClientCompileTests : IDisposable
         Assert.Contains("root: { name: \"order\", ns: \"urn:shop\" }", generated, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Members_of_a_presence_wrapper_are_optional_members_that_compile()
+    {
+        await using var app = await PresenceWrapperTests.StartAsync();
+        var export = app.Services.GetRequiredService<TisiliaContractExporter>().ExportFresh();
+        Assert.False(export.Diagnostics.HasErrors, string.Join("\n", export.Diagnostics.Items));
+        await CompileAsync(export.Index!, """
+            import { createPresenceClient } from "./generated/index.js";
+            const client = createPresenceClient({ baseUrl: "http://localhost" });
+            export const leftOut = client.itemsPatch({ id: 1, body: {} });
+            export const sent = client.itemsPatch({ id: 1, body: { name: null, count: 2, title: "t", limit: null, since: 3 } });
+            export const names = client.itemsPatch({ id: 1, body: {} }).then(result => result.kind === "response" ? result.data.name : undefined);
+            // @ts-expect-error a member whose converter refuses null takes no null
+            export const nullTitle = client.itemsPatch({ id: 1, body: { title: null } });
+            // @ts-expect-error a member left out is not a member set to undefined
+            export const undefinedName = client.itemsPatch({ id: 1, body: { name: undefined } });
+            """);
+    }
+
     private sealed class OnlyController(Type controller) : Microsoft.AspNetCore.Mvc.ApplicationParts.IApplicationFeatureProvider<Microsoft.AspNetCore.Mvc.Controllers.ControllerFeature>
     {
         public void PopulateFeature(IEnumerable<Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPart> parts, Microsoft.AspNetCore.Mvc.Controllers.ControllerFeature feature)
