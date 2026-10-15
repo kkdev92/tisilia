@@ -278,7 +278,8 @@ Recursive forms, and form dictionaries of models or with keys other than strings
 `BindAsync` (`IBindableFromHttpContext<T>`) — is exported as declared (below) and diagnosed without a declaration. MVC form models, strings, enums, numbers, dates and times, Guids, booleans and
 files are supported. A route, query, header or form value of a type the server reads with its own `TryParse`, `IParsable<T>` or (MVC)
 `TypeConverter`, which no codec describes, is exported as text with a warning (SV30): the client sends any string, and the
-server answers the texts its parser refuses. MVC's ApiExplorer describes such a controller parameter as a string; export
+server answers the texts its parser refuses. A paired registration of the type whose `ParameterGrammarId` names the grammar
+of the text that parser reads (the request codec's canonical text) makes it a typed value the client checks. MVC's ApiExplorer describes such a controller parameter as a string; export
 reads its own type. A handler that returns `Results.Ok(value)` or an `IActionResult` without response metadata is
 described from its return paths ([below](#responses-read-from-the-handler)); a path the source does not fix is diagnosed
 with its place. `TypedResults.Json(value, options)` is supported with `WithTisiliaJsonOptions<T>`; undeclared dynamic
