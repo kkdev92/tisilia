@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.AspNetCore.Routing;
@@ -10,9 +11,19 @@ namespace Tisilia.AspNetCore.Export;
 public sealed record DoctorOperation(string OperationId, IReadOnlyList<string> Methods, string Route, string Readiness,
     IReadOnlyList<Diagnostic> Diagnostics, string MetadataVerification = "observed", string HttpVerification = "unobserved");
 public sealed record DoctorCause(string ReasonCode, string Message, string? Fix, IReadOnlyList<string> OperationIds, IReadOnlyList<string> Paths);
+
+/// <summary>
+/// A converter in effect that serializes types without a binding (SV05), once: the types, the operations they reach, and how to bind
+/// them. A factory is one entry with every closed type it creates, as one <c>AddPairedFactory</c> binds them; a generic converter is
+/// one entry (its definition, <c>Converter`1[T]</c>) with every type its closed forms serialize.
+/// </summary>
+public sealed record DoctorUnboundConverter(string Converter, bool Factory, IReadOnlyList<string> Types, IReadOnlyList<string> OperationIds, string Fix);
+
 public sealed record DoctorReport(bool AnalysisComplete, int SelectedCount, int AnalyzedCount, int UnanalyzedCount,
     IReadOnlyList<DoctorOperation> Operations, IReadOnlyList<DoctorCause> Causes)
 {
+    /// <summary>The converters without a binding, each once with its types and operations, most operations first.</summary>
+    public IReadOnlyList<DoctorUnboundConverter> UnboundConverters { get; init; } = [];
     public string Format => "tisilia.doctor-report";
     public string Version => TisiliaJson.DraftVersion;
     public string Overall => !AnalysisComplete ? "analysis-incomplete" : Operations.Any(o => o.Readiness != "supported") || BindingProbes.Any(p => p.Status != "matches") ? "blockers" : "supported";
@@ -64,6 +75,7 @@ public sealed partial class TisiliaContractExporter
             var groups = endpoints.GroupBy(e => e.Metadata.GetMetadata<TisiliaOperationAttribute>()!.OperationId, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal).ToArray();
             var complete = true;
             var analyzed = 0;
+            var unbound = new List<(string OperationId, Type Converter, Type ClrType)>();
             try { _ = services.GetRequiredService<IApiDescriptionGroupCollectionProvider>().ApiDescriptionGroups; }
             catch (Exception)
             {
@@ -84,6 +96,7 @@ public sealed partial class TisiliaContractExporter
                         : diagnostics.Any(d => d.Message.Contains("no declared wire", StringComparison.Ordinal) || d.Message.Contains("no response", StringComparison.Ordinal) || d.Message.Contains("no body type", StringComparison.Ordinal)) ? "requires-declaration"
                         : diagnostics.Any(d => d.Code == TisiliaCodes.SchemaViolation || d.Code == TisiliaCodes.DuplicateId) ? "invalid-contract" : "unsupported-feature";
                     operations.Add(Identity(group, readiness, diagnostics));
+                    unbound.AddRange(result.Unbound.Select(u => (group.Key, u.Converter, u.ClrType)));
                 }
                 catch (Exception)
                 {
@@ -95,9 +108,17 @@ public sealed partial class TisiliaContractExporter
                 .GroupBy(x => (x.Diagnostic.Code, x.Diagnostic.Rule, Message: x.Diagnostic.Message))
                 .Select(g => new DoctorCause(g.Key.Code + "/" + g.Key.Rule, g.Key.Message, g.First().Diagnostic.Fix,
                     g.Select(x => x.OperationId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(), g.Select(x => x.Diagnostic.Path).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray())).ToArray();
+            // the unit of a fix: a factory once for every closed type it creates (one AddPairedFactory), and a generic converter once for
+            // every type its closed forms serialize (one AddPaired each, written once for all of them)
+            var unboundConverters = unbound.GroupBy(u => FixUnit(u.Converter))
+                .Select(g => new DoctorUnboundConverter(g.Key.ToString(), typeof(JsonConverterFactory).IsAssignableFrom(g.Key),
+                    g.Select(u => u.ClrType.ToString()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
+                    g.Select(u => u.OperationId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(), UnboundFix(g.Key)))
+                .OrderByDescending(c => c.OperationIds.Count).ThenBy(c => c.Converter, StringComparer.Ordinal).ToArray();
             var serverTimeZone = options.Value.DateTimes.ServerTimeZone;
             return new DoctorReport(complete, groups.Length, analyzed, groups.Length - analyzed, operations, causes)
             {
+                UnboundConverters = unboundConverters,
                 DateTimeDefault = options.Value.DateTimes.Default?.ToString(),
                 DateTimeMembers = options.Value.DateTimes.DescribeMembers(),
                 DateTimeServerTimeZone = serverTimeZone?.Id,
@@ -109,6 +130,18 @@ public sealed partial class TisiliaContractExporter
     private static DoctorOperation Identity(IGrouping<string, RouteEndpoint> group, string readiness, IReadOnlyList<Diagnostic> diagnostics) => new(group.Key,
         group.SelectMany(e => e.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods ?? []).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
         string.Join(" | ", group.Select(e => e.RoutePattern.RawText ?? "<resolved route>").Distinct(StringComparer.Ordinal)), readiness, diagnostics);
+
+    private static Type FixUnit(Type converter)
+        => converter.IsConstructedGenericType && !typeof(JsonConverterFactory).IsAssignableFrom(converter) ? converter.GetGenericTypeDefinition() : converter;
+
+    // what binds every type a converter serializes: a factory's registration (or, once one is registered, its callback) or each type's
+    private string UnboundFix(Type converter) => !typeof(JsonConverterFactory).IsAssignableFrom(converter)
+        ? converter.IsGenericTypeDefinition
+            ? $"register each type with TisiliaOptions.Codecs.AddPaired (ConverterType = the closed {converter.Name} that serializes it)"
+            : $"register each type with TisiliaOptions.Codecs.AddPaired (ConverterType = typeof({converter.Name}))"
+        : options.Value.Codecs.HasPairedFactory(converter)
+            ? $"return each type's registration from the callback given to TisiliaOptions.Codecs.AddPairedFactory for {converter.Name}"
+            : $"register the factory once with TisiliaOptions.Codecs.AddPairedFactory(typeof({converter.Name}), type => /* the closed type's PairedCodecRegistration */)";
 
     private static Diagnostic SafeDiagnostic(Diagnostic d) => d with { File = null, Message = Scrub(d.Message), Fix = d.Fix is null ? null : Scrub(d.Fix) };
     private static string Scrub(string value)

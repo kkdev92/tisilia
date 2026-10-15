@@ -103,6 +103,46 @@ public sealed class PairedFactoryTests
     }
 
     [Fact]
+    public async Task Doctor_reports_a_factory_without_a_binding_once_with_every_closed_type()
+    {
+        // the causes are one per type; what one fix binds is the converter a registration names, here the factory
+        await using var app = await StartAsync(_ => { }, MapOrdersAndCustomers);
+        var report = app.Services.GetRequiredService<TisiliaContractExporter>().Diagnose();
+        Assert.Equal(2, report.Causes.Count(c => c.ReasonCode == "TIS1302/SV05"));
+        var unbound = Assert.Single(report.UnboundConverters);
+        Assert.Equal((typeof(TestKeyConverterFactory).ToString(), true), (unbound.Converter, unbound.Factory));
+        Assert.Equal([typeof(CustomerKey).ToString(), typeof(OrderKey).ToString()], unbound.Types);
+        Assert.Equal(["customers.list", "orders.create"], unbound.OperationIds);
+        Assert.Contains($"AddPairedFactory(typeof({nameof(TestKeyConverterFactory)})", unbound.Fix, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Doctor_points_a_registered_factory_to_its_callback_for_the_types_it_left_unbound()
+    {
+        await using var app = await StartAsync(o => o.Codecs.AddPairedFactory<TestKeyConverterFactory>(type => type == typeof(CustomerKey) ? null : Registration(type)), MapOrdersAndCustomers);
+        var report = app.Services.GetRequiredService<TisiliaContractExporter>().Diagnose();
+        var unbound = Assert.Single(report.UnboundConverters);
+        Assert.Equal([typeof(CustomerKey).ToString()], unbound.Types);
+        Assert.Equal(["customers.list", "orders.create"], unbound.OperationIds);
+        Assert.Contains("from the callback given to TisiliaOptions.Codecs.AddPairedFactory", unbound.Fix, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Doctor_reports_a_generic_converter_without_a_binding_once_with_every_type_its_closed_forms_serialize()
+    {
+        // members' own converters decide there: the factory binds the order key, and two closed forms of one generic converter have no
+        // binding, which is added type by type
+        await using var app = await StartAsync(o => o.Codecs.AddPairedFactory<TestKeyConverterFactory>(type => Registration(type)),
+            a => a.MapPost("/shipments", (Shipment shipment) => TypedResults.Ok(shipment)).WithTisiliaOperation("shipments.create"));
+        var report = app.Services.GetRequiredService<TisiliaContractExporter>().Diagnose();
+        var unbound = Assert.Single(report.UnboundConverters);
+        Assert.Equal((typeof(TestKeyConverter<>).ToString(), false), (unbound.Converter, unbound.Factory));
+        Assert.Equal([typeof(CustomerKey).ToString(), typeof(ProductKey).ToString()], unbound.Types);
+        Assert.Equal(["shipments.create"], unbound.OperationIds);
+        Assert.Contains("AddPaired (ConverterType = the closed TestKeyConverter`1 that serializes it)", unbound.Fix, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_name_outside_the_contract_forms_is_reported_with_the_registration_field()
     {
         // before: SV01 at /bindings/<n>/implementation/exportName, without saying which registration field held the name
@@ -145,6 +185,12 @@ public sealed class PairedFactoryTests
 
     private static void MapOrders(WebApplication app)
         => app.MapPost("/orders", (Order order) => TypedResults.Ok(order)).WithTisiliaOperation("orders.create");
+
+    private static void MapOrdersAndCustomers(WebApplication app)
+    {
+        MapOrders(app);
+        app.MapGet("/customers", () => TypedResults.Ok(new[] { CustomerKey.From(Guid.Empty) })).WithTisiliaOperation("customers.list");
+    }
 
     private static async Task<WebApplication> StartAsync(Action<TisiliaOptions> configure, Action<WebApplication> map)
     {
@@ -197,6 +243,9 @@ public sealed class PairedFactoryTests
     }
 
     public sealed record Order(OrderKey Id, CustomerKey Customer, string Note);
+
+    public sealed record Shipment(OrderKey Order, [property: JsonConverter(typeof(TestKeyConverter<ProductKey>))] ProductKey Product,
+        [property: JsonConverter(typeof(TestKeyConverter<CustomerKey>))] CustomerKey Receiver);
 }
 
 /// <summary>An identifier that wraps a Guid; <see cref="TestKeyConverterFactory"/> serializes every such type.</summary>

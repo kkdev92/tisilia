@@ -117,13 +117,17 @@ try {
     assert.deepEqual([summary.overall, summary.selectedCount, summary.analyzedCount, summary.unanalyzedCount, summary.exitCode], [doctor.overall, doctor.selectedCount, doctor.analyzedCount, doctor.unanalyzedCount, doctor.exitCode]);
     assert.equal(Object.values(summary.readiness).reduce((a, b) => a + b, 0), doctor.operations.length);
     assert.deepEqual(summary.causes.map(c => c.reasonCode).sort(), [...new Set(doctor.causes.map(c => c.reasonCode))].sort());
+    // each converter without a binding once, in every report, with or without one
+    assert.deepEqual(summary.unboundConverters.map(c => [c.converter, c.types, c.operations]), doctor.unboundConverters.map(c => [c.converter, c.types.length, c.operationIds.length]));
     if (mode === "diagnostics") assert(doctor.causes.some(c => c.operationIds.includes("bad.date.one") && c.operationIds.includes("bad.date.two")));
+    if (mode === "diagnostics") assert.deepEqual(doctor.unboundConverters.map(c => [c.converter, c.factory, c.types, c.operationIds, c.fix.includes("AddPaired (ConverterType = typeof(UnsupportedDateConverter))")]), [["UnsupportedDateConverter", false, ["System.DateTime"], ["bad.date.one", "bad.date.two"], true]]);
     report.diagnostics.push({ mode, code: expected, selected: doctor.selectedCount, analyzed: doctor.analyzedCount });
     if (mode === "diagnostics") {
       const human = await command(["doctor", "--project", project, "--no-build", "--allow-execute-project", "--output", resolve(out, "doctor-human.json")], expected, { ADOPTION_MODE: mode });
       assert(human.stdout.includes(`selected ${doctor.selectedCount}, analyzed ${doctor.analyzedCount}, unanalyzed ${doctor.unanalyzedCount}`));
       assert(human.stdout.includes("HTTP unobserved"));
       for (const cause of doctor.causes) { assert(human.stdout.includes(cause.message)); for (const id of cause.operationIds) assert(human.stdout.includes(id)); }
+      for (const unbound of doctor.unboundConverters) assert(human.stdout.includes(`unbound converter ${unbound.converter}: ${unbound.types.length} type(s) in ${unbound.operationIds.length} operation(s)`));
     }
   }
   // declared custom bindings run only on --allow-execute-binders; the fixture's Paging.BindAsync also reads size, which its declaration leaves out

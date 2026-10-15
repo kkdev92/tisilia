@@ -873,10 +873,13 @@ the ASP.NET Core 10 source, and the [Streams standard](https://streams.spec.what
 `tests/datetime-sources.txt` the DateTime sources.
 
 Use `tisilia doctor --project ./MyApi --allow-execute-project --format json --output doctor.json` before export. It reports
-each selected operation, grouped causes, effective DateTime declarations, and selected/analyzed/unanalyzed counts. The
+each selected operation, grouped causes, effective DateTime declarations, and selected/analyzed/unanalyzed counts. Each
+converter that serializes types without a binding is listed once (`unboundConverters`), with those types, the operations
+they reach and the fix — a factory with every closed type it creates, which one `AddPairedFactory` binds, and a generic
+converter (``Converter`1[T]``) with every type its closed forms serialize. The
 report is written to `--output` (next to the project without it); with `--format json` and `--output`, stdout carries a
-summary of it rather than the same JSON again — the counts, how many operations have each readiness, and how many causes
-and operations each reason has (`tisilia.doctor-summary`). Exit 0 means
+summary of it rather than the same JSON again — the counts, how many operations have each readiness, how many causes
+and operations each reason has, and how many types and operations each unbound converter has (`tisilia.doctor-summary`). Exit 0 means
 metadata is supported, 3 means blockers, and 6 means startup/metadata analysis is incomplete. HTTP remains unobserved. The command
 executes application startup (and, with `--allow-execute-binders`, the declared binding code), so run it with isolated settings;
 the flags are not a sandbox. Strict export writes no partial contract.
