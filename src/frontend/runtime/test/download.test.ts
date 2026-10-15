@@ -51,7 +51,9 @@ describe("streaming finite downloads", () => {
     const cancel = vi.fn();
     let sinkSignal: AbortSignal | undefined;
     const stream = new ReadableStream<Uint8Array>({ pull(controller) { controller.enqueue(new Uint8Array([1])); }, cancel }, { highWaterMark: 0 });
-    const result = await download(operation, {}, { ...options, signal: abort.signal, limits: { timeoutMs: 30 }, transport: { fetch: async () => new Response(stream, { headers }) } }, async (_chunk, signal) => {
+    // a clock that stands still: only the timer ends the call, and it cannot fire before the sink holds it, however slow the machine
+    const transport = { now: () => 0, fetch: async () => new Response(stream, { headers }) };
+    const result = await download(operation, {}, { ...options, signal: abort.signal, limits: { timeoutMs: 30 }, transport }, async (_chunk, signal) => {
       sinkSignal = signal;
       if (mode === "throw") { throw new Error("SECRET token"); }
       if (mode === "cancelled") { abort.abort(); }
@@ -61,6 +63,19 @@ describe("streaming finite downloads", () => {
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(result)).not.toContain("SECRET");
     if (mode !== "throw") { expect(sinkSignal?.aborted).toBe(true); }
+  });
+
+  it("cancels the body of a response that arrives as the deadline passes", async () => {
+    // the adapter answers just as the clock passes the deadline: the call times out before it reads the response, which nothing
+    // else would close (an adapter need not follow the abort signal)
+    const cancel = vi.fn();
+    const stream = new ReadableStream<Uint8Array>({ pull(controller) { controller.enqueue(new Uint8Array([1])); }, cancel }, { highWaterMark: 0 });
+    let now = 0;
+    const sink = vi.fn();
+    const result = await download(operation, {}, { ...options, limits: { timeoutMs: 30 }, transport: { now: () => now, fetch: async () => { now = 1_000; return new Response(stream, { headers }); } } }, sink);
+    expect(result.kind).toBe("timeout");
+    expect(sink).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalledTimes(1);
   });
 
   it("decodes declared JSON errors without passing them to the file sink", async () => {

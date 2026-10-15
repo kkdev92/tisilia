@@ -67,7 +67,9 @@ describe("server-sent events", () => {
   it.each(["timeout", "cancelled", "throw"] as const)("bounds handlers and sanitizes %s", async mode => {
     const abort = new AbortController(); const cancel = vi.fn();
     const stream = new ReadableStream<Uint8Array>({ pull(c) { c.enqueue(encoder.encode("data: 1\n\n")); }, cancel }, { highWaterMark: 0 });
-    const result = await subscribe(operation, {}, { baseUrl: "http://api.test", signal: abort.signal, limits: { timeoutMs: 30 }, transport: { fetch: async () => new Response(stream, { headers: { "content-type": "text/event-stream" } }) } }, async () => {
+    // a clock that stands still: only the timer ends the call, and it cannot fire before the handler holds it, however slow the machine
+    const transport = { now: () => 0, fetch: async () => new Response(stream, { headers: { "content-type": "text/event-stream" } }) };
+    const result = await subscribe(operation, {}, { baseUrl: "http://api.test", signal: abort.signal, limits: { timeoutMs: 30 }, transport }, async () => {
       if (mode === "throw") { throw new Error("SECRET token"); }
       if (mode === "cancelled") { abort.abort(); }
       await new Promise<void>(() => {});

@@ -85,6 +85,9 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   declared `Never` made the member required although the server could leave it out. The predicate now decides and is
   refused until a should-serialize behavior describes it. A member whose `[JsonIgnore]` predicate a modifier removed was
   optional; it is always written, and a presence wrapper member so written is refused (SV19).
+- A response that a fetch adapter returned just as a call's deadline passed was dropped without its body being cancelled, so
+  an adapter that does not end the response on the abort signal kept it open. The runtime cancels that body, as it already
+  did for a response that arrives later.
 
 ## [0.2.0-alpha] - 2026-10-09
 

@@ -92,6 +92,8 @@ export async function send(request: TransportRequest, options: TransportOptions 
     if (request.body instanceof ReadableStream) { (init as RequestInit & { duplex?: "half" }).duplex = "half"; }
   }
   let response: Response | undefined;
+  // the response the adapter returned while the budget lasted, which is never read when the budget ends on the clock as it arrives
+  let arrived: Response | undefined;
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   let metadata: ResponseMetadata | undefined;
   let stage: "network" | "read" = "network";
@@ -100,7 +102,9 @@ export async function send(request: TransportRequest, options: TransportOptions 
   try {
     response = await budget.wait(() => {
       const pending = fetchImpl(request.url, init);
-      void pending.then(r => { if (signal.aborted) { discard(() => r.body?.cancel()); } }, () => {});
+      // a response that arrives once the budget has ended is never read: its body is cancelled here, or in the cleanup below
+      // when the budget ends on the clock just as it arrives
+      void pending.then(r => { if (signal.aborted) { discard(() => r.body?.cancel()); } else { arrived = r; } }, () => {});
       return pending;
     });
     if (response.type === "opaqueredirect") {
@@ -175,7 +179,10 @@ export async function send(request: TransportRequest, options: TransportOptions 
     if (reader !== undefined) {
       if (!complete) { discard(() => reader!.cancel()); }
       discard(() => reader!.releaseLock());
-    } else if (!complete && response !== undefined) { discard(() => response!.body?.cancel()); }
+    } else if (!complete) {
+      const unread = response ?? arrived;
+      if (unread !== undefined) { discard(() => unread.body?.cancel()); }
+    }
     chunks.length = 0;
     if (sharedBudget === undefined) { budget.dispose(); }
   }
