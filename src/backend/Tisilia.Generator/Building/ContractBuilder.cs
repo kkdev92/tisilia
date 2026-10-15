@@ -930,6 +930,32 @@ public sealed class ContractBuilder
         return new TypeUse { TypeId = id, CodecId = id + ".codec", SemanticNullable = nullable };
     }
 
+    /// <summary>
+    /// An enum the server reads and writes by name alone (a JsonStringEnumConverter that refuses integers): the client holds the
+    /// names. Both wires are the names the server writes for the members, which it also reads, and no integer is in the domain, since
+    /// the server refuses to read one and refuses to write a value no member defines.
+    /// </summary>
+    public TypeUse NameEnumOf(string id, string tsName, string clrIdentity, string underlying, IReadOnlyList<EnumMember> members, bool nullable = false)
+    {
+        if (Claim(id, new { kind = "enum", underlying, members, names = true }) && !_types.ContainsKey(id))
+        {
+            _types[id] = new Model
+            {
+                Id = id,
+                TsName = tsName,
+                ClrIdentity = clrIdentity,
+                Shape = new EnumShape { UnderlyingPrimitiveId = Builtins.Scalar(underlying), Flags = false, AllowUndefinedInteger = false, Members = members, NameDomain = true },
+            };
+            var readWire = id + ".read";
+            var writeWire = id + ".write";
+            _wires[readWire] = new Wire { Id = readWire, Direction = WireDirection.ServerRead, Shape = new StringWire { GrammarId = Builtins.Grammar("enum-name") } };
+            _wires[writeWire] = new Wire { Id = writeWire, Direction = WireDirection.ServerWrite, Shape = new StringWire { GrammarId = Builtins.Grammar("enum-name") } };
+            AddStructuralCodec(id, "enum", readWire, writeWire, [], keys: true);
+        }
+
+        return new TypeUse { TypeId = id, CodecId = id + ".codec", SemanticNullable = nullable };
+    }
+
     private void AddStructuralCodec(string id, string structure, string? readWire, string? writeWire, IReadOnlyList<string> dependencies, bool keys = false)
     {
         EnsureStructuralEquivalences(id, structure);

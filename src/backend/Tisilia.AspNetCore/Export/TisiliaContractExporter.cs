@@ -439,8 +439,8 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
                     BinderId = enumBinder,
                     Use = nullable ? builder.Nullable(enumUse) : enumUse,
                     Presence = enumRequired ? Presence.Required : Presence.Optional,
-                    // the domain value of an enum is its integer
-                    ServerDefault = declaredDefault is null ? (hasServerDefault ? new JsonNullValue() : null) : new Contract.JsonNumberValue { Text = Convert.ToString(Convert.ChangeType(declaredDefault, Enum.GetUnderlyingType(scalarType), System.Globalization.CultureInfo.InvariantCulture), System.Globalization.CultureInfo.InvariantCulture)! },
+                    // the domain value of an enum is its integer, or the name the server writes for it when the client holds names
+                    ServerDefault = declaredDefault is null ? (hasServerDefault ? new JsonNullValue() : null) : EnumDefault(builder.GetType(enumUse.TypeId)?.Shape as EnumShape, declaredDefault, scalarType),
                 });
                 documentedParameters.Add((parameters[^1].Id, p, scalarType));
                 pIndex++;
@@ -1480,6 +1480,15 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
         }
 
         return (type, false);
+    }
+
+    /// <summary>A parameter's declared enum default as the client holds it: the integer, or the name the server writes for it in a name domain.</summary>
+    private static Contract.JsonValue EnumDefault(EnumShape? shape, object value, Type enumType)
+    {
+        var text = Convert.ToString(Convert.ChangeType(value, Enum.GetUnderlyingType(enumType), System.Globalization.CultureInfo.InvariantCulture), System.Globalization.CultureInfo.InvariantCulture)!;
+        return shape?.NameDomain == true && shape.Members.FirstOrDefault(m => m.Value == text) is { } member
+            ? new JsonStringValue { Value = member.SerializedName ?? member.Name }
+            : new Contract.JsonNumberValue { Text = text };
     }
 
     private static Contract.JsonValue? ToJsonValue(object value)

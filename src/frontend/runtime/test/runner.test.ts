@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { CodecRegistry, scalarCodec, webNumbers } from "../src/index.js";
+import { CodecRegistry, enumNameCodec, scalarCodec, webNumbers } from "../src/index.js";
 import { builtinOracle, runRunner } from "../src/conformance/runner.js";
 
 const contract = {
@@ -11,11 +11,26 @@ const contract = {
     { id: "std.int64", shape: { kind: "primitive", primitiveId: "tisilia.int64@0.1" } },
     { id: "std.decimal", shape: { kind: "primitive", primitiveId: "tisilia.decimal@0.1" } },
     { id: "std.json-value", shape: { kind: "primitive", primitiveId: "tisilia.json-value@0.1" } },
+    {
+      id: "app.kind.names",
+      shape: {
+        kind: "enum",
+        underlyingPrimitiveId: "tisilia.int32@0.1",
+        flags: false,
+        allowUndefinedInteger: false,
+        members: [
+          { name: "Usage", value: "0", serializedName: "usage" },
+          { name: "Stock", value: "1", serializedName: "stock" },
+        ],
+        nameDomain: true,
+      },
+    },
   ],
   codecs: [
     { id: "std.int64.codec.r", typeId: "std.int64", capabilities: { request: { equivalenceId: "std.int64.request" }, response: { equivalenceId: "std.int64.response" }, requestKey: { equivalenceId: "std.int64.key" }, responseKey: { equivalenceId: "std.int64.key" } } },
     { id: "std.decimal.codec", typeId: "std.decimal", capabilities: { request: { equivalenceId: "std.decimal.request" }, response: { equivalenceId: "std.decimal.response" } } },
     { id: "std.json-value.codec", typeId: "std.json-value", capabilities: { request: { equivalenceId: "std.json-value.request" }, response: { equivalenceId: "std.json-value.response" } } },
+    { id: "app.kind.names.codec", typeId: "app.kind.names", capabilities: { request: { equivalenceId: "app.kind.names.request" }, response: { equivalenceId: "app.kind.names.response" }, requestKey: { equivalenceId: "app.kind.names.key" }, responseKey: { equivalenceId: "app.kind.names.key" } } },
   ],
   equivalences: [
     { id: "std.int64.request", domainTypeId: "std.int64", scope: "request", typescriptOracle: { kind: "builtin", id: "tisilia.oracle.structural@0.1" } },
@@ -25,6 +40,9 @@ const contract = {
     { id: "std.decimal.response", domainTypeId: "std.decimal", scope: "response", typescriptOracle: { kind: "builtin", id: "tisilia.oracle.numeric@0.1" } },
     { id: "std.json-value.request", domainTypeId: "std.json-value", scope: "request", typescriptOracle: { kind: "builtin", id: "tisilia.oracle.exact-wire@0.1" } },
     { id: "std.json-value.response", domainTypeId: "std.json-value", scope: "response", typescriptOracle: { kind: "builtin", id: "tisilia.oracle.exact-wire@0.1" } },
+    { id: "app.kind.names.request", domainTypeId: "app.kind.names", scope: "request", typescriptOracle: { kind: "builtin", id: "tisilia.oracle.structural@0.1" } },
+    { id: "app.kind.names.response", domainTypeId: "app.kind.names", scope: "response", typescriptOracle: { kind: "builtin", id: "tisilia.oracle.structural@0.1" } },
+    { id: "app.kind.names.key", domainTypeId: "app.kind.names", scope: "key", typescriptOracle: { kind: "builtin", id: "tisilia.oracle.structural@0.1" } },
   ],
   comparers: [],
   bindings: [],
@@ -42,6 +60,7 @@ async function exchange(lines: string[]): Promise<Record<string, unknown>[]> {
   registry.register(scalarCodec("int64", { numbers: webNumbers }));
   registry.register(scalarCodec("decimal"));
   registry.register(scalarCodec("json-value"));
+  registry.register(enumNameCodec({ id: "app.kind.names.codec", typeId: "app.kind.names", names: ["usage", "stock"] }));
   const input = new PassThrough();
   const output = new PassThrough();
   const chunks: Buffer[] = [];
@@ -108,6 +127,25 @@ describe("conformance runner (TypeScript side)", () => {
       ["r.5", "failure", "contract", "action.wrong-runner"],
       ["unknown", "failure", "limit", "protocol.record-limit"],
       ["r.7", "success", undefined, undefined],
+    ]);
+  });
+
+  it("carries an enum held by name as the names the server writes", async () => {
+    const out = await exchange([
+      record({ requestId: "r.1", action: "ts-decode-response", adapterId: "app.kind.names.codec", inputs: [{ kind: "string", value: "stock" }] }),
+      record({ requestId: "r.2", action: "ts-encode-request", adapterId: "app.kind.names.codec", inputs: [{ kind: "string", value: "usage" }] }),
+      record({ requestId: "r.3", action: "ts-encode-key", adapterId: "app.kind.names.codec", inputs: [{ kind: "string", value: "stock" }] }),
+      record({ requestId: "r.4", action: "ts-decode-response", adapterId: "app.kind.names.codec", inputs: [{ kind: "number", text: "1" }] }),
+      record({ requestId: "r.5", action: "validate-domain", adapterId: "app.kind.names.codec", inputs: [{ kind: "number", text: "1" }] }),
+      record({ requestId: "r.6", action: "validate-domain", adapterId: "app.kind.names.codec", inputs: [{ kind: "string", value: "Stock" }] }),
+    ]);
+    expect(out.map((r) => r["outputs"] ?? r["code"])).toEqual([
+      [{ kind: "string", value: "stock" }],
+      [{ kind: "string", value: "usage" }],
+      [{ kind: "string", value: "stock" }],
+      "codec",
+      "codec",
+      "codec",
     ]);
   });
 

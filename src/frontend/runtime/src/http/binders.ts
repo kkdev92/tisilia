@@ -173,14 +173,19 @@ export interface EnumBinderOptions extends StandardBinderOptions {
 /**
  * The binder of an enum parameter. ASP.NET Core binds enums with `Enum.TryParse` (case-sensitive C# member names,
  * integers, comma-separated flags) or MVC's enum model binder (the same texts, defined values only): the client writes a defined
- * member's C# name and the integer otherwise. `members` are the C# names and values of the enum.
+ * member's C# name and the integer otherwise. `members` are the C# names and values of the enum; for an enum whose client holds
+ * names, each also carries that name, which is written as the member's C# name (the JSON name is not what `Enum.TryParse` reads).
  */
-export function enumBinder<T = unknown>(codec: () => Codec<T>, members: readonly (readonly [string, bigint])[], location: ParameterLocation, options: EnumBinderOptions = {}): Binder<T> {
+export function enumBinder<T = unknown>(codec: () => Codec<T>, members: readonly (readonly [string, bigint] | readonly [string, bigint, string])[], location: ParameterLocation, options: EnumBinderOptions = {}): Binder<T> {
   const base = codecBinder<T>(codec, location, options);
   const byValue = new Map<bigint, string>();
-  for (const [name, value] of members) {
+  const byDomainName = new Map<string, string>();
+  for (const [name, value, domainName] of members) {
     if (!byValue.has(value)) {
       byValue.set(value, name);
+    }
+    if (domainName !== undefined && !byDomainName.has(domainName)) {
+      byDomainName.set(domainName, name);
     }
   }
   const composedOfFlags = (value: bigint): boolean => {
@@ -196,6 +201,13 @@ export function enumBinder<T = unknown>(codec: () => Codec<T>, members: readonly
     ...base,
     format: (value, ctx) => {
       const validated = codec().validateDomain(value, ctx) as unknown;
+      if (typeof validated === "string") {
+        const clrName = byDomainName.get(validated);
+        if (clrName === undefined) {
+          throw new CodecError("domain-rule", ctx.path, "unknown enum member name");
+        }
+        return clrName;
+      }
       const n = typeof validated === "bigint" ? validated : BigInt(validated as number);
       const name = byValue.get(n);
       if (name !== undefined) {

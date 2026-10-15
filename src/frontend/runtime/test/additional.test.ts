@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as additional from "../../../backend/Tisilia.Generator/Additional/tisilia-additional.js";
 import { createCodecContext, withContext } from "../src/codec/abi.js";
 import { asCodecError } from "../src/codec/errors.js";
-import { enumCodec } from "../src/codec/structural.js";
+import { enumCodec, enumNameCodec } from "../src/codec/structural.js";
 import { enumBinder } from "../src/http/binders.js";
 import type { JsonValue } from "../src/json/ast.js";
 
@@ -243,6 +243,15 @@ describe("enumBinder", () => {
     expect(flags.format(3, ctx)).toBe("3"); // a combination of defined flags is defined
     expect(flags.format(0, ctx)).toBe("None");
     expect(codeOf(() => flags.format(4, ctx))).toBe("domain-rule");
+  });
+
+  it("writes the C# member name of a name the client holds (Enum.TryParse reads C# names, not JSON names)", () => {
+    const kinds = enumNameCodec({ id: "k", typeId: "k", names: ["usage", "fancy-name"] });
+    const binder = enumBinder(() => kinds, [["Usage", 0n, "usage"], ["Fancy", 1n, "fancy-name"]], "path");
+    expect(binder.format("fancy-name", ctx)).toBe("Fancy");
+    expect(binder.format("usage", ctx)).toBe("Usage");
+    expect(codeOf(() => binder.format("Fancy", ctx))).toBe("domain-rule"); // the C# name is not a value the client holds
+    expect(codeOf(() => binder.format(1 as unknown as string, ctx))).toBe("type-mismatch");
   });
 });
 

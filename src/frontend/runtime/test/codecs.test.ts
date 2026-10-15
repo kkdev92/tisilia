@@ -3,7 +3,7 @@ import { createCodecContext, type Codec } from "../src/codec/abi.js";
 import { CodecError } from "../src/codec/errors.js";
 import { TisiliaMap } from "../src/codec/map.js";
 import { scalarCodec, webNumbers } from "../src/codec/scalars.js";
-import { arrayCodec, brandCodec, enumCodec, mapCodec, nullableCodec, objectCodec, taggedUnionCodec } from "../src/codec/structural.js";
+import { arrayCodec, brandCodec, enumCodec, enumNameCodec, mapCodec, nullableCodec, objectCodec, taggedUnionCodec } from "../src/codec/structural.js";
 import { parseJson } from "../src/json/parser.js";
 import { writeJson } from "../src/json/writer.js";
 import { decimalFromString } from "../src/primitives/decimal.js";
@@ -220,12 +220,53 @@ describe("enum codec", () => {
     expect(writeJson(perm.encodeRequest!(9, ctx))).toBe("9");
     expect(writeJson(perm.encodeRequest!(0, ctx))).toBe('"None"');
   });
+  it("reads a name as written before reading it in another case", () => {
+    // .NET 10, members Ab = 1 and AB = 2 without a naming policy: the server writes "Ab" and "AB", and reads "ab" as Ab
+    const clash = enumCodec({
+      id: "x",
+      typeId: "x",
+      underlying: "int32",
+      flags: false,
+      allowUndefinedInteger: true,
+      stringForm: true,
+      members: [
+        { name: "Ab", value: 1n },
+        { name: "AB", value: 2n },
+      ],
+    });
+    expect(clash.decodeResponse!(parseJson('"Ab"'), ctx)).toBe(1);
+    expect(clash.decodeResponse!(parseJson('"AB"'), ctx)).toBe(2);
+    expect(clash.decodeResponse!(parseJson('"ab"'), ctx)).toBe(1);
+    expect(clash.decodeKey!("AB", ctx)).toBe(2);
+    expect(writeJson(clash.encodeRequest!(2, ctx))).toBe('"AB"');
+  });
   it("numeric enums keep undefined integers and 64-bit bases as bigint", () => {
     const big = enumCodec({ id: "b", typeId: "b", underlying: "uint64", flags: false, allowUndefinedInteger: true, stringForm: false, members: [{ name: "Max", value: 18446744073709551615n }] });
     expect(big.decodeResponse!(parseJson("18446744073709551615"), ctx)).toBe(18446744073709551615n);
     expect(() => big.decodeResponse!(parseJson('"Max"'), ctx)).toThrow(CodecError);
     const closed = enumCodec({ id: "c", typeId: "c", underlying: "int32", flags: false, allowUndefinedInteger: false, stringForm: false, members: [{ name: "A", value: 1n }] });
     expect(() => closed.decodeResponse!(parseJson("2"), ctx)).toThrow(/undefined/);
+  });
+});
+
+describe("enum name codec", () => {
+  // JsonStringEnumConverter(allowIntegerValues: false) on .NET 10 refuses numbers and integer strings, and refuses to write a value no
+  // member defines; it writes each member's serialized name
+  const kind = enumNameCodec({ id: "k", typeId: "k", names: ["usage", "stock"] });
+  it("holds the names the server writes and writes exactly those names", () => {
+    expect(kind.decodeResponse!(parseJson('"stock"'), ctx)).toBe("stock");
+    expect(writeJson(kind.encodeRequest!("usage", ctx))).toBe('"usage"');
+    expect(kind.validateDomain("stock", ctx)).toBe("stock");
+    expect(kind.encodeKey!("stock", ctx)).toBe("stock");
+    expect(kind.decodeKey!("usage", ctx)).toBe("usage");
+    expect(kind.parseRequestInput!(" stock ", ctx)).toBe("stock");
+  });
+  it("refuses an integer, a name it does not hold and a name in another case", () => {
+    expect(() => kind.decodeResponse!(parseJson("1"), ctx)).toThrow(CodecError);
+    expect(() => kind.decodeResponse!(parseJson('"1"'), ctx)).toThrow(/unknown enum member name/);
+    expect(() => kind.decodeResponse!(parseJson('"Stock"'), ctx)).toThrow(/unknown enum member name/);
+    expect(() => kind.encodeRequest!(1 as unknown as string, ctx)).toThrow(CodecError);
+    expect(() => kind.decodeKey!("7", ctx)).toThrow(CodecError);
   });
 });
 

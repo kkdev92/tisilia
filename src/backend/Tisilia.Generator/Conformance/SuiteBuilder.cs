@@ -838,6 +838,13 @@ public sealed class SuiteBuilder
     private JsonValue EnumValue(EnumShape e, int index)
     {
         var members = e.Members;
+        if (e.NameDomain == true)
+        {
+            // the client holds the names the server writes
+            var named = members[index < members.Count ? index : _rng.Next(members.Count)];
+            return DomainAst.String(named.SerializedName ?? named.Name);
+        }
+
         if (e.Flags && index >= members.Count && members.Count > 1)
         {
             var a = BigInteger.Parse(members[_rng.Next(members.Count)].Value, CultureInfo.InvariantCulture);
@@ -1723,6 +1730,7 @@ public sealed class SuiteBuilder
                 "json-value" => (JsonToken?)null,
                 _ => JsonToken.Number,
             },
+            EnumShape { NameDomain: true } => JsonToken.String,
             EnumShape => JsonToken.Number,
             ObjectShape or MapShape or UnionShape => JsonToken.Object,
             ArrayShape => JsonToken.Array,
@@ -1745,6 +1753,18 @@ public sealed class SuiteBuilder
         if (!use.SemanticNullable)
         {
             yield return (DomainAst.Null, "null");
+        }
+
+        if (model.Shape is EnumShape { NameDomain: true } names)
+        {
+            // a string that names no member
+            var unknown = "not-a-member";
+            while (names.Members.Any(m => (m.SerializedName ?? m.Name) == unknown))
+            {
+                unknown += "_";
+            }
+
+            yield return (DomainAst.String(unknown), "unknown-name");
         }
 
         if (model.Shape is PrimitiveShape ps)
