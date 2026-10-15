@@ -39,6 +39,11 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   `requestHeaderAllowlist`, which export left empty, so that the client's `headers` option and the Nuxt module's forwarded
   headers can pass those headers through; a header a browser cannot set, a credential header, or one that is also a header
   parameter of the operation is refused (SV32).
+- **An adapter's own failure, handed back.** A fetch adapter (`transport.fetch`) that throws `new AdapterFailure(cause)`
+  makes the operation's result a transport failure with reason `adapter` whose `cause` is that value, as it was thrown: an
+  application that sends requests through its own stack can tell its own failures apart. The runtime never reads the value,
+  copies it into a message or puts it into a hydration envelope; anything else an adapter throws is still classified with
+  fixed text.
 
 ### Changed
 
@@ -47,6 +52,7 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   export and generate again.
 - A paired registration whose ids, export names, TypeScript name or version are not in the contract's forms is reported when
   export reaches it, naming the registration's field (SV01), instead of at the contract path the name would have taken.
+- `TransportFailure.reason` has a new value, `adapter`: a `switch` over the reasons that must be exhaustive needs a case for it.
 
 ### Fixed
 

@@ -490,7 +490,7 @@ async function fetchWithinBudget(operation: OperationDescriptor, args: unknown, 
     case "limit-failure":
       return { kind: "limit-failure", operationId: operation.id, limit: outcome.limit, metadata: outcome.metadata };
     case "transport-failure":
-      return { kind: "transport-failure", operationId: operation.id, reason: outcome.reason, message: outcome.message, ...(outcome.metadata !== undefined ? { metadata: outcome.metadata } : {}) };
+      return { kind: "transport-failure", operationId: operation.id, reason: outcome.reason, message: outcome.message, ...(outcome.metadata !== undefined ? { metadata: outcome.metadata } : {}), ...(outcome.reason === "adapter" ? { cause: outcome.cause } : {}) };
     case "ok":
       break;
   }
