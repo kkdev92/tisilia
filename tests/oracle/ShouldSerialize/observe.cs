@@ -2,47 +2,62 @@
 #:property JsonSerializerIsReflectionEnabledByDefault=true
 #:property TreatWarningsAsErrors=false
 #:property NoWarn=$(NoWarn);IL2026;IL3050
-// Which decides whether System.Text.Json writes a member: [JsonIgnore(Condition = WhenWritingDefault)], the options'
-// DefaultIgnoreCondition, or a ShouldSerialize predicate that a type info modifier sets. Run: dotnet run tests/oracle/ShouldSerialize/observe.cs
+// Which decides whether System.Text.Json writes a member: its [JsonIgnore(Condition = ...)], the options' DefaultIgnoreCondition,
+// or a ShouldSerialize predicate that a type info modifier sets or removes; and whose code the predicate of a [JsonIgnore]
+// condition is, in reflection and in source-generated metadata. Run: dotnet run tests/oracle/ShouldSerialize/observe.cs
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 
-foreach (var global in new[] { JsonIgnoreCondition.Never, JsonIgnoreCondition.WhenWritingDefault })
+// before any modifier runs: the assembly whose code each member's predicate is (none: the member has no predicate)
+foreach (var (source, metadata) in new (string, IJsonTypeInfoResolver)[] { ("reflection", new DefaultJsonTypeInfoResolver()), ("source-generated", MembersContext.Default) })
 {
-    foreach (var predicate in new bool?[] { null, true, false })
+    var info = metadata.GetTypeInfo(typeof(Members), new JsonSerializerOptions())!;
+    Console.WriteLine($"{source,-16} predicates: " + string.Join(", ", info.Properties.Select(p => $"{p.Name} {(p.ShouldSerialize is { } f ? f.Method.Module.Assembly.GetName().Name : "none")}")));
+}
+
+// every member holds its default (null, or a default struct) when written
+foreach (var global in new[] { JsonIgnoreCondition.Never, JsonIgnoreCondition.WhenWritingNull, JsonIgnoreCondition.WhenWritingDefault })
+{
+    foreach (var predicate in new[] { "none", "removed", "always", "never" })
     {
         var resolver = new DefaultJsonTypeInfoResolver();
-        if (predicate is { } writes)
+        if (predicate != "none")
         {
             resolver.Modifiers.Add(info =>
             {
+                if (info.Type != typeof(Members))
+                {
+                    return;
+                }
+
                 foreach (var property in info.Properties)
                 {
-                    if (property.PropertyType == typeof(Box))
-                    {
-                        property.ShouldSerialize = writes ? static (_, _) => true : static (_, _) => false;
-                    }
+                    property.ShouldSerialize = predicate switch { "removed" => null, "always" => static (_, _) => true, _ => static (_, _) => false };
                 }
             });
         }
 
         var options = new JsonSerializerOptions { DefaultIgnoreCondition = global, TypeInfoResolver = resolver };
-        var label = predicate is null ? "none" : predicate.Value ? "always writes" : "never writes";
-        Console.WriteLine($"options {global,-18} predicate {label,-13}: [JsonIgnore(WhenWritingDefault)] {JsonSerializer.Serialize(new Attributed(), options),-22} no attribute {JsonSerializer.Serialize(new Plain(), options)}");
+        Console.WriteLine($"options {global,-18} predicate {predicate,-7}: {JsonSerializer.Serialize(new Members(), options)}");
     }
 }
 
-// the default value of each member: a struct, so neither member is ever null
 public readonly record struct Box(int Value);
 
-public sealed class Attributed
+public sealed class Members
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public Box Member { get; set; }
+    public Box WhenDefault { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? WhenNull { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? Never { get; set; }
+
+    public string? Plain { get; set; }
 }
 
-public sealed class Plain
-{
-    public Box Member { get; set; }
-}
+[JsonSerializable(typeof(Members))]
+internal sealed partial class MembersContext : JsonSerializerContext;

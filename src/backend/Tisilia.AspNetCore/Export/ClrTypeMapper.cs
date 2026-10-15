@@ -1293,15 +1293,13 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
                     canWrite = false;
                 }
             }
-            var ignore = EffectiveIgnoreCondition(prop);
+            var (ignore, ownPredicate, replaced) = WriteCondition(prop);
             if (ignore == IgnoreCondition.Always || (direction == WireDirection.ServerRead && !canRead) || (direction == WireDirection.ServerWrite && !canWrite))
             {
                 continue;
             }
 
             var conditional = ignore is IgnoreCondition.WhenWritingNull or IgnoreCondition.WhenWritingDefault or IgnoreCondition.WhenWriting;
-            // [JsonIgnore(Condition = Never)] is expressed as a ShouldSerialize predicate that always answers true: the member is always written
-            var alwaysWritten = ignore == IgnoreCondition.Never && memberInfo?.GetCustomAttribute<JsonIgnoreAttribute>(inherit: true) is { Condition: JsonIgnoreCondition.Never };
             var memberName = (prop.AttributeProvider as MemberInfo)?.Name;
             var memberRegistration = options.Behaviors.FindMember(type, memberName, prop.Name);
             // a member of a declared presence wrapper type (Optional<T>) is the wrapper's value, which a request may leave out; a response
@@ -1315,11 +1313,11 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
                 continue;
             }
 
-            // Source-generated metadata expresses [JsonIgnore(Condition = WhenWritingNull/Default)] as a ShouldSerialize predicate;
-            // only a predicate that no ignore condition explains is an undescribed delegate and needs a registration
-            if (direction == WireDirection.ServerWrite && prop.ShouldSerialize is not null && !conditional && !alwaysWritten && memberRegistration?.Kind != BehaviorKind.ShouldSerialize && wrapper is null)
+            // a predicate of the application's own decides whether the member is written, whatever ignore condition it replaced: an undescribed
+            // delegate that needs a registration (the predicate of a [JsonIgnore] condition is System.Text.Json's, which the condition describes)
+            if (direction == WireDirection.ServerWrite && ownPredicate && memberRegistration?.Kind != BehaviorKind.ShouldSerialize && wrapper is null)
             {
-                bag.Error(TisiliaCodes.BehaviorEffect, "SV19", pPath, $"property '{type.Name}.{prop.Name}' has a ShouldSerialize delegate whose condition is not described; register a BehaviorRegistration of kind 'should-serialize' for the member", [id]);
+                bag.Error(TisiliaCodes.BehaviorEffect, "SV19", pPath, $"property '{type.Name}.{prop.Name}' has a ShouldSerialize delegate whose condition is not described{(replaced is null ? "" : $" (it decides instead of {replaced})")}; register a BehaviorRegistration of kind 'should-serialize' for the member", [id]);
                 failed = true;
                 continue;
             }
@@ -1333,7 +1331,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
 
             var presence = direction == WireDirection.ServerRead
                 ? (prop.IsRequired || (profile.Options.RespectRequiredConstructorParameters && prop.AssociatedParameter is { HasDefaultValue: false }) ? Presence.Required : Presence.Optional)
-                : (conditional || (prop.ShouldSerialize is not null && !alwaysWritten) ? Presence.Optional : Presence.Required);
+                : (conditional || ownPredicate ? Presence.Optional : Presence.Required);
             var creation = populate ? ObjectCreationHandling.Populate : ObjectCreationHandling.Replace;
             // a populated member changes the constructed value and needs a registration of kind 'populate'; other registered
             // member effects (setter, getter, other) are recorded as declared by the application
@@ -1476,7 +1474,8 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
     /// Whether System.Text.Json leaves a presence wrapper's absent state out of what it writes. A ShouldSerialize predicate decides when
     /// the member has one — [JsonIgnore(Condition = WhenWritingDefault)] on the member is one, and one a type info modifier sets replaces
     /// any ignore condition (dotnet/runtime v10.0.0, <c>JsonPropertyInfo.ShouldSerialize</c>) — asked with an instance of the type that no
-    /// constructor ran for. Without one, the options' WhenWritingDefault leaves the default out, which the absent state is.
+    /// constructor ran for. Without one, the options' WhenWritingDefault leaves the default out, which the absent state is, and a member
+    /// whose [JsonIgnore] predicate a modifier removed is always written (<paramref name="ignore"/> is then Never).
     /// </summary>
     private static bool OmitsAbsentState(Type type, JsonPropertyInfo prop, IgnoreCondition ignore)
     {
@@ -1701,6 +1700,38 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         builder.AddType(model with { Shape = shape with { Properties = domainProps } });
         builder.AddCodec(codec with { Dependencies = codec.Dependencies.Append(tagUse.CodecId).Distinct(StringComparer.Ordinal).ToList() });
         return baseUse;
+    }
+
+    /// <summary>
+    /// What decides whether System.Text.Json writes the member: the ignore condition that applies, or a ShouldSerialize predicate of the
+    /// application's own, with the condition that predicate takes the place of. System.Text.Json expresses a member's
+    /// <c>[JsonIgnore(Condition = …)]</c> as a predicate of its own, in reflection and source-generated metadata alike; a type info
+    /// modifier that sets ShouldSerialize replaces it, and one that sets null removes it, so the member is always written. The options'
+    /// DefaultIgnoreCondition applies only to a member without a predicate (dotnet/runtime v10.0.0, <c>JsonPropertyInfo.ShouldSerialize</c>
+    /// and <c>DetermineIgnoreCondition</c>). Oracle: <c>tests/oracle/ShouldSerialize/observe.cs</c>.
+    /// </summary>
+    private static (IgnoreCondition Ignore, bool OwnPredicate, string? Replaced) WriteCondition(JsonPropertyInfo prop)
+    {
+        var condition = EffectiveIgnoreCondition(prop);
+        var attribute = prop.AttributeProvider?.GetCustomAttributes(typeof(JsonIgnoreAttribute), inherit: true).OfType<JsonIgnoreAttribute>().FirstOrDefault();
+        var own = prop.ShouldSerialize is { } predicate && predicate.Method.Module.Assembly != typeof(JsonPropertyInfo).Assembly;
+        if (attribute is null)
+        {
+            return own ? (IgnoreCondition.Never, true, condition == IgnoreCondition.Never ? null : $"the options' {condition}") : (condition, false, null);
+        }
+
+        // Always leaves the member without accessors, and WhenReading is no predicate: neither is a condition on writing
+        if (attribute.Condition is JsonIgnoreCondition.Always or JsonIgnoreCondition.WhenReading)
+        {
+            return (condition, own, null);
+        }
+
+        if (own)
+        {
+            return (IgnoreCondition.Never, true, $"[JsonIgnore(Condition = {attribute.Condition})] on the member");
+        }
+
+        return (prop.ShouldSerialize is null ? IgnoreCondition.Never : condition, false, null);
     }
 
     private static IgnoreCondition EffectiveIgnoreCondition(JsonPropertyInfo prop)

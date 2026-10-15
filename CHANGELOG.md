@@ -79,6 +79,12 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   and Explorer offers them as one choice; a name that stands for two values is still refused.
 - The generated client read the name of an enum member that differs from another's only in case (`Ab` and `AB` without a
   naming policy) as the member declared last. It reads a name as written first, then ignoring case, as System.Text.Json does.
+- A `ShouldSerialize` predicate that a type info modifier set on a member with an ignore condition — its
+  `[JsonIgnore(Condition = …)]` or the options' `DefaultIgnoreCondition` — was taken for that condition, though
+  System.Text.Json asks the predicate instead: such a predicate was never reported as undescribed (SV19), and one on a member
+  declared `Never` made the member required although the server could leave it out. The predicate now decides and is
+  refused until a should-serialize behavior describes it. A member whose `[JsonIgnore]` predicate a modifier removed was
+  optional; it is always written, and a presence wrapper member so written is refused (SV19).
 
 ## [0.2.0-alpha] - 2026-10-09
 

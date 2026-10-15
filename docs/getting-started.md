@@ -514,6 +514,12 @@ builder.Services.AddTisilia(o => o.Resolvers.Add(new ResolverRegistration
 }));
 ```
 
+A modifier that sets a member's `ShouldSerialize` decides whether System.Text.Json writes the member: the member's
+`[JsonIgnore(Condition = …)]` and the options' `DefaultIgnoreCondition` no longer apply to it. Export refuses such a predicate
+(SV19) until a `BehaviorRegistration` of kind `ShouldSerialize` describes it, except on a presence wrapper member, where it
+leaves the absent state out. A modifier that sets `ShouldSerialize` to null on a member with a `[JsonIgnore]` condition removes
+the condition, and the member is always written. The program in `tests/oracle/ShouldSerialize` shows each case.
+
 The source-generated contexts ASP.NET Core inserts itself (problem details, OpenAPI, the Identity endpoints) need no
 registration, nor does an application's own source-generated `JsonSerializerContext`, which the contract records as it is.
 
