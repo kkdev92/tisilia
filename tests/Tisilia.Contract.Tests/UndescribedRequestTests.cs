@@ -163,6 +163,8 @@ public sealed class UndescribedRequestTests
             var diagnostic = Assert.Single(export.Diagnostics.Items, d => d.RelatedIds.Contains(id));
             Assert.Equal(("SV30", DiagnosticSeverity.Warning), (diagnostic.Rule, diagnostic.Severity));
             Assert.Contains("Code's own parser", diagnostic.Message, StringComparison.Ordinal);
+            // the fix names the registration that would make it a value the client checks
+            Assert.Contains("ParameterGrammarId", diagnostic.Fix, StringComparison.Ordinal);
             var field = Assert.Single(Assert.IsType<FormRequestBody>(export.Index!.Operations[id].RequestBody).Fields);
             Assert.True(field.ServerParsed); Assert.Equal(name, field.Name);
             Assert.IsType<PrimitiveShape>(export.Index.Types[field.Use!.TypeId].Shape);
@@ -204,6 +206,7 @@ public sealed class UndescribedRequestTests
         Assert.Equal(["X-Code", "code", "filter", "tags"], parameters.Keys.Order(StringComparer.Ordinal));
         Assert.All(parameters.Values, p => Assert.Equal(Tisilia.Generator.Validation.Builtins.AcceptServerParsed, export.Index.Binders[p.BinderId].ServerAcceptanceId));
         Assert.Equal(4, export.Diagnostics.Items.Count(d => d.Rule == "SV30" && d.Severity == DiagnosticSeverity.Warning && d.Message.Contains("Code's own parser", StringComparison.Ordinal)));
+        Assert.All(export.Diagnostics.Items.Where(d => d.Rule == "SV30"), d => Assert.Contains("ParameterGrammarId", d.Fix, StringComparison.Ordinal));
         Assert.Equal((Presence.Required, Presence.Optional), (parameters["code"].Presence, parameters["filter"].Presence));
 
         var work = Directory.CreateTempSubdirectory("tisilia-parsed-");

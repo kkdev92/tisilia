@@ -485,7 +485,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
                 }
 
                 bag.Warning(TisiliaCodes.ParameterRouteMismatch, "SV30", pPath, $"operation '{opId}': parameter '{p.Name}' is sent as text that the server parses with {FriendlyName(scalarType)}'s own parser; the contract does not describe which texts it accepts, so the client sends any string and the server answers the texts it refuses", [opId],
-                    "take a builtin scalar or an additional codec type to have the client check the value");
+                    "to have the client check the value, take a builtin scalar or an additional codec type, or give the type a paired registration (TisiliaOptions.Codecs.AddPaired) whose ParameterGrammarId names the grammar of the text its parser reads");
                 var parsedRequired = location == ParameterLocation.Path ? pathRequired : (isRequired && !nullable && !repeated && declaredDefault is null);
                 parameters.Add(new Parameter
                 {

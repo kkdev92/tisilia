@@ -97,7 +97,7 @@ public sealed partial class TisiliaContractExporter
             if (serverParsed)
             {
                 bag.Warning(TisiliaCodes.ParameterRouteMismatch, "SV30", path, $"operation '{operationId}': form field '{name}' is sent as text that the server parses with {FriendlyName(type)}'s own parser; the contract does not describe which texts it accepts, so the client sends any string and the server answers the texts it refuses", [operationId],
-                    "take a builtin scalar or an additional codec type to have the client check the value");
+                    "to have the client check the value, take a builtin scalar or an additional codec type, or give the type a paired registration (TisiliaOptions.Codecs.AddPaired) whose ParameterGrammarId names the grammar of the text its parser reads");
                 scalar = "string";
             }
             if (!file && !type.IsEnum && paired is null && (scalar is null or "bytes" or "json-value" or "datetime-local-wire")) { return false; }

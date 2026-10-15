@@ -57,6 +57,9 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   the counts, how many operations have each readiness, and how many causes and operations each reason has
   (`tisilia.doctor-summary`). A script that read the report from stdout reads it from the file. Without `--output`, and as
   text, the output is unchanged.
+- The fix SV30 gives for a route, query, header or form value that the server reads with its type's own parser now names
+  the other way to a value the client checks: a paired registration of the type whose `ParameterGrammarId` names the
+  grammar of the text that parser reads.
 
 ### Fixed
 
