@@ -175,6 +175,27 @@ null element. A handler's own return value follows its annotation: `Item? (…) 
 and code without annotations (`#nullable disable`) counts as nullable. A lambda whose return type is inferred carries no
 annotation at all, so its value counts as not null — declare the return type when it can return null.
 
+**Leaving a member out.** A PATCH body often needs three states for a member: left out (leave it as it is), `null` (clear
+it) and a value. A generic struct that holds whether the member was sent — an `Optional<T>` whose converter reads the
+member's JSON into a present value, with a type info modifier that leaves the absent state out of responses — is declared
+once:
+
+```csharp
+builder.Services.AddTisilia(o => o.PresenceWrappers.Add(typeof(Optional<>))); // its HasValue and Value
+// other member names: o.PresenceWrappers.Add(typeof(Maybe<>), presentMember: "IsSpecified", valueMember: "Value")
+```
+
+A member of type `Optional<T>` is then the member `T`, optional in both directions: `Optional<string?> Name` is
+`name?: string | null`, where leaving `name` out sends nothing, `null` sends null and a string sends the string. Export
+asks each member's own converter whether it reads JSON null as a present value that holds null (only then does the member
+take `null`), and refuses (SV19) a response member whose absent state System.Text.Json would write — leave it out with a
+`ShouldSerialize` predicate that answers false for it, or `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]`
+— and a request member the server holds as present when the client leaves it out. The declaration states the rest: the
+converter reads the member's JSON as `T` with the same options, and writes a present value as its `T`. The conformance
+suite holds the server to it, leaving members out, sending null and sending values in both directions. A wrapper is a
+member's type: inside a collection, a dictionary or a body it is a converter like any other. A modifier added with
+`WithAddedModifier` makes its resolver one the profile names (`TisiliaOptions.Resolvers`, SV16).
+
 **Controllers and minimal APIs.** Controllers serialize with MVC's options (`AddJsonOptions`), minimal APIs with
 `ConfigureHttpJsonOptions`. When the two describe types otherwise — another naming policy, other converters — a type both
 serve is a model on each side, and its TypeScript name gets a number on one of them. One converter type with other

@@ -411,6 +411,16 @@ public sealed class ProfileContext
         });
     }
 
+    /// <summary>Records that a member scope holds a presence wrapper (the member's type is one); call it after <see cref="AddScope"/>.</summary>
+    public void SetPresenceWrapper(string clrPath, PresenceWrapper wrapper)
+    {
+        var index = _scopes.FindIndex(s => s.Kind == ScopeKind.Member && s.ClrPath == clrPath);
+        if (index >= 0)
+        {
+            _scopes[index] = _scopes[index] with { PresenceWrapper = wrapper };
+        }
+    }
+
     /// <summary>Records a behavior of this profile (Populate / initializer / callback effect); ids are unique per profile.</summary>
     public void AddBehavior(Behavior behavior)
     {

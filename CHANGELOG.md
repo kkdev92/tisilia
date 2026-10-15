@@ -24,6 +24,14 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   held by name keeps its integers, with a warning (SV49): one whose converter reads integers, a `[Flags]` enum, and, when
   declared for that enum, one System.Text.Json writes as an integer. A contract that holds an enum by name marks it
   (`nameDomain`), which 0.2.0-alpha tools do not read.
+- **Members a request can leave out, set to null or set.** `TisiliaOptions.PresenceWrappers.Add(typeof(Optional<>))`
+  declares a generic struct that holds whether an object member was sent, by its `HasValue` and `Value` or the members
+  named. A member of a closed wrapper type is its value in the contract, optional in both directions:
+  `Optional<string?> Name` is `name?: string | null` in TypeScript, and leaving it out sends nothing. Export asks each
+  member's converter whether JSON null reads as a present wrapper that holds null, and refuses (SV19) a response member
+  whose absent state System.Text.Json would write and a request member the server holds as present when it is left out.
+  Member scopes record the wrapper (`presenceWrapper`), which 0.2.0-alpha tools do not read; the conformance suite leaves
+  wrapped members out in both directions and expects them left out.
 
 ### Changed
 
