@@ -26,6 +26,8 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
     public List<DocumentedType> Documented { get; } = [];
     private readonly HashSet<(Type, WireDirection)> _inProgress = [];
     private readonly HashSet<string> _pairedRegistered = new(StringComparer.Ordinal);
+    private readonly HashSet<PairedCodecRegistration> _pairedRefused = [];
+    private readonly HashSet<Type> _enumDomainWarned = [];
     private readonly Dictionary<NumberProfile, JsonSerializerOptions> _numberOptions = new();
 
     /// <summary>Options equal to the profile's except for the number handling of a member override (runner adapters for root-level scalars).</summary>
@@ -433,6 +435,14 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
             return pairedUse;
         }
 
+        if (options.Codecs.PairedFactoryProblem(type, effectiveConverter) is { } factoryProblem)
+        {
+            bag.Error(TisiliaCodes.MissingCapability, "SV05", path, $"type '{type}' is serialized by converter factory '{effectiveConverter}', but {factoryProblem}", [type.FullName ?? type.Name],
+                "return the closed type's registration from the callback given to TisiliaOptions.Codecs.AddPairedFactory (ClrType = the type, ConverterType = the factory), or register the type with AddPaired");
+            _cache[key] = null;
+            return null;
+        }
+
         if (options.Codecs.PairedFor(type).Any())
         {
             var registered = string.Join(", ", options.Codecs.PairedFor(type).Select(r => r.ConverterType.Name));
@@ -445,8 +455,19 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
 
         if (!IsBuiltinConverter(info.Converter))
         {
-            bag.Error(TisiliaCodes.MissingCapability, "SV05", path, $"type '{type}' is serialized by custom converter '{info.Converter.GetType()}' which has no registered Tisilia binding; Tisilia never falls back to any/unknown", [type.FullName ?? type.Name],
-                "register a paired codec with TisiliaOptions.Codecs.AddPaired(...) or a portable definition");
+            // a registration names the converter in effect: for a factory's product that is the factory, not the closed converter it created
+            var created = info.Converter.GetType();
+            if (effectiveConverter != created && typeof(JsonConverterFactory).IsAssignableFrom(effectiveConverter))
+            {
+                bag.Error(TisiliaCodes.MissingCapability, "SV05", path, $"type '{type}' is serialized by custom converter '{created}', which converter factory '{effectiveConverter}' creates; the factory has no registered Tisilia binding, and Tisilia never falls back to any/unknown", [type.FullName ?? type.Name],
+                    $"register the factory once with TisiliaOptions.Codecs.AddPairedFactory(typeof({effectiveConverter.Name}), type => /* the closed type's PairedCodecRegistration */), or this type with AddPaired (ConverterType = typeof({effectiveConverter.Name}))");
+            }
+            else
+            {
+                bag.Error(TisiliaCodes.MissingCapability, "SV05", path, $"type '{type}' is serialized by custom converter '{created}' which has no registered Tisilia binding; Tisilia never falls back to any/unknown", [type.FullName ?? type.Name],
+                    "register a paired codec with TisiliaOptions.Codecs.AddPaired(...) or a portable definition");
+            }
+
             _cache[key] = null;
             return null;
         }
@@ -963,9 +984,91 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         }
 
         RecordTypeScope(type);
+        var documentedMembers = type.GetFields(BindingFlags.Public | BindingFlags.Static).Select(f => new DocumentedMember(f.Name, type, f, null)).ToList();
+
+        // the client holds the names the server writes only where the converter in effect reads and writes nothing else
+        var (domain, declared) = options.Enums.Find(type);
+        if (domain == EnumDomain.Names)
+        {
+            var refusal = !stringForm ? "System.Text.Json writes it as an integer: no JsonStringEnumConverter applies to it"
+                : flags ? "it is a [Flags] enum, whose combinations the server writes as lists of names or as integers"
+                : !EnumNamesOnly(type, member) ? "its converter reads integers, or writes as an integer a value no member defines"
+                : null;
+            if (refusal is null)
+            {
+                var namesId = NeutralModelId(type) + ".names";
+                Documented.Add(new DocumentedType(namesId, type, documentedMembers));
+                return builder.NameEnumOf(namesId, EnumTsName(type, namesId, stringForm: true), CleanName(type), underlying, members);
+            }
+
+            // an explicit declaration is always answered; the default only where the names were in reach (a string-form enum)
+            if ((declared || stringForm) && _enumDomainWarned.Add(type))
+            {
+                bag.Warning(TisiliaCodes.EnumInvalid, "SV49", "", $"enum '{type}' keeps its integer values on the client: {refusal}", [type.FullName ?? type.Name],
+                    "for names, serialize the enum with new JsonStringEnumConverter(namingPolicy, allowIntegerValues: false); or declare TisiliaOptions.Enums.Add(typeof(...), EnumDomain.Values)");
+            }
+        }
+
         var id = NeutralModelId(type) + (stringForm ? ".string" : ".number");
-        Documented.Add(new DocumentedType(id, type, type.GetFields(BindingFlags.Public | BindingFlags.Static).Select(f => new DocumentedMember(f.Name, type, f, null)).ToList()));
+        Documented.Add(new DocumentedType(id, type, documentedMembers));
         return builder.EnumOf(id, EnumTsName(type, id, stringForm), CleanName(type), underlying, members, flags, stringForm);
+    }
+
+    /// <summary>
+    /// Whether the converter in effect reads and writes the enum by name alone, observed as the string form is: a JSON number and an
+    /// integer string are refused on read, and a value no member defines is refused on write. JsonStringEnumConverter does this with
+    /// <c>allowIntegerValues: false</c> (dotnet/runtime v10.0.0, <c>EnumConverter</c>).
+    /// </summary>
+    private bool EnumNamesOnly(Type type, JsonPropertyInfo? member)
+    {
+        var options = OptionsFor(member);
+        var first = Enum.GetValuesAsUnderlyingType(type).GetValue(0)!;
+        var text = Convert.ToString(first, System.Globalization.CultureInfo.InvariantCulture)!;
+        return Refused(() => _ = JsonSerializer.Deserialize(text, type, options))
+            && Refused(() => _ = JsonSerializer.Deserialize("\"" + text + "\"", type, options))
+            && (UndefinedEnumValue(type) is not { } undefined || Refused(() => _ = JsonSerializer.Serialize(undefined, type, options)));
+
+        static bool Refused(Action action)
+        {
+            try
+            {
+                action();
+                return false;
+            }
+            catch (JsonException)
+            {
+                return true;
+            }
+        }
+    }
+
+    /// <summary>A value of the enum's underlying type that no member defines, or null when the members define every value.</summary>
+    private static object? UndefinedEnumValue(Type type)
+    {
+        var underlying = Enum.GetUnderlyingType(type);
+        var defined = Enum.GetValuesAsUnderlyingType(type).Cast<object>().Select(v => Convert.ToDecimal(v, System.Globalization.CultureInfo.InvariantCulture)).ToHashSet();
+        (decimal Min, decimal Max) range = Type.GetTypeCode(underlying) switch
+        {
+            TypeCode.SByte => (sbyte.MinValue, sbyte.MaxValue),
+            TypeCode.Byte => (byte.MinValue, byte.MaxValue),
+            TypeCode.Int16 => (short.MinValue, short.MaxValue),
+            TypeCode.UInt16 => (ushort.MinValue, ushort.MaxValue),
+            TypeCode.Int32 => (int.MinValue, int.MaxValue),
+            TypeCode.UInt32 => (uint.MinValue, uint.MaxValue),
+            TypeCode.Int64 => (long.MinValue, long.MaxValue),
+            _ => (ulong.MinValue, ulong.MaxValue),
+        };
+        var (min, max) = range;
+        var candidates = new[] { defined.Max() + 1, defined.Min() - 1, 0m, 1m }.Concat(Enumerable.Range(0, 1 << 16).Select(i => min + i));
+        foreach (var candidate in candidates)
+        {
+            if (candidate >= min && candidate <= max && !defined.Contains(candidate))
+            {
+                return Enum.ToObject(type, Convert.ChangeType(candidate, underlying, System.Globalization.CultureInfo.InvariantCulture));
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -1196,16 +1299,27 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
             var alwaysWritten = ignore == IgnoreCondition.Never && memberInfo?.GetCustomAttribute<JsonIgnoreAttribute>(inherit: true) is { Condition: JsonIgnoreCondition.Never };
             var memberName = (prop.AttributeProvider as MemberInfo)?.Name;
             var memberRegistration = options.Behaviors.FindMember(type, memberName, prop.Name);
+            // a member of a declared presence wrapper type (Optional<T>) is the wrapper's value, which a request may leave out; a response
+            // must leave the absent state out too, or the client could not tell a member never set from one sent
+            var wrapper = options.PresenceWrappers.Find(prop.PropertyType);
+            if (wrapper is not null && direction == WireDirection.ServerWrite && !OmitsAbsentState(type, prop, ignore))
+            {
+                bag.Error(TisiliaCodes.BehaviorEffect, "SV19", pPath, $"member '{type.Name}.{prop.Name}' holds presence wrapper '{CleanName(wrapper.OpenType)}', and System.Text.Json writes the wrapper's absent state too: a response would carry a value for a member never set", [id],
+                    "leave the absent state out of responses: a ShouldSerialize predicate that answers false for it (a type info modifier), or [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] on the member");
+                failed = true;
+                continue;
+            }
+
             // Source-generated metadata expresses [JsonIgnore(Condition = WhenWritingNull/Default)] as a ShouldSerialize predicate;
             // only a predicate that no ignore condition explains is an undescribed delegate and needs a registration
-            if (direction == WireDirection.ServerWrite && prop.ShouldSerialize is not null && !conditional && !alwaysWritten && memberRegistration?.Kind != BehaviorKind.ShouldSerialize)
+            if (direction == WireDirection.ServerWrite && prop.ShouldSerialize is not null && !conditional && !alwaysWritten && memberRegistration?.Kind != BehaviorKind.ShouldSerialize && wrapper is null)
             {
                 bag.Error(TisiliaCodes.BehaviorEffect, "SV19", pPath, $"property '{type.Name}.{prop.Name}' has a ShouldSerialize delegate whose condition is not described; register a BehaviorRegistration of kind 'should-serialize' for the member", [id]);
                 failed = true;
                 continue;
             }
 
-            var use = Map(prop.PropertyType, direction, pPath, isRoot: false, prop);
+            var use = wrapper is not null ? MapWrapped(prop, wrapper, direction, pPath) : Map(prop.PropertyType, direction, pPath, isRoot: false, prop);
             if (use is null)
             {
                 failed = true;
@@ -1226,9 +1340,19 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
                 continue;
             }
 
+            // An omitted wrapper member is the wrapper's absent state: an initializer or constructor that sets it changes the received value
+            if (wrapper is not null && constructedFromEmpty is not null && presence == Presence.Optional && !populate && memberRegistration is null
+                && constructedFromEmpty.Value is { } built && prop.Get?.Invoke(built) is { } held && wrapper.IsPresent(held))
+            {
+                bag.Error(TisiliaCodes.BehaviorEffect, "SV19", pPath, $"member '{type.Name}.{prop.Name}' is optional in the request, but when the client leaves it out the server holds a present '{CleanName(wrapper.OpenType)}' instead of its absent state (an initializer, a constructor default or constructor logic)", [id],
+                    "remove the default, or make the member required");
+                failed = true;
+                continue;
+            }
+
             // An omitted optional nullable member reads as null (the suite's request oracle); an initializer, a constructor
             // default or constructor logic that constructs something else changes the received value and must be registered
-            if (constructedFromEmpty is not null && presence == Presence.Optional && use.SemanticNullable && !populate && memberRegistration is null
+            if (wrapper is null && constructedFromEmpty is not null && presence == Presence.Optional && use.SemanticNullable && !populate && memberRegistration is null
                 && ConstructedMemberValue(prop, constructedFromEmpty.Value) is { } constructed)
             {
                 bag.Error(TisiliaCodes.BehaviorEffect, "SV19", pPath, $"member '{type.Name}.{prop.Name}' is optional and nullable in the request, but when the client omits it the server constructs {constructed} instead of null (an initializer, a constructor default or constructor logic)", [id],
@@ -1275,6 +1399,10 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
             // id and the scope merges the two when the type is used both ways (SV20)
             profile.AddScope(CleanName(type) + "." + prop.Name, ScopeKind.Member, canRead && direction == WireDirection.ServerRead ? use.CodecId : null, canWrite && direction == WireDirection.ServerWrite ? use.CodecId : null, prop.IsRequired,
                 prop.IsGetNullable ? Nullability.Yes : Nullability.No, prop.IsSetNullable ? Nullability.Yes : Nullability.No, creation, ignore, behaviorIds);
+            if (wrapper is not null)
+            {
+                profile.SetPresenceWrapper(CleanName(type) + "." + prop.Name, new Contract.PresenceWrapper { ClrType = CleanName(wrapper.OpenType), PresentMember = wrapper.PresentMember, ValueMember = wrapper.ValueMember });
+            }
             props.Add(new PropertySpec(prop.Name, use, presence, presence, presence));
             documented.Add(new DocumentedMember(prop.Name, prop.PropertyType, memberInfo, prop.AssociatedParameter?.AttributeProvider, OptionsFor(prop)));
         }
@@ -1314,6 +1442,57 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         }
 
         return objectUse;
+    }
+
+    /// <summary>
+    /// The value of a presence wrapper member: the wrapper's type argument as the wrapper's converter reads and writes it, with the
+    /// profile's options, and nullable when the member's own converter reads JSON null as a present wrapper that holds null (observed).
+    /// </summary>
+    private TypeUse? MapWrapped(JsonPropertyInfo prop, PresenceWrapperRegistration wrapper, WireDirection direction, string path)
+    {
+        var value = prop.PropertyType.GetGenericArguments()[0];
+        var nullable = ReadsNullAsPresent(prop, wrapper);
+        return Map(nullable ? value : Nullable.GetUnderlyingType(value) ?? value, direction, path, isRoot: false, member: null, nullableRoot: nullable);
+    }
+
+    private bool ReadsNullAsPresent(JsonPropertyInfo prop, PresenceWrapperRegistration wrapper)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize("null", prop.PropertyType, OptionsFor(prop)) is { } read && wrapper.IsPresent(read) && wrapper.ValueOf(read) is null;
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Whether System.Text.Json leaves a presence wrapper's absent state out of what it writes. A ShouldSerialize predicate decides when
+    /// the member has one — [JsonIgnore(Condition = WhenWritingDefault)] on the member is one, and one a type info modifier sets replaces
+    /// any ignore condition (dotnet/runtime v10.0.0, <c>JsonPropertyInfo.ShouldSerialize</c>) — asked with an instance of the type that no
+    /// constructor ran for. Without one, the options' WhenWritingDefault leaves the default out, which the absent state is.
+    /// </summary>
+    private static bool OmitsAbsentState(Type type, JsonPropertyInfo prop, IgnoreCondition ignore)
+    {
+        if (prop.ShouldSerialize is not { } predicate)
+        {
+            return ignore == IgnoreCondition.WhenWritingDefault;
+        }
+
+        if (type.IsAbstract)
+        {
+            return false;
+        }
+
+        try
+        {
+            return !predicate(System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(type), Activator.CreateInstance(prop.PropertyType));
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -1552,8 +1731,27 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
     {
         if (!options.Codecs.TryGetPaired(type, converterType, out var reg))
         {
+            if (options.Codecs.PairedFactoryProblem(type, converterType) is { } factoryProblem)
+            {
+                bag.Error(TisiliaCodes.MissingCapability, "SV05", path, $"custom converter factory '{converterType}' for '{type}' has no paired binding for it: {factoryProblem}", [type.FullName ?? type.Name],
+                    "return the closed type's registration from the callback given to TisiliaOptions.Codecs.AddPairedFactory (ClrType = the type, ConverterType = the factory)");
+                return null;
+            }
+
             bag.Error(TisiliaCodes.MissingCapability, "SV05", path, $"custom converter '{converterType}' for '{type}' has no registered paired binding", [type.FullName ?? type.Name],
                 "TisiliaOptions.Codecs.AddPaired(new PairedCodecRegistration { ClrType = ..., ConverterType = ..., ... })");
+            return null;
+        }
+
+        // the schema's forms of ids and export names, reported once per registration with the registration's own field names
+        if (PairedRegistrationRules.Problem(reg) is { } namingProblem)
+        {
+            if (_pairedRefused.Add(reg))
+            {
+                bag.Error(TisiliaCodes.SchemaViolation, "SV01", path, $"the paired registration of '{type}' (converter '{converterType}'): {namingProblem}", [type.FullName ?? type.Name],
+                    "give the registration names in the contract's forms; the module's exports keep the names given here");
+            }
+
             return null;
         }
 
@@ -1597,7 +1795,14 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         var registration = options.Codecs.PairedFor(type).FirstOrDefault(r => r.ParameterGrammarId is not null);
         if (registration is null)
         {
-            return null;
+            // a type no JSON position has reached yet: the paired factory of the converter System.Text.Json would use for it binds it here
+            var converter = EffectiveConverterType(profile.Options, type);
+            if (!options.Codecs.HasPairedFactory(converter) || !options.Codecs.TryGetPaired(type, converter, out var expanded) || expanded.ParameterGrammarId is null)
+            {
+                return null;
+            }
+
+            registration = expanded;
         }
 
         var outer = builder.ActiveProfileId;
@@ -1649,6 +1854,12 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
             if (options.Codecs.TryGetPaired(dependency, out var depReg))
             {
                 MapPaired(dependency, depReg.ConverterType, path, numbers: numbers);
+            }
+            else if (!options.Codecs.PairedFor(dependency).Any() && EffectiveConverterType(profile.Options, dependency) is var dependencyConverter
+                && options.Codecs.HasPairedFactory(dependencyConverter))
+            {
+                // a closed type of a paired factory that no position has reached yet: the factory binds it, or says why it cannot
+                MapPaired(dependency, dependencyConverter, path, numbers: numbers);
             }
             else
             {
@@ -1748,13 +1959,17 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
             NoticeFiles = [],
         } : existingModule with { Exports = existingModule.Exports.Concat(exports.Where(e => existingModule.Exports.All(x => x.Name != e.Name))).ToList() });
         var bindingId = reg.ModelId + ".converter" + variant;
+        // a factory's product is bound per closed type: the closed type is part of the settings the binding fixes, so the closed
+        // converters of one factory with one settings text are distinct scopes rather than one scope claimed twice (SV24)
+        var settingsText = settings?.SettingsText ?? reg.SettingsText;
+        var fromFactory = typeof(JsonConverterFactory).IsAssignableFrom(reg.ConverterType);
         builder.AddBinding(new Binding
         {
             Id = bindingId,
-            Kind = BindingKind.Converter,
+            Kind = fromFactory ? BindingKind.Factory : BindingKind.Converter,
             Version = reg.ModuleVersion,
             Implementation = new ModuleImpl { ModuleId = reg.ModuleId, ExportName = reg.DotnetConverterExport },
-            SettingsDigest = TisiliaHash.Sha256OfBytes(System.Text.Encoding.UTF8.GetBytes(settings?.SettingsText ?? reg.SettingsText)),
+            SettingsDigest = TisiliaHash.Sha256OfBytes(System.Text.Encoding.UTF8.GetBytes(fromFactory ? "closed type: " + CleanName(reg.ClrType) + "\n" + settingsText : settingsText)),
             DependencyIds = [],
             Context = settings?.Context ?? reg.ConverterContext,
         });

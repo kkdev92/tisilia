@@ -10,6 +10,28 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ### Added
 
+- **Paired converter factories.** `TisiliaOptions.Codecs.AddPairedFactory<TFactory>(type => registration)` binds the closed
+  types a `JsonConverterFactory` serializes — every identifier type of an application, say — with one callback. Export asks it
+  only for the closed types the endpoints use where the factory is the converter in effect, once per type, including types
+  that only route, query or header values reach. A callback that gives no registration, one for another type or converter,
+  or throws is reported with that reason (SV05; an exception by its type only). The [paired codecs guide](docs/paired-codecs.md)
+  describes registrations, factories and keeping the contract stable.
+- **Enums held by name.** `TisiliaOptions.Enums` holds an enum by the names the server writes instead of its integers —
+  every enum with `o.Enums.Default = EnumDomain.Names`, one with `o.Enums.Add(typeof(Status), EnumDomain.Names)` — where the
+  server reads and writes it by name alone (`new JsonStringEnumConverter(namingPolicy, allowIntegerValues: false)`). The
+  generated model is a union of those names with a const object of the members, the client sends exactly those names, and
+  route, query, header and form values are written as the C# member name that `Enum.TryParse` binds. An enum that cannot be
+  held by name keeps its integers, with a warning (SV49): one whose converter reads integers, a `[Flags]` enum, and, when
+  declared for that enum, one System.Text.Json writes as an integer. A contract that holds an enum by name marks it
+  (`nameDomain`), which 0.2.0-alpha tools do not read.
+- **Members a request can leave out, set to null or set.** `TisiliaOptions.PresenceWrappers.Add(typeof(Optional<>))`
+  declares a generic struct that holds whether an object member was sent, by its `HasValue` and `Value` or the members
+  named. A member of a closed wrapper type is its value in the contract, optional in both directions:
+  `Optional<string?> Name` is `name?: string | null` in TypeScript, and leaving it out sends nothing. Export asks each
+  member's converter whether JSON null reads as a present wrapper that holds null, and refuses (SV19) a response member
+  whose absent state System.Text.Json would write and a request member the server holds as present when it is left out.
+  Member scopes record the wrapper (`presenceWrapper`), which 0.2.0-alpha tools do not read; the conformance suite leaves
+  wrapped members out in both directions and expects them left out.
 - **What the request pipeline reads.** `WithTisiliaRequestReads(reads => reads.Header<Guid>("Idempotency-Key"))` declares,
   on an endpoint or a route group, the values a middleware or an endpoint filter reads outside the endpoint's parameters:
   each is a typed route, query or header parameter of the operation (server acceptance `server-parsed`), as
@@ -17,6 +39,28 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   `requestHeaderAllowlist`, which export left empty, so that the client's `headers` option and the Nuxt module's forwarded
   headers can pass those headers through; a header a browser cannot set, a credential header, or one that is also a header
   parameter of the operation is refused (SV32).
+
+### Changed
+
+- The binding of a closed converter that a factory creates is now of kind `factory`, and its settings digest includes the
+  closed type: each closed converter is a binding of its own. Contracts with registrations that name a factory change;
+  export and generate again.
+- A paired registration whose ids, export names, TypeScript name or version are not in the contract's forms is reported when
+  export reaches it, naming the registration's field (SV01), instead of at the contract path the name would have taken.
+
+### Fixed
+
+- Registrations of two closed types that named one factory with one settings text failed export as one scope claimed twice
+  (SV24). They are separate scopes.
+- SV05 for a type whose converter a factory created named the closed converter, which no registration can name. It now names
+  the factory and how to register it.
+- `tisilia conformance` compared a paired type with the oracle of the first registration that shared its oracle export, which
+  could be another type's. Each type is compared with the oracle of its own registration.
+- An enum with two members of one value (an alias such as `Other = Second`) that the server writes as names failed
+  validation (SV49), the second member repeating the name the server writes for both. Members of one value share that name,
+  and Explorer offers them as one choice; a name that stands for two values is still refused.
+- The generated client read the name of an enum member that differs from another's only in case (`Ab` and `AB` without a
+  naming policy) as the member declared last. It reads a name as written first, then ignoring case, as System.Text.Json does.
 
 ## [0.2.0-alpha] - 2026-10-09
 

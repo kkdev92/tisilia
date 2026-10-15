@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Tisilia.AspNetCore;
+using Tisilia.AspNetCore.Bindings;
 using Tisilia.AspNetCore.Codecs;
 using Tisilia.AspNetCore.Export;
 using Tisilia.Documents;
@@ -249,6 +251,54 @@ public sealed class GeneratedClientCompileTests : IDisposable
         Assert.Contains("= xmlEnumCodec(", generated, StringComparison.Ordinal);
         Assert.Contains("kind: \"xml\", mediaType: \"application/xml\"", generated, StringComparison.Ordinal);
         Assert.Contains("root: { name: \"order\", ns: \"urn:shop\" }", generated, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task An_enum_held_by_name_generates_a_union_of_its_names_that_compiles()
+    {
+        var builder = WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
+        builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false)));
+        builder.Services.AddTisilia(o => { o.ApiId = "enum-names"; o.Enums.Default = EnumDomain.Names; });
+        await using var app = builder.Build();
+        app.MapPost("/picks/{kind}", (EnumNameDomainTests.Kind kind, Pick pick) => TypedResults.Ok(pick.Many)).WithTisiliaOperation("picks.create");
+        await app.StartAsync();
+        var export = app.Services.GetRequiredService<TisiliaContractExporter>().ExportFresh();
+        Assert.False(export.Diagnostics.HasErrors, string.Join("\n", export.Diagnostics.Items));
+        await CompileAsync(export.Index!, """
+            import { createEnumNamesClient, Kind } from "./generated/index.js";
+            const client = createEnumNamesClient({ baseUrl: "http://localhost" });
+            export const sent = client.picksCreate({ kind: Kind.Fancy, body: { kind: "stock", spare: null, many: [Kind.Usage, "fancy-name"] } });
+            export const names = client.picksCreate({ kind: "usage", body: { kind: "usage", spare: "stock", many: [] } })
+                .then(result => result.kind === "response" ? result.data.map((k): "usage" | "stock" | "fancy-name" => k) : []);
+            // @ts-expect-error the client holds names, not the integers behind them
+            export const integer = client.picksCreate({ kind: 1, body: { kind: "usage", spare: null, many: [] } });
+            // @ts-expect-error the C# member name is not the name the server reads
+            export const clrName = client.picksCreate({ kind: "Fancy", body: { kind: "usage", spare: null, many: [] } });
+            """);
+        var generated = string.Concat(Directory.EnumerateFiles(Path.Combine(_dir, "generated"), "*.ts", SearchOption.AllDirectories).Select(File.ReadAllText));
+        Assert.Contains("= enumNameCodec({", generated, StringComparison.Ordinal);
+        Assert.Contains("[\"Fancy\", 2n, \"fancy-name\"]", generated, StringComparison.Ordinal);
+    }
+
+    public sealed record Pick(EnumNameDomainTests.Kind Kind, EnumNameDomainTests.Kind? Spare, IReadOnlyList<EnumNameDomainTests.Kind> Many);
+
+    [Fact]
+    public async Task Members_of_a_presence_wrapper_are_optional_members_that_compile()
+    {
+        await using var app = await PresenceWrapperTests.StartAsync();
+        var export = app.Services.GetRequiredService<TisiliaContractExporter>().ExportFresh();
+        Assert.False(export.Diagnostics.HasErrors, string.Join("\n", export.Diagnostics.Items));
+        await CompileAsync(export.Index!, """
+            import { createPresenceClient } from "./generated/index.js";
+            const client = createPresenceClient({ baseUrl: "http://localhost" });
+            export const leftOut = client.itemsPatch({ id: 1, body: {} });
+            export const sent = client.itemsPatch({ id: 1, body: { name: null, count: 2, title: "t", limit: null, since: 3 } });
+            export const names = client.itemsPatch({ id: 1, body: {} }).then(result => result.kind === "response" ? result.data.name : undefined);
+            // @ts-expect-error a member whose converter refuses null takes no null
+            export const nullTitle = client.itemsPatch({ id: 1, body: { title: null } });
+            // @ts-expect-error a member left out is not a member set to undefined
+            export const undefinedName = client.itemsPatch({ id: 1, body: { name: undefined } });
+            """);
     }
 
     [Fact]

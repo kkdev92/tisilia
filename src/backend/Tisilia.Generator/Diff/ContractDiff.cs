@@ -323,7 +323,9 @@ public static class ContractDiff
             case (PrimitiveShape pa, PrimitiveShape pb):
                 return pa.PrimitiveId == pb.PrimitiveId;
             case (EnumShape ea, EnumShape eb):
+                // the domain is the integers or the names: a client holding one never holds the other
                 return ea.UnderlyingPrimitiveId == eb.UnderlyingPrimitiveId && ea.Flags == eb.Flags && ea.AllowUndefinedInteger == eb.AllowUndefinedInteger
+                       && (ea.NameDomain == true) == (eb.NameDomain == true)
                        && ea.Members.All(m => eb.Members.Any(n => n.Name == m.Name && n.Value == m.Value && n.SerializedName == m.SerializedName))
                        && (ea.AllowUndefinedInteger || eb.Members.All(n => ea.Members.Any(m => m.Name == n.Name)));
             case (ArrayShape aa, ArrayShape ab):

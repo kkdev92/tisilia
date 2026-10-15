@@ -150,6 +150,34 @@ describe("request forms", () => {
       ["Public (1)", "Public", "1"],
       ["Private (2)", "Private", "2"],
     ]);
+    // an enum held by name: its choices are the names the server writes, two members of one value one choice
+    const named = new FormSchema({
+      ...model.document,
+      types: [
+        ...model.document.types,
+        {
+          id: "app.alias.names",
+          tsName: "Alias",
+          clrIdentity: "App.Alias",
+          shape: {
+            kind: "enum",
+            underlyingPrimitiveId: "tisilia.int32@0.1",
+            flags: false,
+            allowUndefinedInteger: false,
+            nameDomain: true,
+            members: [
+              { name: "First", value: "1", serializedName: "first" },
+              { name: "Second", value: "2", serializedName: "second" },
+              { name: "Other", value: "2", serializedName: "second" },
+            ],
+          },
+        },
+      ],
+    });
+    expect(named.parameter({ typeId: "app.alias.names", codecId: "", semanticNullable: false }).choices?.map((c) => [c.label, c.member, writeJson(c.value)])).toEqual([
+      ["first (1)", "First", '"first"'],
+      ["second (2)", "Second", '"second"'],
+    ]);
   });
 
   it("keeps number lexemes, turns non-numbers into strings for the codec to name, and maps codec errors to fields", async () => {

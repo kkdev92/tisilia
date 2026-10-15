@@ -54,6 +54,8 @@ public sealed class DomainProjector(ContractIndex index, RunnerAdapterTable adap
         {
             case PrimitiveShape p:
                 return Scalar(value, ScalarName(p), path);
+            case EnumShape e when e.NameDomain == true:
+                return EnumName(value, e, path);
             case EnumShape:
                 return EnumValue(value);
             case ObjectShape o:
@@ -133,7 +135,19 @@ public sealed class DomainProjector(ContractIndex index, RunnerAdapterTable adap
             }
 
             first = false;
-            entries.Add((prop.Name, Project(member.Get(value), prop.Use, options, profileId, path + "/" + prop.Name)));
+            var held = member.Get(value);
+            if (PresenceWrapperOf(profileId, model.ClrIdentity + "." + prop.Name) is { } wrapper)
+            {
+                // a presence wrapper member: the absent state is a member left out, a present one is what it holds
+                if (held is null || !(bool)Bindings.PresenceWrapperMembers.Read(held, wrapper.PresentMember)!)
+                {
+                    continue;
+                }
+
+                held = Bindings.PresenceWrapperMembers.Read(held, wrapper.ValueMember);
+            }
+
+            entries.Add((prop.Name, Project(held, prop.Use, options, profileId, path + "/" + prop.Name)));
         }
 
         if (shape.Extension is CaptureExtension capture)
@@ -156,6 +170,14 @@ public sealed class DomainProjector(ContractIndex index, RunnerAdapterTable adap
 
         return DomainAst.Object(entries);
     }
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Dictionary<string, PresenceWrapper>> _presenceWrappers = new(StringComparer.Ordinal);
+
+    /// <summary>The presence wrapper the profile records for a member (its member scope), or null.</summary>
+    private PresenceWrapper? PresenceWrapperOf(string profileId, string clrPath)
+        => _presenceWrappers.GetOrAdd(profileId, id => index.Profiles.TryGetValue(id, out var profile)
+            ? profile.Scopes.Where(s => s.Kind == ScopeKind.Member && s.PresenceWrapper is not null).GroupBy(s => s.ClrPath, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First().PresenceWrapper!, StringComparer.Ordinal)
+            : new Dictionary<string, PresenceWrapper>(StringComparer.Ordinal)).GetValueOrDefault(clrPath);
 
     private string? TagFor(string variantModelId)
     {
@@ -239,6 +261,14 @@ public sealed class DomainProjector(ContractIndex index, RunnerAdapterTable adap
         return DomainAst.Number(underlying == typeof(ulong)
             ? Convert.ToUInt64(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture)
             : Convert.ToInt64(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>The name a name-domain enum holds for a value: the serialized name of the member that defines it (the domain has no other value).</summary>
+    private static JsonValue EnumName(object value, EnumShape shape, string path)
+    {
+        var text = ((JsonNumberValue)EnumValue(value)).Text;
+        var member = shape.Members.FirstOrDefault(m => m.Value == text) ?? throw new RunnerFailureException(RunnerFailureCode.Contract, "projection.enum-value-without-name", path);
+        return DomainAst.String(member.SerializedName ?? member.Name);
     }
 
     /// <summary>
