@@ -6,6 +6,7 @@ using System.Text.Json.Serialization.Metadata;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Tisilia.AspNetCore;
@@ -183,6 +184,18 @@ public sealed class PresenceWrapperTests : IDisposable
     }
 
     [Fact]
+    public async Task Outside_an_object_member_a_wrapper_is_a_converter_like_any_other()
+    {
+        // there its converter needs a binding, as any converter does (SV05); the object members stay wrapped
+        await using var app = await StartAsync(elsewhere: true);
+        var export = Export(app);
+        var errors = export.Diagnostics.Items.Where(d => d.Severity == DiagnosticSeverity.Error).ToList();
+        Assert.All(errors, d => Assert.Equal("SV05", d.Rule));
+        Assert.All(errors, d => Assert.Contains($"converter factory '{typeof(MaybeConverterFactory)}'", d.Message, StringComparison.Ordinal));
+        Assert.Equal(["parameters/0", "responses/0/value/element"], errors.Select(d => d.Path.Split('/', 4)[3]).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public void A_declaration_names_a_generic_struct_and_its_members()
     {
         var wrappers = new PresenceWrapperCollection();
@@ -211,7 +224,7 @@ public sealed class PresenceWrapperTests : IDisposable
         return document.RootElement.GetProperty("data").GetRawText();
     }
 
-    internal static async Task<WebApplication> StartAsync(bool declare = true, bool omitAbsent = true, bool defaulted = false, bool ignoreNulls = false, bool writeSince = false)
+    internal static async Task<WebApplication> StartAsync(bool declare = true, bool omitAbsent = true, bool defaulted = false, bool ignoreNulls = false, bool writeSince = false, bool elsewhere = false)
     {
         var builder = WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
         IJsonTypeInfoResolver? resolver = null;
@@ -248,6 +261,12 @@ public sealed class PresenceWrapperTests : IDisposable
         if (defaulted)
         {
             app.MapPost("/defaulted", (Defaulted body) => TypedResults.NoContent()).WithTisiliaOperation("defaulted");
+        }
+
+        if (elsewhere)
+        {
+            // a body, a list element and a dictionary value are not object members
+            app.MapPost("/elsewhere", ([FromBody] Maybe<int> body) => TypedResults.Ok(new Dictionary<string, List<Maybe<long>>>())).WithTisiliaOperation("elsewhere");
         }
         await app.StartAsync();
         return app;
