@@ -170,7 +170,8 @@ The other .NET types Tisilia supports — `Int128`, `BigInteger`, `Uri`, `IPAddr
 response members are `T | null` unless the profile enforces annotations:
 `builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.RespectNullableAnnotations = true)` (controllers:
 `AddJsonOptions`). Elements of collections stay nullable in responses: no option makes System.Text.Json refuse to write a
-null element. A handler's own return value follows its annotation: `Item? (…) => …` and methods returning
+null element. A client that relies on an API never writing one checks it where the data enters the application, and treats
+a null element as a failed response rather than a value. A handler's own return value follows its annotation: `Item? (…) => …` and methods returning
 `Item?` give `Item | null` (minimal APIs write the JSON `null`), controllers write a null value as 204 (a `no-content` case),
 and code without annotations (`#nullable disable`) counts as nullable. A lambda whose return type is inferred carries no
 annotation at all, so its value counts as not null — declare the return type when it can return null.
@@ -484,6 +485,36 @@ The generator runs in the compiler of each project that references the package i
 registered operations, executes nothing, and adds one internal class, `Tisilia.Generated.TisiliaResponseInference`, with
 what it read; the source positions in it are relative to the project. Handlers in a project that references only
 Kkdev92.Tisilia.Abstractions are not read, and the diagnostic says so.
+
+### Custom resolvers and type info modifiers
+
+A resolver other than the reflection resolver — a hand-written `IJsonTypeInfoResolver`, or the reflection resolver with type
+info modifiers (`WithAddedModifier`) — changes the contracts System.Text.Json builds, so export refuses it until the profile
+names it (SV16). A `ResolverRegistration` recognizes the instance, names the module and the .NET export that implement it,
+and says what it changes in a non-secret `SettingsText`, which the contract hashes. `WithAddedModifier` returns an instance
+of an internal type, so keep the one the application creates and recognize it by reference:
+
+```csharp
+IJsonTypeInfoResolver? conventions = null;
+builder.Services.ConfigureHttpJsonOptions(o =>
+{
+    conventions = (o.SerializerOptions.TypeInfoResolver ?? new DefaultJsonTypeInfoResolver()).WithAddedModifier(JsonConventions.Configure);
+    o.SerializerOptions.TypeInfoResolver = conventions;
+});
+builder.Services.AddTisilia(o => o.Resolvers.Add(new ResolverRegistration
+{
+    Matches = resolver => ReferenceEquals(resolver, conventions),
+    Id = "shop.resolver.conventions",
+    ModuleId = "shop.json",
+    DotnetExport = nameof(JsonConventions),
+    // the assembly that holds the modifier, at its path below the content root (the contract pins it by digest)
+    Artifacts = [new(ArtifactTarget.Dotnet, "bin/Release/net10.0/Shop.Json.dll", Bytes: () => File.ReadAllBytes(typeof(JsonConventions).Assembly.Location))],
+    SettingsText = "JsonConventions.Configure: members of Optional<T> are written only when present",
+}));
+```
+
+The source-generated contexts ASP.NET Core inserts itself (problem details, OpenAPI, the Identity endpoints) need no
+registration, nor does an application's own source-generated `JsonSerializerContext`, which the contract records as it is.
 
 ### Custom binding declarations
 
@@ -868,6 +899,7 @@ would fail when the endpoint is called — add `[JsonSerializable(typeof(T))]`.
 | `DateTime parameter … declared Local` | use the default mixed wire, Utc, Unspecified, or DateTimeOffset (section 6) |
 | `… declares no response types` (SV34) | the message names the return path the source generator could not read; declare that response with `.Produces<T>()` / `[ProducesResponseType]`, or return a typed result |
 | `export host exited with <code>` | the application failed to start or the export failed; the application's log is above the message |
+| `doctor: analysis-incomplete; … application did not produce a doctor report; startup or metadata failed` | the application did not start, and doctor withholds its exception text: run `export` with the same settings to see the application's log. Export and doctor run startup only and serve no request, so the configuration startup reads — connection strings, an identity provider's authority — can be placeholders passed as environment variables (`ConnectionStrings__Default=…`) as long as startup does not connect |
 | `the application did not finish the export within 120 s` | the application does not call `AddTisilia`, or its startup takes longer: `--timeout <seconds>` |
 | `1 difference(s) … run generate` (`check`, exit 4) | regenerate and commit the output |
 | a browser call returns `transport-failure`, `reason: "network"`, "Failed to fetch (the cause is not exposed to scripts …)", although the API is up | browsers do not tell scripts why a fetch failed; their developer console does. Usually CORS (section 5) or a redirect, which the client never follows: .NET 10 cookie authentication still sends unauthenticated calls of minimal API handlers returning `IResult` (`Results.Ok(…)`), `string` or `void` to its login page (302) — call `.DisableCookieRedirect()` on them or their group to get 401/403. Node's fetch names it: `reason: "redirect"` |
