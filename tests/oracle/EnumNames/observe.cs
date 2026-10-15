@@ -60,6 +60,17 @@ foreach (var policy in new[] { JsonNamingPolicy.CamelCase, null })
     }
 }
 
+// a name the naming policy made is read as written, a member's C# name in any case
+{
+    var options = new JsonSerializerOptions { Converters = { new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower, allowIntegerValues: false) } };
+    Console.WriteLine("== snake case, a member of two words");
+    Write(options, Words.FancyName);
+    foreach (var json in new[] { "\"fancy_name\"", "\"FANCY_NAME\"", "\"FancyName\"", "\"FANCYNAME\"" })
+    {
+        Read<Words>(options, json);
+    }
+}
+
 // what minimal APIs bind an enum route or query value with: Enum.TryParse<T>(string, out T), case-sensitive
 Console.WriteLine("== Enum.TryParse");
 foreach (var text in new[] { "Fancy", "fancy", "fancy-name", "Plain", "1", "7", "Plain, Fancy" })
@@ -124,6 +135,12 @@ internal enum Named
 {
     Plain,
     [JsonStringEnumMemberName("fancy-name")] Fancy,
+}
+
+internal enum Words
+{
+    Plain,
+    FancyName,
 }
 
 internal enum Clash

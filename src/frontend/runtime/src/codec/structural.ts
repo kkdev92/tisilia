@@ -700,8 +700,8 @@ export function enumCodec(d: EnumCodecDescriptor): Codec<number | bigint> {
   const big = d.underlying === "int64" || d.underlying === "uint64";
   const toDomain = (v: bigint): number | bigint => (big ? v : Number(v));
   const byValue = new Map<bigint, EnumMember>();
-  // System.Text.Json's enum converter looks a name up as written, then with StringComparer.OrdinalIgnoreCase, where the member
-  // declared first wins: members Ab and AB read "Ab" and "AB" as themselves and "ab" as Ab
+  // System.Text.Json's enum converter looks a name up as written before it looks one up ignoring case (StringComparer.OrdinalIgnoreCase):
+  // members Ab and AB without a naming policy read "Ab" and "AB" as themselves
   const byName = new Map<string, EnumMember>();
   const byNameIgnoringCase = new Map<string, EnumMember>();
   for (const m of d.members) {

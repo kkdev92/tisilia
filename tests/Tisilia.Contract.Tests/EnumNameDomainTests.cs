@@ -22,8 +22,8 @@ namespace Tisilia.Contract.Tests;
 /// <summary>
 /// An enum the server reads and writes by name alone can be held by name on the client (<c>TisiliaOptions.Enums</c>). On .NET 10, a
 /// JsonStringEnumConverter with <c>allowIntegerValues: false</c> refuses a JSON number and an integer string, and refuses to write a
-/// value no member defines; it writes each member's serialized name, reads a name the naming policy made in any case and a
-/// <c>[JsonStringEnumMemberName]</c> name only as written. Oracle: <c>tests/oracle/EnumNames/observe.cs</c>.
+/// value no member defines; it writes each member's serialized name and reads it as written, and reads a member's C# name in any
+/// case, except a member that <c>[JsonStringEnumMemberName]</c> names. Oracle: <c>tests/oracle/EnumNames/observe.cs</c>.
 /// </summary>
 public sealed class EnumNameDomainTests : IDisposable
 {
@@ -138,7 +138,8 @@ public sealed class EnumNameDomainTests : IDisposable
         var runner = new DotnetRunnerCore(index, export.Adapters!, []);
         JsonValue Run(RunnerAction action, string name) => runner.Handle(RunnerProtocol.Request("names", "run", action, codecId, profile, [], [DomainAst.String(name)]));
 
-        // the server reads a name its naming policy made in any case, and an attribute's name only as written; it writes the names
+        // the server reads a member's C# name in any case ("STOCK" for Stock), and a [JsonStringEnumMemberName] name only as written;
+        // it writes the names
         Assert.Equal(DomainAst.String("stock"), Run(RunnerAction.DotnetRead, "STOCK"));
         Assert.Equal(DomainAst.String("fancy-name"), Run(RunnerAction.DotnetRead, "fancy-name"));
         Assert.Equal(RunnerFailureCode.Codec, Assert.Throws<RunnerFailureException>(() => Run(RunnerAction.DotnetRead, "FANCY-NAME")).Code);
