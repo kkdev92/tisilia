@@ -191,11 +191,12 @@ A member of type `Optional<T>` is then the member `T`, optional in both directio
 asks each member's own converter whether it reads JSON null as a present value that holds null (only then does the member
 take `null`), and refuses (SV19) a response member whose absent state System.Text.Json would write — leave it out with a
 `ShouldSerialize` predicate that answers false for it, or `[JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]`
-— and a request member the server holds as present when the client leaves it out. The declaration states the rest: the
-converter reads the member's JSON as `T` with the same options, and writes a present value as its `T`. The conformance
-suite holds the server to it, leaving members out, sending null and sending values in both directions. A wrapper is a
-member's type: inside a collection, a dictionary or a body it is a converter like any other. A modifier added with
-`WithAddedModifier` makes its resolver one the profile names (`TisiliaOptions.Resolvers`, SV16).
+— and a request member the server holds as present when the client leaves it out. A predicate decides over any ignore
+condition, the member's or the options'; the program in `tests/oracle/ShouldSerialize` shows it. The declaration states
+the rest: the converter reads the member's JSON as `T` with the same options, and writes a present value as its `T`. The
+conformance suite holds the server to it, leaving members out, sending null and sending values in both directions. A
+wrapper is a member's type: inside a collection, a dictionary or a body it is a converter like any other. A modifier
+added with `WithAddedModifier` makes its resolver one the profile names (`TisiliaOptions.Resolvers`, SV16).
 
 **Controllers and minimal APIs.** Controllers serialize with MVC's options (`AddJsonOptions`), minimal APIs with
 `ConfigureHttpJsonOptions`. When the two describe types otherwise — another naming policy, other converters — a type both

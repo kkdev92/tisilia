@@ -25,7 +25,8 @@ namespace Tisilia.Contract.Tests;
 /// A presence wrapper (<c>TisiliaOptions.PresenceWrappers</c>) holds whether an object member was sent, so that a request can leave a
 /// member out, send null or send a value. The wrapper here is the usual shape: a struct whose default is the absent state, a converter
 /// factory that reads the member's JSON into a present wrapper (null only where the value type takes it, and not where a non-nullable
-/// annotation says otherwise), and a type info modifier that leaves the absent state out of responses.
+/// annotation says otherwise), and a type info modifier that leaves the absent state out of responses. A ShouldSerialize predicate
+/// that a modifier sets decides over any ignore condition. Oracle: <c>tests/oracle/ShouldSerialize/observe.cs</c>.
 /// </summary>
 public sealed class PresenceWrapperTests : IDisposable
 {
