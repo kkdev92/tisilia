@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
+using Tisilia.AspNetCore.Bindings;
 using Tisilia.AspNetCore.Export;
 
 namespace Tisilia.AspNetCore;
@@ -64,6 +65,45 @@ public static class TisiliaEndpointExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
         builder.WithMetadata(new TisiliaEventResumeAttribute());
+        return builder;
+    }
+
+    /// <summary>
+    /// Declares the values the request pipeline reads for the endpoint outside its parameters — a middleware or an endpoint filter that
+    /// reads an idempotency key or <c>If-Match</c>. Each is a route, query or header parameter of the operation, of a builtin scalar type
+    /// (or an array or list of one), which the client writes as that type's canonical text and the pipeline parses (server acceptance
+    /// <c>server-parsed</c>). On a route group, or on the builder <c>MapControllers</c> returns, it applies to every endpoint under it.
+    /// </summary>
+    public static TBuilder WithTisiliaRequestReads<TBuilder>(this TBuilder builder, Action<RequestReads> reads) where TBuilder : IEndpointConventionBuilder
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(reads);
+        var declared = new RequestReads();
+        reads(declared);
+        if (declared.NothingFromRequest || declared.Values.Any(v => v.Name.Contains(RequestReads.ModelName, StringComparison.Ordinal)))
+        {
+            throw new ArgumentException("NotFromRequest() and RequestReads.ModelName describe a parameter's own binding (TisiliaOptions.CustomBinding), not what the request pipeline reads", nameof(reads));
+        }
+
+        builder.WithMetadata(new TisiliaRequestReadsMetadata(declared));
+        return builder;
+    }
+
+    /// <summary>
+    /// Allows headers that a caller passes through for the endpoint without a type — the client's <c>headers</c> option, the headers
+    /// the Nuxt module forwards during SSR — such as <c>Accept-Language</c>. A header a browser cannot set, or a credential header, is
+    /// refused (SV32). On a route group, or on the builder <c>MapControllers</c> returns, it applies to every endpoint under it.
+    /// </summary>
+    public static TBuilder WithTisiliaRequestHeaders<TBuilder>(this TBuilder builder, params string[] names) where TBuilder : IEndpointConventionBuilder
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(names);
+        foreach (var name in names)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(name, nameof(names));
+        }
+
+        builder.WithMetadata(new TisiliaRequestHeadersMetadata([.. names]));
         return builder;
     }
 

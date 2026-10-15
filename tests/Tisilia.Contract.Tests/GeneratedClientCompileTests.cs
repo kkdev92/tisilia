@@ -251,6 +251,25 @@ public sealed class GeneratedClientCompileTests : IDisposable
         Assert.Contains("root: { name: \"order\", ns: \"urn:shop\" }", generated, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Pipeline_reads_are_typed_arguments_and_passed_headers_an_option()
+    {
+        await using var app = await RequestReadsTests.StartAsync(group => group
+            .WithTisiliaRequestReads(reads => reads.Header<Guid>("Idempotency-Key").Header<string>("If-Match", optional: true))
+            .WithTisiliaRequestHeaders("Accept-Language"));
+        var export = app.Services.GetRequiredService<TisiliaContractExporter>().ExportFresh();
+        Assert.False(export.Diagnostics.HasErrors, string.Join("\n", export.Diagnostics.Items));
+        await CompileAsync(export.Index!, """
+            import { guid } from "@kkdev92/tisilia-runtime";
+            import { createRequestReadsClient } from "./generated/index.js";
+            const client = createRequestReadsClient({ baseUrl: "http://localhost" });
+            export const created = client.ordersCreate({ "Idempotency-Key": guid("550e8400-e29b-41d4-a716-446655440000"), "If-Match": "\"v1\"" });
+            export const listed = client.ordersList({ "Idempotency-Key": guid("550e8400-e29b-41d4-a716-446655440000") }, { headers: [["accept-language", "ja"]] });
+            // @ts-expect-error the key is required
+            export const missing = client.ordersCreate({});
+            """);
+    }
+
     private sealed class OnlyController(Type controller) : Microsoft.AspNetCore.Mvc.ApplicationParts.IApplicationFeatureProvider<Microsoft.AspNetCore.Mvc.Controllers.ControllerFeature>
     {
         public void PopulateFeature(IEnumerable<Microsoft.AspNetCore.Mvc.ApplicationParts.ApplicationPart> parts, Microsoft.AspNetCore.Mvc.Controllers.ControllerFeature feature)

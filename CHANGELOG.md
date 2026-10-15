@@ -8,6 +8,16 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+### Added
+
+- **What the request pipeline reads.** `WithTisiliaRequestReads(reads => reads.Header<Guid>("Idempotency-Key"))` declares,
+  on an endpoint or a route group, the values a middleware or an endpoint filter reads outside the endpoint's parameters:
+  each is a typed route, query or header parameter of the operation (server acceptance `server-parsed`), as
+  `TisiliaOptions.CustomBinding` declarations are. `WithTisiliaRequestHeaders("Accept-Language")` fills the operation's
+  `requestHeaderAllowlist`, which export left empty, so that the client's `headers` option and the Nuxt module's forwarded
+  headers can pass those headers through; a header a browser cannot set, a credential header, or one that is also a header
+  parameter of the operation is refused (SV32).
+
 ## [0.2.0-alpha] - 2026-10-09
 
 Many endpoints that 0.1.0-alpha refused to export, or described wrongly, are now described as the server reads and
