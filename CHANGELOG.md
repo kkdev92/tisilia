@@ -53,6 +53,10 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 - A paired registration whose ids, export names, TypeScript name or version are not in the contract's forms is reported when
   export reaches it, naming the registration's field (SV01), instead of at the contract path the name would have taken.
 - `TransportFailure.reason` has a new value, `adapter`: a `switch` over the reasons that must be exhaustive needs a case for it.
+- `tisilia doctor --format json --output <file>` prints a summary of the report on stdout instead of the same JSON again:
+  the counts, how many operations have each readiness, and how many causes and operations each reason has
+  (`tisilia.doctor-summary`). A script that read the report from stdout reads it from the file. Without `--output`, and as
+  text, the output is unchanged.
 
 ### Fixed
 

@@ -111,8 +111,12 @@ try {
     const output = resolve(out, `doctor-${mode}.json`);
     const result = await command(["doctor", "--project", project, "--no-build", "--allow-execute-project", "--format", "json", "--output", output], expected, { ADOPTION_MODE: mode });
     assert(!result.stdout.includes("TEST_SECRET") && !result.stderr.includes("TEST_SECRET"));
-    const doctor = JSON.parse(result.stdout); assert.equal(doctor.format, "tisilia.doctor-report"); assert.equal(doctor.exitCode, expected);
-    assert.deepEqual(doctor, JSON.parse(await readFile(output, "utf8")));
+    // the report is in the file; stdout summarizes it
+    const doctor = JSON.parse(await readFile(output, "utf8")); assert.equal(doctor.format, "tisilia.doctor-report"); assert.equal(doctor.exitCode, expected);
+    const summary = JSON.parse(result.stdout); assert.equal(summary.format, "tisilia.doctor-summary"); assert.equal(summary.report, output);
+    assert.deepEqual([summary.overall, summary.selectedCount, summary.analyzedCount, summary.unanalyzedCount, summary.exitCode], [doctor.overall, doctor.selectedCount, doctor.analyzedCount, doctor.unanalyzedCount, doctor.exitCode]);
+    assert.equal(Object.values(summary.readiness).reduce((a, b) => a + b, 0), doctor.operations.length);
+    assert.deepEqual(summary.causes.map(c => c.reasonCode).sort(), [...new Set(doctor.causes.map(c => c.reasonCode))].sort());
     if (mode === "diagnostics") assert(doctor.causes.some(c => c.operationIds.includes("bad.date.one") && c.operationIds.includes("bad.date.two")));
     report.diagnostics.push({ mode, code: expected, selected: doctor.selectedCount, analyzed: doctor.analyzedCount });
     if (mode === "diagnostics") {
@@ -123,9 +127,11 @@ try {
     }
   }
   // declared custom bindings run only on --allow-execute-binders; the fixture's Paging.BindAsync also reads size, which its declaration leaves out
-  const unprobed = JSON.parse((await command(["doctor", "--project", project, "--no-build", "--allow-execute-project", "--format", "json", "--output", resolve(out, "doctor-binders-unprobed.json")], 0, { ADOPTION_MODE: "binders" })).stdout);
+  await command(["doctor", "--project", project, "--no-build", "--allow-execute-project", "--format", "json", "--output", resolve(out, "doctor-binders-unprobed.json")], 0, { ADOPTION_MODE: "binders" });
+  const unprobed = JSON.parse(await readFile(resolve(out, "doctor-binders-unprobed.json"), "utf8"));
   assert.equal(unprobed.bindingProbesRun, false); assert.deepEqual(unprobed.bindingProbes, []);
-  const probed = JSON.parse((await command(["doctor", "--project", project, "--no-build", "--allow-execute-project", "--allow-execute-binders", "--format", "json", "--output", resolve(out, "doctor-binders.json")], 3, { ADOPTION_MODE: "binders" })).stdout);
+  await command(["doctor", "--project", project, "--no-build", "--allow-execute-project", "--allow-execute-binders", "--format", "json", "--output", resolve(out, "doctor-binders.json")], 3, { ADOPTION_MODE: "binders" });
+  const probed = JSON.parse(await readFile(resolve(out, "doctor-binders.json"), "utf8"));
   assert.equal(probed.bindingProbesRun, true);
   assert.deepEqual(probed.bindingProbes.map(p => [p.operationId, p.parameter, p.status, p.undeclaredReads]), [["binders.paging", "paging", "mismatch", ["query:size"]]]);
   assert(probed.causes.some(c => c.reasonCode === "binding-declaration-mismatch" && c.operationIds.includes("binders.paging")));
