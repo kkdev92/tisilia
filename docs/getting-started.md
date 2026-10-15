@@ -334,7 +334,8 @@ expose Content-Disposition for a name to be available. A binary application/json
 
 `maxBodyBytes` counts actual bytes delivered by Fetch after decompression. Timeout covers credential-provider, fetch, read and
 decode using one deadline. Custom fetch adapters must provide a Web ReadableStream or a native null body; no arrayBuffer fallback
-is used. Ordinary generated calls return a complete buffer within the limit.
+is used. A response an adapter returns once the deadline has passed is not read, and the runtime cancels its body. Ordinary
+generated calls return a complete buffer within the limit.
 
 A fetch adapter that sends requests through the application's own stack — token refresh, retries, its own typed errors — can
 hand its failure back to the caller as it is:

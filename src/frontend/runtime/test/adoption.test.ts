@@ -107,7 +107,9 @@ describe("bounded binary", () => {
   it.each(["throw", "reject", "pending"])("BD13 BD16 BD35 BD38 keeps limit despite %s cleanup", async mode => {
     const cancel = vi.fn(() => { if (mode === "throw") { throw new Error("secondary"); } return mode === "reject" ? Promise.reject(new Error("secondary")) : new Promise<void>(() => {}); });
     const stream = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(known); }, cancel });
-    const result = await execute(binary, {}, { ...options(fileResponse(stream)), limits: { maxBodyBytes: 4, timeoutMs: 30 } });
+    // a clock that stands still: only the timer, which a cleanup that held the call would let fire, can end it before the limit
+    const base = options(fileResponse(stream));
+    const result = await execute(binary, {}, { ...base, transport: { ...base.transport, now: () => 0 }, limits: { maxBodyBytes: 4, timeoutMs: 30 } });
     expect(result.kind).toBe("limit-failure");
     expect(cancel).toHaveBeenCalledOnce();
     expect(stream.locked).toBe(false);
