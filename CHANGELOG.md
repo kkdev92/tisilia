@@ -8,6 +8,32 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+### Added
+
+- **Paired converter factories.** `TisiliaOptions.Codecs.AddPairedFactory<TFactory>(type => registration)` binds the closed
+  types a `JsonConverterFactory` serializes — every identifier type of an application, say — with one callback. Export asks it
+  only for the closed types the endpoints use where the factory is the converter in effect, once per type, including types
+  that only route, query or header values reach. A callback that gives no registration, one for another type or converter,
+  or throws is reported with that reason (SV05; an exception by its type only). The [paired codecs guide](docs/paired-codecs.md)
+  describes registrations, factories and keeping the contract stable.
+
+### Changed
+
+- The binding of a closed converter that a factory creates is now of kind `factory`, and its settings digest includes the
+  closed type: each closed converter is a binding of its own. Contracts with registrations that name a factory change;
+  export and generate again.
+- A paired registration whose ids, export names, TypeScript name or version are not in the contract's forms is reported when
+  export reaches it, naming the registration's field (SV01), instead of at the contract path the name would have taken.
+
+### Fixed
+
+- Registrations of two closed types that named one factory with one settings text failed export as one scope claimed twice
+  (SV24). They are separate scopes.
+- SV05 for a type whose converter a factory created named the closed converter, which no registration can name. It now names
+  the factory and how to register it.
+- `tisilia conformance` compared a paired type with the oracle of the first registration that shared its oracle export, which
+  could be another type's. Each type is compared with the oracle of its own registration.
+
 ## [0.2.0-alpha] - 2026-10-09
 
 Many endpoints that 0.1.0-alpha refused to export, or described wrongly, are now described as the server reads and

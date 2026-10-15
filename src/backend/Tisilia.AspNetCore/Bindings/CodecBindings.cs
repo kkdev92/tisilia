@@ -172,6 +172,8 @@ public sealed class CodecBindingCollection
 {
     private readonly Dictionary<(Type Clr, Type Converter), PairedCodecRegistration> _paired = new();
     private readonly HashSet<string> _modelIds = new(StringComparer.Ordinal);
+    private readonly Dictionary<Type, Func<Type, PairedCodecRegistration?>> _factories = new();
+    private readonly Dictionary<(Type Clr, Type Factory), string?> _expanded = new();
 
     public void AddPaired(PairedCodecRegistration registration)
     {
@@ -189,8 +191,94 @@ public sealed class CodecBindingCollection
         _paired[key] = registration;
     }
 
-    /// <summary>The registration of a CLR type under the converter that is in effect at a position.</summary>
-    public bool TryGetPaired(Type type, Type converterType, out PairedCodecRegistration registration) => _paired.TryGetValue((type, converterType), out registration!);
+    /// <summary>
+    /// Binds the closed types a <see cref="JsonConverterFactory"/> converts. <paramref name="create"/> returns the registration of one
+    /// closed type, naming it as <see cref="PairedCodecRegistration.ClrType"/> and the factory as
+    /// <see cref="PairedCodecRegistration.ConverterType"/>, or null for a type it does not bind. Export asks it only for the closed
+    /// types the endpoints use where the factory is the converter in effect, once per type, so a factory over many types needs no
+    /// list of them. A closed type registered with <see cref="AddPaired"/> keeps that registration.
+    /// </summary>
+    public void AddPairedFactory(Type factoryType, Func<Type, PairedCodecRegistration?> create)
+    {
+        ArgumentNullException.ThrowIfNull(factoryType);
+        ArgumentNullException.ThrowIfNull(create);
+        if (!typeof(JsonConverterFactory).IsAssignableFrom(factoryType) || factoryType.IsAbstract || factoryType.ContainsGenericParameters)
+        {
+            throw new ArgumentException($"'{factoryType}' is not a concrete JsonConverterFactory; a converter of one type is registered with AddPaired", nameof(factoryType));
+        }
+
+        if (!_factories.TryAdd(factoryType, create))
+        {
+            throw new InvalidOperationException($"a paired factory for '{factoryType}' is already registered; a scope cannot be claimed twice (SV24)");
+        }
+    }
+
+    /// <inheritdoc cref="AddPairedFactory(Type, Func{Type, PairedCodecRegistration})"/>
+    public void AddPairedFactory<TFactory>(Func<Type, PairedCodecRegistration?> create)
+        where TFactory : JsonConverterFactory => AddPairedFactory(typeof(TFactory), create);
+
+    /// <summary>
+    /// The registration of a CLR type under the converter that is in effect at a position: the one registered for the pair, else the
+    /// one the paired factory registered for that converter gives for the type.
+    /// </summary>
+    public bool TryGetPaired(Type type, Type converterType, out PairedCodecRegistration registration)
+    {
+        if (_paired.TryGetValue((type, converterType), out registration!))
+        {
+            return true;
+        }
+
+        return _factories.TryGetValue(converterType, out var create) && Expand(type, converterType, create) is null
+            && _paired.TryGetValue((type, converterType), out registration!);
+    }
+
+    /// <summary>Whether a paired factory is registered for the converter type.</summary>
+    public bool HasPairedFactory(Type converterType) => _factories.ContainsKey(converterType);
+
+    /// <summary>Why the paired factory registered for <paramref name="factoryType"/> gives no registration for the type; null when it gives one or when no factory is registered.</summary>
+    public string? PairedFactoryProblem(Type type, Type factoryType)
+        => _paired.ContainsKey((type, factoryType)) || !_factories.TryGetValue(factoryType, out var create) ? null : Expand(type, factoryType, create);
+
+    /// <summary>
+    /// Asks the factory's callback once for the closed type and keeps what it gave: the registration (then null) or why it gave none. A
+    /// callback is application code: its exception is reported by type only, as its message may hold anything.
+    /// </summary>
+    private string? Expand(Type type, Type factoryType, Func<Type, PairedCodecRegistration?> create)
+    {
+        if (_expanded.TryGetValue((type, factoryType), out var known))
+        {
+            return known;
+        }
+
+        PairedCodecRegistration? created = null;
+        string? problem = null;
+        try
+        {
+            created = create(type);
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
+        {
+            problem = $"the registration callback of paired factory '{factoryType}' threw {e.GetType().Name} for '{type}'";
+        }
+
+        if (problem is null)
+        {
+            problem = created is null ? $"the registration callback of paired factory '{factoryType}' returned no registration for '{type}'"
+                : created.ClrType != type ? $"the registration callback of paired factory '{factoryType}' returned a registration for '{created.ClrType}' when asked for '{type}'"
+                : created.ConverterType != factoryType ? $"the registration callback of paired factory '{factoryType}' returned a registration that names converter '{created.ConverterType}'; a factory's registrations name the factory"
+                : _modelIds.Contains(created.ModelId) ? $"the registration callback of paired factory '{factoryType}' returned model id '{created.ModelId}' for '{type}', which another paired codec already uses; ids are unique across the contract (SV02)"
+                : null;
+        }
+
+        if (problem is null)
+        {
+            _modelIds.Add(created!.ModelId);
+            _paired[(type, factoryType)] = created;
+        }
+
+        _expanded[(type, factoryType)] = problem;
+        return problem;
+    }
 
     /// <summary>The single registration of a CLR type; false when none or when several converters bind the type (then the converter decides).</summary>
     public bool TryGetPaired(Type type, out PairedCodecRegistration registration)

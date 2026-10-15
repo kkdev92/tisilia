@@ -23,6 +23,9 @@ _Built for teams that need consistent value semantics across .NET and TypeScript
 >
 > The contract format, Codec ABI, portable codec DSL and conformance protocol all use version 0.1. Format versions
 > are separate from the package version and may still change incompatibly before 1.0.0.
+>
+> This README follows the `main` branch, which is ahead of `0.2.0-alpha`: the changes the changelog lists under
+> [Unreleased](CHANGELOG.md#unreleased) are not in the published packages yet.
 
 ---
 
@@ -323,6 +326,7 @@ For vulnerability reporting, see [SECURITY.md](SECURITY.md).
 | [Documenting the API](docs/api-documentation.md) | XML comments and attributes in the contract, the Explorer and the client's JSDoc |
 | [Nuxt](docs/nuxt.md) | The Nuxt module: composables, hydration envelopes, header forwarding, request identity |
 | [Explorer](docs/explorer.md) | The Explorer page: routes, Authorize, redaction, bundling trusted modules |
+| [Paired codecs](docs/paired-codecs.md) | Pairing a converter of your own with a TypeScript codec module: what a registration names, converter factories, keeping the contract stable |
 | [Additional codecs](docs/additional-codecs.md) | `Int128`, `BigInteger`, `Half`, `Uri`, `IPAddress` and the other .NET types beyond the builtin scalars, and declared `DateTime` wires |
 | [Portable codecs](docs/portable.md) | Generating the C# converter and the TypeScript codec of a custom type from one definition |
 | [Conformance](docs/conformance.md) | The runner protocol, the suite, grades and evidence |

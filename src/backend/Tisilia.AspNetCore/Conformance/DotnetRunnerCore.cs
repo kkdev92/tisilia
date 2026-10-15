@@ -166,7 +166,9 @@ public sealed class DotnetRunnerCore
                     return a is JsonNullValue && b is JsonNullValue;
                 }
 
-                var reg = _paired.FirstOrDefault(p => p.ModuleId == module.ModuleId && p.DotnetOracleExport == module.ExportName)
+                // the registration of the equivalence's own type: registrations may share one oracle export (one template over the
+                // closed types of a factory), and the oracle of another type would be handed values it cannot compare
+                var reg = _paired.FirstOrDefault(p => p.ModelId == equivalence.DomainTypeId && p.ModuleId == module.ModuleId && p.DotnetOracleExport == module.ExportName)
                     ?? throw new RunnerFailureException(RunnerFailureCode.Contract, "compare.unknown-module-oracle");
                 if (reg.Oracle is null || reg.Construct is null)
                 {
