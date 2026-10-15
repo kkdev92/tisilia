@@ -26,6 +26,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
     public List<DocumentedType> Documented { get; } = [];
     private readonly HashSet<(Type, WireDirection)> _inProgress = [];
     private readonly HashSet<string> _pairedRegistered = new(StringComparer.Ordinal);
+    private readonly HashSet<PairedCodecRegistration> _pairedRefused = [];
     private readonly Dictionary<NumberProfile, JsonSerializerOptions> _numberOptions = new();
 
     /// <summary>Options equal to the profile's except for the number handling of a member override (runner adapters for root-level scalars).</summary>
@@ -433,6 +434,14 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
             return pairedUse;
         }
 
+        if (options.Codecs.PairedFactoryProblem(type, effectiveConverter) is { } factoryProblem)
+        {
+            bag.Error(TisiliaCodes.MissingCapability, "SV05", path, $"type '{type}' is serialized by converter factory '{effectiveConverter}', but {factoryProblem}", [type.FullName ?? type.Name],
+                "return the closed type's registration from the callback given to TisiliaOptions.Codecs.AddPairedFactory (ClrType = the type, ConverterType = the factory), or register the type with AddPaired");
+            _cache[key] = null;
+            return null;
+        }
+
         if (options.Codecs.PairedFor(type).Any())
         {
             var registered = string.Join(", ", options.Codecs.PairedFor(type).Select(r => r.ConverterType.Name));
@@ -445,8 +454,19 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
 
         if (!IsBuiltinConverter(info.Converter))
         {
-            bag.Error(TisiliaCodes.MissingCapability, "SV05", path, $"type '{type}' is serialized by custom converter '{info.Converter.GetType()}' which has no registered Tisilia binding; Tisilia never falls back to any/unknown", [type.FullName ?? type.Name],
-                "register a paired codec with TisiliaOptions.Codecs.AddPaired(...) or a portable definition");
+            // a registration names the converter in effect: for a factory's product that is the factory, not the closed converter it created
+            var created = info.Converter.GetType();
+            if (effectiveConverter != created && typeof(JsonConverterFactory).IsAssignableFrom(effectiveConverter))
+            {
+                bag.Error(TisiliaCodes.MissingCapability, "SV05", path, $"type '{type}' is serialized by custom converter '{created}', which converter factory '{effectiveConverter}' creates; the factory has no registered Tisilia binding, and Tisilia never falls back to any/unknown", [type.FullName ?? type.Name],
+                    $"register the factory once with TisiliaOptions.Codecs.AddPairedFactory(typeof({effectiveConverter.Name}), type => /* the closed type's PairedCodecRegistration */), or this type with AddPaired (ConverterType = typeof({effectiveConverter.Name}))");
+            }
+            else
+            {
+                bag.Error(TisiliaCodes.MissingCapability, "SV05", path, $"type '{type}' is serialized by custom converter '{created}' which has no registered Tisilia binding; Tisilia never falls back to any/unknown", [type.FullName ?? type.Name],
+                    "register a paired codec with TisiliaOptions.Codecs.AddPaired(...) or a portable definition");
+            }
+
             _cache[key] = null;
             return null;
         }
@@ -1552,8 +1572,27 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
     {
         if (!options.Codecs.TryGetPaired(type, converterType, out var reg))
         {
+            if (options.Codecs.PairedFactoryProblem(type, converterType) is { } factoryProblem)
+            {
+                bag.Error(TisiliaCodes.MissingCapability, "SV05", path, $"custom converter factory '{converterType}' for '{type}' has no paired binding for it: {factoryProblem}", [type.FullName ?? type.Name],
+                    "return the closed type's registration from the callback given to TisiliaOptions.Codecs.AddPairedFactory (ClrType = the type, ConverterType = the factory)");
+                return null;
+            }
+
             bag.Error(TisiliaCodes.MissingCapability, "SV05", path, $"custom converter '{converterType}' for '{type}' has no registered paired binding", [type.FullName ?? type.Name],
                 "TisiliaOptions.Codecs.AddPaired(new PairedCodecRegistration { ClrType = ..., ConverterType = ..., ... })");
+            return null;
+        }
+
+        // the schema's forms of ids and export names, reported once per registration with the registration's own field names
+        if (PairedRegistrationRules.Problem(reg) is { } namingProblem)
+        {
+            if (_pairedRefused.Add(reg))
+            {
+                bag.Error(TisiliaCodes.SchemaViolation, "SV01", path, $"the paired registration of '{type}' (converter '{converterType}'): {namingProblem}", [type.FullName ?? type.Name],
+                    "give the registration names in the contract's forms; the module's exports keep the names given here");
+            }
+
             return null;
         }
 
@@ -1597,7 +1636,14 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         var registration = options.Codecs.PairedFor(type).FirstOrDefault(r => r.ParameterGrammarId is not null);
         if (registration is null)
         {
-            return null;
+            // a type no JSON position has reached yet: the paired factory of the converter System.Text.Json would use for it binds it here
+            var converter = EffectiveConverterType(profile.Options, type);
+            if (!options.Codecs.HasPairedFactory(converter) || !options.Codecs.TryGetPaired(type, converter, out var expanded) || expanded.ParameterGrammarId is null)
+            {
+                return null;
+            }
+
+            registration = expanded;
         }
 
         var outer = builder.ActiveProfileId;
@@ -1649,6 +1695,12 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
             if (options.Codecs.TryGetPaired(dependency, out var depReg))
             {
                 MapPaired(dependency, depReg.ConverterType, path, numbers: numbers);
+            }
+            else if (!options.Codecs.PairedFor(dependency).Any() && EffectiveConverterType(profile.Options, dependency) is var dependencyConverter
+                && options.Codecs.HasPairedFactory(dependencyConverter))
+            {
+                // a closed type of a paired factory that no position has reached yet: the factory binds it, or says why it cannot
+                MapPaired(dependency, dependencyConverter, path, numbers: numbers);
             }
             else
             {
@@ -1748,13 +1800,17 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
             NoticeFiles = [],
         } : existingModule with { Exports = existingModule.Exports.Concat(exports.Where(e => existingModule.Exports.All(x => x.Name != e.Name))).ToList() });
         var bindingId = reg.ModelId + ".converter" + variant;
+        // a factory's product is bound per closed type: the closed type is part of the settings the binding fixes, so the closed
+        // converters of one factory with one settings text are distinct scopes rather than one scope claimed twice (SV24)
+        var settingsText = settings?.SettingsText ?? reg.SettingsText;
+        var fromFactory = typeof(JsonConverterFactory).IsAssignableFrom(reg.ConverterType);
         builder.AddBinding(new Binding
         {
             Id = bindingId,
-            Kind = BindingKind.Converter,
+            Kind = fromFactory ? BindingKind.Factory : BindingKind.Converter,
             Version = reg.ModuleVersion,
             Implementation = new ModuleImpl { ModuleId = reg.ModuleId, ExportName = reg.DotnetConverterExport },
-            SettingsDigest = TisiliaHash.Sha256OfBytes(System.Text.Encoding.UTF8.GetBytes(settings?.SettingsText ?? reg.SettingsText)),
+            SettingsDigest = TisiliaHash.Sha256OfBytes(System.Text.Encoding.UTF8.GetBytes(fromFactory ? "closed type: " + CleanName(reg.ClrType) + "\n" + settingsText : settingsText)),
             DependencyIds = [],
             Context = settings?.Context ?? reg.ConverterContext,
         });
