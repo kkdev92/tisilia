@@ -404,7 +404,10 @@ export class FormSchema {
     if (shape?.kind === "enum") {
       // names on a string wire (`enum-name`), values on a number wire; a flags enum combines them
       const byName = token === "string";
-      const choices = shape.members.map((m) => ({ label: `${m.serializedName ?? m.name} (${m.value})`, value: byName ? ({ kind: "string", value: m.serializedName ?? m.name } as JsonValue) : ({ kind: "number", text: m.value } as JsonValue), member: m.name, number: m.value }));
+      const choices = shape.members
+        .map((m) => ({ label: `${m.serializedName ?? m.name} (${m.value})`, value: byName ? ({ kind: "string", value: m.serializedName ?? m.name } as JsonValue) : ({ kind: "number", text: m.value } as JsonValue), member: m.name, number: m.value }))
+        // two members of one value that travel as one name (an alias) are one choice, documented as the first
+        .filter((c, i, all) => all.findIndex((o) => o.label === c.label) === i);
       return { kind: "scalar", token, widget: shape.flags ? "flags" : "enum", grammarId: grammarId ?? "", hint: shape.flags ? "one or more members" : "one member", typeLabel, typeId, choices };
     }
     if (shape?.kind === "primitive") {

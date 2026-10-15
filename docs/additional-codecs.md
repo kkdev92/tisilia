@@ -113,6 +113,8 @@ Minimal APIs bind them with `Enum.TryParse<T>` — case-sensitive C# member name
 accepts the same texts case-insensitively but refuses values that are not defined (for `[Flags]`, not a combination of
 defined flags). The client writes a defined value as its C# member name and any other value as its integer; for MVC
 actions the contract binder is `tisilia.grammar.enum-name@0.1` and the client refuses undefined values before sending.
+For an enum held by name (`TisiliaOptions.Enums`, see [Getting started](getting-started.md#6-what-the-types-say)) the
+client's value is the name the server writes, which the binder writes as the C# member name of that value.
 
 ## DateTime
 

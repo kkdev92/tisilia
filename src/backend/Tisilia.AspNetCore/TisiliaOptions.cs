@@ -45,6 +45,12 @@ public sealed class TisiliaOptions
     public DateTimeBindingCollection DateTimes { get; } = new();
 
     /// <summary>
+    /// What the client holds for enum values: the integer values (the default), or the names the server writes, for an enum whose
+    /// converter reads and writes by name alone. Never changes how the server reads or writes an enum.
+    /// </summary>
+    public EnumDomainCollection Enums { get; } = new();
+
+    /// <summary>
     /// What a type's <c>BindAsync</c> or an MVC model binder reads from the request. A parameter bound by such code is exported only
     /// as declared; an undeclared one is an export error.
     /// </summary>

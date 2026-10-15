@@ -54,6 +54,8 @@ public sealed class DomainProjector(ContractIndex index, RunnerAdapterTable adap
         {
             case PrimitiveShape p:
                 return Scalar(value, ScalarName(p), path);
+            case EnumShape e when e.NameDomain == true:
+                return EnumName(value, e, path);
             case EnumShape:
                 return EnumValue(value);
             case ObjectShape o:
@@ -239,6 +241,14 @@ public sealed class DomainProjector(ContractIndex index, RunnerAdapterTable adap
         return DomainAst.Number(underlying == typeof(ulong)
             ? Convert.ToUInt64(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture)
             : Convert.ToInt64(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>The name a name-domain enum holds for a value: the serialized name of the member that defines it (the domain has no other value).</summary>
+    private static JsonValue EnumName(object value, EnumShape shape, string path)
+    {
+        var text = ((JsonNumberValue)EnumValue(value)).Text;
+        var member = shape.Members.FirstOrDefault(m => m.Value == text) ?? throw new RunnerFailureException(RunnerFailureCode.Contract, "projection.enum-value-without-name", path);
+        return DomainAst.String(member.SerializedName ?? member.Name);
     }
 
     /// <summary>

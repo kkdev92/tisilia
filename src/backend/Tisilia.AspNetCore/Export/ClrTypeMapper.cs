@@ -26,6 +26,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
     public List<DocumentedType> Documented { get; } = [];
     private readonly HashSet<(Type, WireDirection)> _inProgress = [];
     private readonly HashSet<string> _pairedRegistered = new(StringComparer.Ordinal);
+    private readonly HashSet<Type> _enumDomainWarned = [];
     private readonly Dictionary<NumberProfile, JsonSerializerOptions> _numberOptions = new();
 
     /// <summary>Options equal to the profile's except for the number handling of a member override (runner adapters for root-level scalars).</summary>
@@ -963,9 +964,91 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         }
 
         RecordTypeScope(type);
+        var documentedMembers = type.GetFields(BindingFlags.Public | BindingFlags.Static).Select(f => new DocumentedMember(f.Name, type, f, null)).ToList();
+
+        // the client holds the names the server writes only where the converter in effect reads and writes nothing else
+        var (domain, declared) = options.Enums.Find(type);
+        if (domain == EnumDomain.Names)
+        {
+            var refusal = !stringForm ? "System.Text.Json writes it as an integer: no JsonStringEnumConverter applies to it"
+                : flags ? "it is a [Flags] enum, whose combinations the server writes as lists of names or as integers"
+                : !EnumNamesOnly(type, member) ? "its converter reads integers, or writes as an integer a value no member defines"
+                : null;
+            if (refusal is null)
+            {
+                var namesId = NeutralModelId(type) + ".names";
+                Documented.Add(new DocumentedType(namesId, type, documentedMembers));
+                return builder.NameEnumOf(namesId, EnumTsName(type, namesId, stringForm: true), CleanName(type), underlying, members);
+            }
+
+            // an explicit declaration is always answered; the default only where the names were in reach (a string-form enum)
+            if ((declared || stringForm) && _enumDomainWarned.Add(type))
+            {
+                bag.Warning(TisiliaCodes.EnumInvalid, "SV49", "", $"enum '{type}' keeps its integer values on the client: {refusal}", [type.FullName ?? type.Name],
+                    "for names, serialize the enum with new JsonStringEnumConverter(namingPolicy, allowIntegerValues: false); or declare TisiliaOptions.Enums.Add(typeof(...), EnumDomain.Values)");
+            }
+        }
+
         var id = NeutralModelId(type) + (stringForm ? ".string" : ".number");
-        Documented.Add(new DocumentedType(id, type, type.GetFields(BindingFlags.Public | BindingFlags.Static).Select(f => new DocumentedMember(f.Name, type, f, null)).ToList()));
+        Documented.Add(new DocumentedType(id, type, documentedMembers));
         return builder.EnumOf(id, EnumTsName(type, id, stringForm), CleanName(type), underlying, members, flags, stringForm);
+    }
+
+    /// <summary>
+    /// Whether the converter in effect reads and writes the enum by name alone, observed as the string form is: a JSON number and an
+    /// integer string are refused on read, and a value no member defines is refused on write. JsonStringEnumConverter does this with
+    /// <c>allowIntegerValues: false</c> (dotnet/runtime v10.0.0, <c>EnumConverter</c>).
+    /// </summary>
+    private bool EnumNamesOnly(Type type, JsonPropertyInfo? member)
+    {
+        var options = OptionsFor(member);
+        var first = Enum.GetValuesAsUnderlyingType(type).GetValue(0)!;
+        var text = Convert.ToString(first, System.Globalization.CultureInfo.InvariantCulture)!;
+        return Refused(() => _ = JsonSerializer.Deserialize(text, type, options))
+            && Refused(() => _ = JsonSerializer.Deserialize("\"" + text + "\"", type, options))
+            && (UndefinedEnumValue(type) is not { } undefined || Refused(() => _ = JsonSerializer.Serialize(undefined, type, options)));
+
+        static bool Refused(Action action)
+        {
+            try
+            {
+                action();
+                return false;
+            }
+            catch (JsonException)
+            {
+                return true;
+            }
+        }
+    }
+
+    /// <summary>A value of the enum's underlying type that no member defines, or null when the members define every value.</summary>
+    private static object? UndefinedEnumValue(Type type)
+    {
+        var underlying = Enum.GetUnderlyingType(type);
+        var defined = Enum.GetValuesAsUnderlyingType(type).Cast<object>().Select(v => Convert.ToDecimal(v, System.Globalization.CultureInfo.InvariantCulture)).ToHashSet();
+        (decimal Min, decimal Max) range = Type.GetTypeCode(underlying) switch
+        {
+            TypeCode.SByte => (sbyte.MinValue, sbyte.MaxValue),
+            TypeCode.Byte => (byte.MinValue, byte.MaxValue),
+            TypeCode.Int16 => (short.MinValue, short.MaxValue),
+            TypeCode.UInt16 => (ushort.MinValue, ushort.MaxValue),
+            TypeCode.Int32 => (int.MinValue, int.MaxValue),
+            TypeCode.UInt32 => (uint.MinValue, uint.MaxValue),
+            TypeCode.Int64 => (long.MinValue, long.MaxValue),
+            _ => (ulong.MinValue, ulong.MaxValue),
+        };
+        var (min, max) = range;
+        var candidates = new[] { defined.Max() + 1, defined.Min() - 1, 0m, 1m }.Concat(Enumerable.Range(0, 1 << 16).Select(i => min + i));
+        foreach (var candidate in candidates)
+        {
+            if (candidate >= min && candidate <= max && !defined.Contains(candidate))
+            {
+                return Enum.ToObject(type, Convert.ChangeType(candidate, underlying, System.Globalization.CultureInfo.InvariantCulture));
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

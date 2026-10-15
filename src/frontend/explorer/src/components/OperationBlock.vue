@@ -68,8 +68,8 @@ const parameters = computed(() =>
       required: p.presence === "required",
       nullable: p.use.semanticNullable,
       repeated: binder?.cardinality === "repeated",
-      // an enum's default is its integer (the domain value): shown as the member it names, like the choices
-      serverDefault: node.choices?.find((c) => c.number !== undefined && c.number === serverDefault)?.label ?? serverDefault,
+      // an enum's default is its domain value — the integer, or the name where the client holds names: shown as the member it names
+      serverDefault: node.choices?.find((c) => (c.number !== undefined && c.number === serverDefault) || writeJson(c.value) === serverDefault)?.label ?? serverDefault,
       node,
     };
   }),

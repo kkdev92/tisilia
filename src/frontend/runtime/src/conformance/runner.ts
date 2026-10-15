@@ -132,7 +132,7 @@ interface DomainProperty {
 
 type Shape =
   | { readonly kind: "primitive"; readonly primitiveId: string }
-  | { readonly kind: "enum"; readonly underlyingPrimitiveId: string; readonly flags: boolean; readonly members: readonly { name: string; value: string; serializedName?: string }[] }
+  | { readonly kind: "enum"; readonly underlyingPrimitiveId: string; readonly flags: boolean; readonly members: readonly { name: string; value: string; serializedName?: string }[]; readonly nameDomain?: true }
   | { readonly kind: "object"; readonly properties: readonly DomainProperty[]; readonly extension: { kind: "none" } | { kind: "capture"; value: TypeUse } }
   | { readonly kind: "array"; readonly element: TypeUse }
   | { readonly kind: "map"; readonly key: TypeUse; readonly value: TypeUse; readonly comparerId: string }
@@ -417,6 +417,13 @@ class DomainBridge {
       case "primitive":
         return this.scalarToAst(value, scalarName(shape.primitiveId), path);
       case "enum":
+        if (shape.nameDomain === true) {
+          // a name domain holds the names the server writes
+          if (typeof value === "string") {
+            return { kind: "string", value };
+          }
+          throw new RunnerFailure("contract", "projection.enum-not-a-name", path);
+        }
         if (typeof value === "bigint" || (typeof value === "number" && Number.isInteger(value))) {
           return { kind: "number", text: value.toString() };
         }

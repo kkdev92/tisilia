@@ -8,6 +8,25 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+### Added
+
+- **Enums held by name.** `TisiliaOptions.Enums` holds an enum by the names the server writes instead of its integers —
+  every enum with `o.Enums.Default = EnumDomain.Names`, one with `o.Enums.Add(typeof(Status), EnumDomain.Names)` — where the
+  server reads and writes it by name alone (`new JsonStringEnumConverter(namingPolicy, allowIntegerValues: false)`). The
+  generated model is a union of those names with a const object of the members, the client sends exactly those names, and
+  route, query, header and form values are written as the C# member name that `Enum.TryParse` binds. An enum that cannot be
+  held by name keeps its integers, with a warning (SV49): one whose converter reads integers, a `[Flags]` enum, and, when
+  declared for that enum, one System.Text.Json writes as an integer. A contract that holds an enum by name marks it
+  (`nameDomain`), which 0.2.0-alpha tools do not read.
+
+### Fixed
+
+- An enum with two members of one value (an alias such as `Other = Second`) that the server writes as names failed
+  validation (SV49), the second member repeating the name the server writes for both. Members of one value share that name,
+  and Explorer offers them as one choice; a name that stands for two values is still refused.
+- The generated client read the name of an enum member that differs from another's only in case (`Ab` and `AB` without a
+  naming policy) as the member declared last. It reads a name as written first, then ignoring case, as System.Text.Json does.
+
 ## [0.2.0-alpha] - 2026-10-09
 
 Many endpoints that 0.1.0-alpha refused to export, or described wrongly, are now described as the server reads and

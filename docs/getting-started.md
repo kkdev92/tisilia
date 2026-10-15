@@ -161,7 +161,7 @@ development).
 | `Guid` | `Guid` (`guid("…")`) |
 | `DateOnly`, `TimeOnly`, `DateTimeOffset`, `TimeSpan` | `DateOnly`, `TimeOnly`, `DateTimeOffset`, `Duration` (`parseDateOnly("2026-10-02")`, `formatDateOnly(…)` and the like; `dateTimeOffsetFromDate(new Date())` / `dateTimeOffsetToDate(…)` convert to and from a JS `Date`, which holds milliseconds) |
 | `DateTime` | tagged UTC / Local wire / Unspecified, 100 ns ticks; no declaration required |
-| `string`, `bool`, enums, records, classes, arrays, lists, dictionaries | `string`, `boolean`, `number` + a const object of members, interfaces, readonly arrays, `TisiliaMap` |
+| `string`, `bool`, enums, records, classes, arrays, lists, dictionaries | `string`, `boolean`, `number` + a const object of members (or the names, below), interfaces, readonly arrays, `TisiliaMap` |
 
 The other .NET types Tisilia supports — `Int128`, `BigInteger`, `Uri`, `IPAddress` and more — are in
 [Additional codecs](additional-codecs.md).
@@ -180,6 +180,30 @@ annotation at all, so its value counts as not null — declare the return type w
 serve is a model on each side, and its TypeScript name gets a number on one of them. One converter type with other
 settings on each side (two `JsonStringEnumConverter`s with different naming policies) is reported (SV16): give both sides
 the same converter settings.
+
+**Enums.** An enum is a `number` in TypeScript (a `bigint` for a 64-bit base) with a const object of its members, whether
+the server writes integers or names: `JsonStringEnumConverter` also reads integers and writes a value no member defines as
+an integer, so the client keeps every value the server can send. An enum the server reads and writes by name alone —
+`new JsonStringEnumConverter(namingPolicy, allowIntegerValues: false)` refuses an integer and refuses to write a value no
+member defines — can be held by its names instead:
+
+```csharp
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(
+    new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false)));
+builder.Services.AddTisilia(o => o.Enums.Default = EnumDomain.Names); // or o.Enums.Add(typeof(Status), EnumDomain.Names)
+```
+
+```ts
+export type Status = "draft" | "published";
+export const Status = { Draft: "draft", Published: "published" } as const;
+```
+
+The client sends exactly the names the server writes and refuses any other value; two members of one value share the name
+the server writes for it. A route, query, header or form value is written as the C# member name, which is what
+`Enum.TryParse` binds. An enum that cannot be held by name keeps its integers, with a warning (SV49): one whose converter
+reads integers, a `[Flags]` enum, and, when the declaration names it, one System.Text.Json writes as an integer.
+`o.Enums.Add(typeof(T), EnumDomain.Values)` keeps one enum's integers under a `Names` default. The program in
+`tests/oracle/EnumNames` shows what the converter does in each case.
 
 **DateTime.** No declaration is required. The builtin `datetime` scalar generates
 `DateTime = DateTimeUtc | DateTimeUnspecified | DateTimeLocalWire`. `parseDateTime(text)` reads `Z`, a numeric offset,
@@ -485,8 +509,8 @@ follows: ASP.NET Core before 10.0.12 does not answer such a request.
 
 Model collection properties use indexed keys such as `Details.Tags[0]`. This also supports string arrays inside models.
 An indexed collection must contain at least one item: an empty array would vanish from the form and change its meaning;
-omit an optional property to use the server's omission behavior. Enum fields use their exact integer domain in TypeScript,
-write CLR member names (independent of JSON aliases), and preserve 64-bit values. MVC refuses undefined enum values before sending;
+omit an optional property to use the server's omission behavior. Enum fields use their exact domain in TypeScript (the
+integers, or the names of an enum held by name), write CLR member names (independent of JSON aliases), and preserve 64-bit values. MVC refuses undefined enum values before sending;
 defined flags combinations work.
 
 MVC reads form values with the request culture (`FormValueProviderFactory`), so a client cannot know which decimal
