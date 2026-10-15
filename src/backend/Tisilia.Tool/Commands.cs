@@ -130,7 +130,7 @@ public static partial class Commands
             var build = await RunForwardingAsync(["build", project, "--configuration", configuration, "-nologo"], null, null, forwardOutput: !doctor);
             if (build != 0)
             {
-                if (doctor) { return WriteIncompleteDoctor(output, staging, json, "project build failed; application startup was not analyzed"); }
+                if (doctor) { return WriteIncompleteDoctor(output, staging, json, json && cli.Option("output") is not null, "project build failed; application startup was not analyzed"); }
                 Console.Error.WriteLine($"dotnet build failed with exit code {build}");
                 return ExitCodes.ExternalProcessFailed;
             }
@@ -168,34 +168,12 @@ public static partial class Commands
                 return ExitCodes.ExternalProcessFailed;
             }
             File.Move(staging, output, overwrite: true);
-            if (json) { Console.WriteLine(report.ToJsonString(TisiliaJson.IndentedOptions)); }
-            else
-            {
-                Console.WriteLine($"doctor: {report["overall"]}; selected {report["selectedCount"]}, analyzed {report["analyzedCount"]}, unanalyzed {report["unanalyzedCount"]}; HTTP unobserved");
-                Console.WriteLine($"scope: {report["executionScope"]}; DateTime: {report["dateTimeScope"]}");
-                foreach (var cause in report["causes"]!.AsArray())
-                {
-                    var ids = string.Join(", ", cause!["operationIds"]!.AsArray().Select(id => id!.GetValue<string>()));
-                    Console.WriteLine($"cause {cause["reasonCode"]}: {cause["message"]}; operations: {ids}; Fix: {cause["fix"]}");
-                }
-                foreach (var probe in report["bindingProbes"]?.AsArray().OfType<System.Text.Json.Nodes.JsonObject>() ?? [])
-                {
-                    static string List(System.Text.Json.Nodes.JsonNode? values) => string.Join(", ", values!.AsArray().Select(v => v!.GetValue<string>()));
-                    var detail = probe["status"]!.GetValue<string>() switch { "failed" => $": {probe["failure"]}", "mismatch" => $"; reads outside the declaration: {List(probe["undeclaredReads"])}", _ => "" };
-                    var unread = List(probe["unreadDeclarations"]);
-                    Console.WriteLine($"binding {probe["operationId"]} {probe["parameter"]} ({probe["binding"]}): {probe["status"]}{detail}" + (unread.Length > 0 ? $"; declared, not read on this call: {unread}" : ""));
-                }
-                foreach (var operation in report["operations"]!.AsArray().OfType<System.Text.Json.Nodes.JsonObject>())
-                {
-                    Console.WriteLine($"{operation["operationId"]}: {operation["readiness"]} {operation["route"]}");
-                    foreach (var diagnostic in operation["diagnostics"]!.AsArray()) { Console.WriteLine($"  {diagnostic!["code"]}: {diagnostic["message"]} Fix: {diagnostic["fix"]}"); }
-                }
-            }
+            WriteDoctorReport(report, output, json, summaryOnly: json && cli.Option("output") is not null, Console.Out);
             return exit.Value;
         }
         if (doctor)
         {
-            return WriteIncompleteDoctor(output, staging, json, exit is null ? "application startup exceeded its deadline" : "application did not produce a doctor report; startup or metadata failed");
+            return WriteIncompleteDoctor(output, staging, json, json && cli.Option("output") is not null, exit is null ? "application startup exceeded its deadline" : "application did not produce a doctor report; startup or metadata failed");
         }
         if (exit is null)
         {
@@ -224,7 +202,85 @@ public static partial class Commands
         return ExitCodes.Success;
     }
 
-    private static int WriteIncompleteDoctor(string output, string staging, bool json, string reason)
+    /// <summary>
+    /// What doctor prints, once the report is in its file: as text, every cause, binding probe and operation; as JSON, the report — or,
+    /// when <c>--output</c> named the file (<paramref name="summaryOnly"/>), a summary of it rather than the same JSON again: the counts,
+    /// the readiness of the operations, the causes by reason, and where the report is.
+    /// </summary>
+    public static void WriteDoctorReport(System.Text.Json.Nodes.JsonObject report, string output, bool json, bool summaryOnly, TextWriter stdout)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        ArgumentNullException.ThrowIfNull(stdout);
+        if (json)
+        {
+            stdout.WriteLine((summaryOnly ? DoctorSummary(report, output) : report).ToJsonString(TisiliaJson.IndentedOptions));
+            return;
+        }
+
+        stdout.WriteLine($"doctor: {report["overall"]}; selected {report["selectedCount"]}, analyzed {report["analyzedCount"]}, unanalyzed {report["unanalyzedCount"]}; HTTP unobserved");
+        stdout.WriteLine($"scope: {report["executionScope"]}; DateTime: {report["dateTimeScope"]}");
+        foreach (var cause in report["causes"]!.AsArray())
+        {
+            var ids = string.Join(", ", cause!["operationIds"]!.AsArray().Select(id => id!.GetValue<string>()));
+            stdout.WriteLine($"cause {cause["reasonCode"]}: {cause["message"]}; operations: {ids}; Fix: {cause["fix"]}");
+        }
+
+        foreach (var probe in report["bindingProbes"]?.AsArray().OfType<System.Text.Json.Nodes.JsonObject>() ?? [])
+        {
+            static string List(System.Text.Json.Nodes.JsonNode? values) => string.Join(", ", values!.AsArray().Select(v => v!.GetValue<string>()));
+            var detail = probe["status"]!.GetValue<string>() switch { "failed" => $": {probe["failure"]}", "mismatch" => $"; reads outside the declaration: {List(probe["undeclaredReads"])}", _ => "" };
+            var unread = List(probe["unreadDeclarations"]);
+            stdout.WriteLine($"binding {probe["operationId"]} {probe["parameter"]} ({probe["binding"]}): {probe["status"]}{detail}" + (unread.Length > 0 ? $"; declared, not read on this call: {unread}" : ""));
+        }
+
+        foreach (var operation in report["operations"]!.AsArray().OfType<System.Text.Json.Nodes.JsonObject>())
+        {
+            stdout.WriteLine($"{operation["operationId"]}: {operation["readiness"]} {operation["route"]}");
+            foreach (var diagnostic in operation["diagnostics"]!.AsArray()) { stdout.WriteLine($"  {diagnostic!["code"]}: {diagnostic["message"]} Fix: {diagnostic["fix"]}"); }
+        }
+    }
+
+    /// <summary>
+    /// A doctor report in brief (<c>tisilia.doctor-summary</c>): the counts and the exit code, how many operations have each readiness,
+    /// and, for each reason, how many causes and operations it has, most operations first.
+    /// </summary>
+    public static System.Text.Json.Nodes.JsonObject DoctorSummary(System.Text.Json.Nodes.JsonObject report, string output)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        var operations = report["operations"]?.AsArray().OfType<System.Text.Json.Nodes.JsonObject>().ToList() ?? [];
+        var readiness = new System.Text.Json.Nodes.JsonObject();
+        foreach (var group in operations.GroupBy(o => o["readiness"]!.GetValue<string>(), StringComparer.Ordinal).OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal))
+        {
+            readiness[group.Key] = group.Count();
+        }
+
+        var causes = new System.Text.Json.Nodes.JsonArray();
+        var byReason = (report["causes"]?.AsArray().OfType<System.Text.Json.Nodes.JsonObject>() ?? [])
+            .GroupBy(c => c["reasonCode"]!.GetValue<string>(), StringComparer.Ordinal)
+            .Select(g => (Reason: g.Key, Causes: g.Count(), Operations: g.SelectMany(c => c["operationIds"]!.AsArray().Select(id => id!.GetValue<string>())).Distinct(StringComparer.Ordinal).Count()))
+            .OrderByDescending(r => r.Operations).ThenBy(r => r.Reason, StringComparer.Ordinal);
+        foreach (var (reason, count, operationCount) in byReason)
+        {
+            causes.Add(new System.Text.Json.Nodes.JsonObject { ["reasonCode"] = reason, ["causes"] = count, ["operations"] = operationCount });
+        }
+
+        return new System.Text.Json.Nodes.JsonObject
+        {
+            ["format"] = "tisilia.doctor-summary",
+            ["version"] = report["version"]?.DeepClone(),
+            ["report"] = output,
+            ["overall"] = report["overall"]?.DeepClone(),
+            ["analysisComplete"] = report["analysisComplete"]?.DeepClone(),
+            ["selectedCount"] = report["selectedCount"]?.DeepClone(),
+            ["analyzedCount"] = report["analyzedCount"]?.DeepClone(),
+            ["unanalyzedCount"] = report["unanalyzedCount"]?.DeepClone(),
+            ["readiness"] = readiness,
+            ["causes"] = causes,
+            ["exitCode"] = report["exitCode"]?.DeepClone(),
+        };
+    }
+
+    private static int WriteIncompleteDoctor(string output, string staging, bool json, bool summaryOnly, string reason)
     {
         var report = new
         {
@@ -245,7 +301,8 @@ public static partial class Commands
         Directory.CreateDirectory(Path.GetDirectoryName(output)!);
         File.WriteAllText(staging, text);
         File.Move(staging, output, overwrite: true);
-        if (json) { Console.Write(text); }
+        if (json && summaryOnly) { Console.WriteLine(DoctorSummary(System.Text.Json.Nodes.JsonNode.Parse(text)!.AsObject(), output).ToJsonString(TisiliaJson.IndentedOptions)); }
+        else if (json) { Console.Write(text); }
         else { Console.WriteLine("doctor: analysis-incomplete; selected set unknown; " + reason + "; HTTP unobserved; allow flag is not a sandbox"); }
         return ExitCodes.ExternalProcessFailed;
     }
