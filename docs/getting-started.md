@@ -467,6 +467,21 @@ the query values, headers, cookies, body and form it reads (and, for a model bin
 and reports a read outside the declaration as a blocker; the declared route values are supplied, not recorded. This runs the
 binding code, which may use the application's services: run it with isolated settings.
 
+What the request pipeline reads outside an endpoint's parameters — a middleware or an endpoint filter that reads an
+idempotency key or `If-Match` — is declared the same way on the endpoint, or on its group:
+
+```csharp
+var orders = app.MapGroup("/orders")
+    .WithTisiliaRequestReads(reads => reads.Header<Guid>("Idempotency-Key").Header<string>("If-Match", optional: true))
+    .WithTisiliaRequestHeaders("Accept-Language");
+```
+
+Each read is a typed parameter of every operation under it (`client.ordersCreate({ "Idempotency-Key": guid("…") })`), with
+the server acceptance `server-parsed`. `WithTisiliaRequestHeaders` allows headers a caller passes through without a type:
+the client's `headers` option (`client.ordersList(args, { headers: [["accept-language", "ja"]] })`) and the headers the Nuxt
+module forwards during SSR. A header a browser cannot set, a credential header (the credential provider supplies those) or
+a header that is also a parameter of the operation is refused (SV32). Both also apply to the builder `MapControllers` returns.
+
 ### Form fields and files
 
 ```csharp

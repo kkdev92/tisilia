@@ -352,7 +352,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             if (isMvc && (p.BindingInfo?.BinderType ?? p.ModelMetadata?.BinderType) is { } binderType)
             {
                 AddDeclaredReads(customBinding.ForModelBinder(binderType), $"binds through the model binder {FriendlyName(binderType)}", p.BindingInfo?.BinderModelName ?? p.Name,
-                    $"options.CustomBinding.ModelBinder<{FriendlyName(binderType)}>(reads => reads.Query<string>(RequestReads.ModelName))", pPath);
+                    $"options.CustomBinding.ModelBinder<{FriendlyName(binderType)}>(reads => reads.Query<string>(RequestReads.ModelName))", pPath, $"parameter '{p.BindingInfo?.BinderModelName ?? p.Name}'");
                 continue;
             }
 
@@ -546,12 +546,18 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
         foreach (var bound in endpoint.Metadata.GetOrderedMetadata<IParameterBindingMetadata>().Where(p => p.HasBindAsync))
         {
             var boundType = Nullable.GetUnderlyingType(bound.ParameterInfo.ParameterType) ?? bound.ParameterInfo.ParameterType;
-            AddDeclaredReads(customBinding.ForBindAsync(boundType), $"binds through {FriendlyName(boundType)}.BindAsync", bound.Name, $"options.CustomBinding.BindAsync<{FriendlyName(boundType)}>(reads => reads.Query<int>(\"page\"))", opPath + "/parameters");
+            AddDeclaredReads(customBinding.ForBindAsync(boundType), $"binds through {FriendlyName(boundType)}.BindAsync", bound.Name, $"options.CustomBinding.BindAsync<{FriendlyName(boundType)}>(reads => reads.Query<int>(\"page\"))", opPath + "/parameters", $"parameter '{bound.Name}'");
+        }
+
+        // what a middleware or an endpoint filter reads from the request outside the parameters: as declared on the endpoint (or its group)
+        foreach (var pipelineReads in endpoint.Metadata.OfType<TisiliaRequestReadsMetadata>())
+        {
+            AddDeclaredReads(pipelineReads.Reads, "", "", "", opPath + "/parameters", "the request pipeline (WithTisiliaRequestReads)");
         }
 
         // A type's BindAsync or an MVC model binder reads the request in the application's own code, which the contract can describe only
         // as declared (TisiliaOptions.CustomBinding): each declared value is a parameter whose canonical text that code parses.
-        void AddDeclaredReads(Bindings.RequestReads? reads, string binding, string modelName, string declaration, string at)
+        void AddDeclaredReads(Bindings.RequestReads? reads, string binding, string modelName, string declaration, string at, string reader)
         {
             if (reads is null)
             {
@@ -567,17 +573,17 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
                 var readScalar = readType == typeof(DateTime) ? "datetime" : ClrTypeMapper.ScalarNameOf(readType);
                 if (readScalar is null or "bytes" or "json-value" or "datetime-local-wire")
                 {
-                    bag.Error(TisiliaCodes.ParameterRouteMismatch, "SV30", at, $"operation '{opId}': the declared read '{name}' of parameter '{modelName}' is a {FriendlyName(read.Type)}; declare a builtin scalar, or an array or list of one", [opId]);
+                    bag.Error(TisiliaCodes.ParameterRouteMismatch, "SV30", at, $"operation '{opId}': the declared read '{name}' of {reader} is a {FriendlyName(read.Type)}; declare a builtin scalar, or an array or list of one", [opId]);
                     continue;
                 }
                 if (read.Location == ParameterLocation.Path && (readRepeated || endpoint.RoutePattern.GetParameter(name) is null))
                 {
-                    bag.Error(TisiliaCodes.ParameterRouteMismatch, "SV30", at, $"operation '{opId}': the declared route value '{name}' of parameter '{modelName}' is not a single parameter of the route '{endpoint.RoutePattern.RawText}'", [opId]);
+                    bag.Error(TisiliaCodes.ParameterRouteMismatch, "SV30", at, $"operation '{opId}': the declared route value '{name}' of {reader} is not a single parameter of the route '{endpoint.RoutePattern.RawText}'", [opId]);
                     continue;
                 }
                 if (parameters.Any(other => string.Equals(other.Name, name, StringComparison.OrdinalIgnoreCase)))
                 {
-                    bag.Error(TisiliaCodes.ParameterRouteMismatch, "SV30", at, $"operation '{opId}': the declared read '{name}' of parameter '{modelName}' is also another parameter of the operation", [opId]);
+                    bag.Error(TisiliaCodes.ParameterRouteMismatch, "SV30", at, $"operation '{opId}': the declared read '{name}' of {reader} is also another parameter of the operation", [opId]);
                     continue;
                 }
                 var optionalRead = read.Location != ParameterLocation.Path && !readRepeated && (read.Optional || Nullable.GetUnderlyingType(readElement) is not null);
@@ -1071,7 +1077,9 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
                 AuthPolicyId = authorize && !anonymous ? Builtins.AuthAuthenticated : Builtins.AuthAnonymous,
                 RequestExecution = RequestExecution.BrowserAllowed,
                 Redaction = new Redaction { Default = "mask", Rules = [] },
-                RequestHeaderAllowlist = [],
+                // headers a caller may pass through without a type, as declared on the endpoint or its group: read from the resolved
+                // endpoint, since MVC's ApiExplorer leaves out the conventions of the builder MapControllers returns
+                RequestHeaderAllowlist = [.. endpoint.Metadata.OfType<TisiliaRequestHeadersMetadata>().SelectMany(h => h.Names).Select(h => h.ToLowerInvariant()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
                 CsrfPolicyId = endpoint.Metadata.GetMetadata<IAntiforgeryMetadata>()?.RequiresValidation == true ? Builtins.CsrfAntiforgery : Builtins.CsrfNone,
             },
         };
