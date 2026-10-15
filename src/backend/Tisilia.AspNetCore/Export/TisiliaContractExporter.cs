@@ -1077,8 +1077,9 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
                 AuthPolicyId = authorize && !anonymous ? Builtins.AuthAuthenticated : Builtins.AuthAnonymous,
                 RequestExecution = RequestExecution.BrowserAllowed,
                 Redaction = new Redaction { Default = "mask", Rules = [] },
-                // headers a caller may pass through without a type, as declared on the endpoint or its group
-                RequestHeaderAllowlist = [.. endpointMetadata.OfType<TisiliaRequestHeadersMetadata>().SelectMany(h => h.Names).Select(h => h.ToLowerInvariant()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
+                // headers a caller may pass through without a type, as declared on the endpoint or its group: read from the resolved
+                // endpoint, since MVC's ApiExplorer leaves out the conventions of the builder MapControllers returns
+                RequestHeaderAllowlist = [.. endpoint.Metadata.OfType<TisiliaRequestHeadersMetadata>().SelectMany(h => h.Names).Select(h => h.ToLowerInvariant()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
                 CsrfPolicyId = endpoint.Metadata.GetMetadata<IAntiforgeryMetadata>()?.RequiresValidation == true ? Builtins.CsrfAntiforgery : Builtins.CsrfNone,
             },
         };

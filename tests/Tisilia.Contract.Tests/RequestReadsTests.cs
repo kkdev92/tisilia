@@ -3,6 +3,9 @@ using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ApplicationParts;
+using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -57,6 +60,25 @@ public sealed class RequestReadsTests : IDisposable
         // an endpoint outside the group declares nothing
         Assert.Empty(index.Operations["health"].Parameters);
         Assert.Empty(index.Operations["health"].Security.RequestHeaderAllowlist);
+    }
+
+    [Fact]
+    public async Task The_builder_MapControllers_returns_declares_them_for_every_action()
+    {
+        var builder = WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
+        builder.Services.AddControllers().ConfigureApplicationPartManager(m => m.FeatureProviders.Add(new OnlyReadsController()));
+        builder.Services.AddTisilia(o => o.ApiId = "request-reads-mvc");
+        await using var app = builder.Build();
+        app.MapControllers()
+            .WithTisiliaRequestReads(reads => reads.Header<Guid>("Idempotency-Key"))
+            .WithTisiliaRequestHeaders("Accept-Language");
+        await app.StartAsync();
+        var export = Export(app);
+        Assert.False(export.Diagnostics.HasErrors, string.Join("\n", export.Diagnostics.Items));
+        var op = export.Index!.Operations["mvc.orders.create"];
+        var key = Assert.Single(op.Parameters, p => p.Name == "Idempotency-Key");
+        Assert.Equal((ParameterLocation.Header, Presence.Required, "std.guid"), (key.Location, key.Presence, key.Use.TypeId));
+        Assert.Equal(["accept-language"], op.Security.RequestHeaderAllowlist);
     }
 
     [Fact]
@@ -122,8 +144,26 @@ public sealed class RequestReadsTests : IDisposable
 
     private static ExportResult Export(WebApplication app) => app.Services.GetRequiredService<TisiliaContractExporter>().ExportFresh();
 
+    private sealed class OnlyReadsController : IApplicationFeatureProvider<ControllerFeature>
+    {
+        public void PopulateFeature(IEnumerable<ApplicationPart> parts, ControllerFeature feature)
+        {
+            feature.Controllers.Clear(); feature.Controllers.Add(System.Reflection.IntrospectionExtensions.GetTypeInfo(typeof(RequestReadsOrdersController)));
+        }
+    }
+
     private sealed class RouteGroupBuilderStub : IEndpointConventionBuilder
     {
         public void Add(Action<EndpointBuilder> convention) { }
     }
+}
+
+[ApiController]
+[NonController]
+[Route("/mvc/orders")]
+public sealed class RequestReadsOrdersController : ControllerBase
+{
+    [HttpPost]
+    [TisiliaOperation("mvc.orders.create")]
+    public ActionResult<string> Create() => Request.Headers["Idempotency-Key"].ToString();
 }
