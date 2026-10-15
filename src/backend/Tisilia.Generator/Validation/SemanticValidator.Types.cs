@@ -102,7 +102,9 @@ public sealed partial class SemanticValidator
         }
 
         var names = new HashSet<string>(StringComparer.Ordinal);
-        var serialized = new HashSet<string>(StringComparer.Ordinal);
+        // the name each value travels as: a member's serialized name, or its name when it has none. Two members of one value (an alias)
+        // share the name the server writes for it; one name for two values leaves the reader unable to tell them apart
+        var valueOfName = new Dictionary<string, BigInteger>(StringComparer.Ordinal);
         for (var j = 0; j < en.Members.Count; j++)
         {
             var m = en.Members[j];
@@ -112,15 +114,31 @@ public sealed partial class SemanticValidator
                 Error(TisiliaCodes.EnumInvalid, "SV49", JsonPointer.Append(mp, "name"), $"type '{model.Id}': enum member name '{m.Name}' is not unique", [model.Id]);
             }
 
-            if (m.SerializedName is not null && !serialized.Add(m.SerializedName))
-            {
-                Error(TisiliaCodes.EnumInvalid, "SV49", JsonPointer.Append(mp, "serializedName"), $"type '{model.Id}': serialized name '{m.SerializedName}' is not unique", [model.Id]);
-            }
-
             if (!BigInteger.TryParse(m.Value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var value) || value < min || value > max)
             {
                 Error(TisiliaCodes.EnumInvalid, "SV49", JsonPointer.Append(mp, "value"), $"type '{model.Id}': enum member '{m.Name}' value '{m.Value}' is outside {entry.Name} [{min}, {max}]", [model.Id]);
+                continue;
             }
+
+            var name = m.SerializedName ?? m.Name;
+            if (valueOfName.TryGetValue(name, out var other) && other != value)
+            {
+                Error(TisiliaCodes.EnumInvalid, "SV49", JsonPointer.Append(mp, m.SerializedName is null ? "name" : "serializedName"), $"type '{model.Id}': enum name '{name}' stands for two values ({other} and {value})", [model.Id]);
+            }
+
+            valueOfName.TryAdd(name, value);
+        }
+
+        if (en.NameDomain != true)
+        {
+            return;
+        }
+
+        // a name domain: every value the server reads or writes is a member's name, so there is no integer outside the members and no
+        // combination of flags
+        if (en.Flags || en.AllowUndefinedInteger)
+        {
+            Error(TisiliaCodes.EnumInvalid, "SV49", JsonPointer.Append(sp, "nameDomain"), $"type '{model.Id}': an enum whose domain is its names is neither flags nor open to undefined integers", [model.Id]);
         }
     }
 

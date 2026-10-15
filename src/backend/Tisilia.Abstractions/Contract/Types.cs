@@ -63,6 +63,13 @@ public sealed record EnumShape : DomainShape
     public required bool Flags { get; init; }
     public required bool AllowUndefinedInteger { get; init; }
     public required IReadOnlyList<EnumMember> Members { get; init; }
+
+    /// <summary>
+    /// True when the client holds the names the server writes instead of the integer values: each member's serialized name (its name
+    /// when it has none) is the domain value. Only for an enum the server reads and writes by name alone; absent for the integer domain.
+    /// </summary>
+    public bool? NameDomain { get; init; }
+
     [JsonIgnore]
     public override string Kind => "enum";
 }

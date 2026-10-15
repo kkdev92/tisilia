@@ -348,6 +348,9 @@
                 "additionalProperties": false
               },
               "minItems": 1
+            },
+            "nameDomain": {
+              "const": true
             }
           },
           "required": [

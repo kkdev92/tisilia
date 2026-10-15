@@ -700,11 +700,15 @@ export function enumCodec(d: EnumCodecDescriptor): Codec<number | bigint> {
   const big = d.underlying === "int64" || d.underlying === "uint64";
   const toDomain = (v: bigint): number | bigint => (big ? v : Number(v));
   const byValue = new Map<bigint, EnumMember>();
+  // System.Text.Json's enum converter looks a name up as written before it looks one up ignoring case (StringComparer.OrdinalIgnoreCase):
+  // members Ab and AB without a naming policy read "Ab" and "AB" as themselves
   const byName = new Map<string, EnumMember>();
+  const byNameIgnoringCase = new Map<string, EnumMember>();
   for (const m of d.members) {
     byValue.set(m.value, byValue.get(m.value) ?? m);
-    // System.Text.Json's enum converter looks names up with StringComparer.OrdinalIgnoreCase
-    byName.set(ordinalUpper(m.serializedName ?? m.name), m);
+    const name = m.serializedName ?? m.name;
+    byName.set(name, byName.get(name) ?? m);
+    byNameIgnoringCase.set(ordinalUpper(name), byNameIgnoringCase.get(ordinalUpper(name)) ?? m);
   }
   const validate = (v: unknown, ctx: CodecContext): bigint => {
     let value: bigint;
@@ -762,7 +766,8 @@ export function enumCodec(d: EnumCodecDescriptor): Codec<number | bigint> {
     }
     let total = 0n;
     for (const part of text.split(",")) {
-      const m = byName.get(ordinalUpper(part.trim()));
+      const name = part.trim();
+      const m = byName.get(name) ?? byNameIgnoringCase.get(ordinalUpper(name));
       if (m === undefined) {
         throw new CodecError("grammar", ctx.path, "unknown enum member name", d.id);
       }
@@ -813,6 +818,55 @@ export function enumCodec(d: EnumCodecDescriptor): Codec<number | bigint> {
         return toDomain(parseName(input.value, ctx));
       }
       throw new CodecError("type-mismatch", ctx.path, "enum input must be a name or integer", d.id);
+    },
+  };
+}
+
+export interface EnumNameCodecDescriptor {
+  readonly id: string;
+  readonly typeId: string;
+  /** The names the server writes for the members, which are the client's values. */
+  readonly names: readonly string[];
+}
+
+/**
+ * Enum codec of a name domain: an enum the server reads and writes by name alone (a JsonStringEnumConverter that refuses integers),
+ * whose public value is the name the server writes. The client writes exactly those names; a response, a dictionary key or an input
+ * that is not one of them is refused (the server never writes an integer for such an enum).
+ */
+export function enumNameCodec(d: EnumNameCodecDescriptor): Codec<string> {
+  const names = new Set(d.names);
+  const validate = (v: unknown, ctx: CodecContext): string => {
+    if (typeof v !== "string") {
+      throw new CodecError("type-mismatch", ctx.path, "enum requires one of its names", d.id);
+    }
+    if (!names.has(v)) {
+      throw new CodecError("domain-rule", ctx.path, "unknown enum member name", d.id);
+    }
+    return v;
+  };
+  return {
+    id: d.id,
+    typeId: d.typeId,
+    validateDomain: validate,
+    encodeRequest: (v, ctx) => ({ kind: "string", value: validate(v, ctx) }),
+    decodeResponse: (w, ctx) => {
+      if (w.kind !== "string") {
+        throw new CodecError("type-mismatch", ctx.path, `enum requires a JSON string but found ${w.kind}`, d.id);
+      }
+      return validate(w.value, ctx);
+    },
+    // System.Text.Json writes dictionary keys of these enums as the same names
+    encodeKey: validate,
+    decodeKey: validate,
+    parseRequestInput: (input, ctx) => {
+      if (typeof input === "string") {
+        return validate(input.trim(), ctx);
+      }
+      if (input.kind === "string") {
+        return validate(input.value, ctx);
+      }
+      throw new CodecError("type-mismatch", ctx.path, "enum input must be one of its names", d.id);
     },
   };
 }
