@@ -1,6 +1,7 @@
 import { resolveLimits, type Limits } from "../json/limits.js";
 import type { ResponseMetadata } from "./result.js";
 import { BudgetEnded, discard, ExecutionBudget } from "./budget.js";
+import { isAdapterFailure } from "./adapterFailure.js";
 
 /**
  * Fetch wrapper enforcing the transport rules: redirect:"error", no retry, explicit credentials mode, timeout via
@@ -30,7 +31,7 @@ export type ResponseConsumer = (metadata: ResponseMetadata) => ((chunk: Uint8Arr
 
 export type TransportOutcome =
   | { readonly kind: "ok"; readonly response: TransportResponse }
-  | { readonly kind: "transport-failure"; readonly reason: "network" | "redirect" | "read" | "cors"; readonly message: string; readonly metadata?: ResponseMetadata }
+  | { readonly kind: "transport-failure"; readonly reason: "network" | "redirect" | "read" | "cors" | "adapter"; readonly message: string; readonly metadata?: ResponseMetadata; readonly cause?: unknown }
   | { readonly kind: "timeout" }
   | { readonly kind: "cancelled" }
   | { readonly kind: "limit-failure"; readonly limit: "maxBodyBytes"; readonly metadata: ResponseMetadata };
@@ -145,6 +146,10 @@ export async function send(request: TransportRequest, options: TransportOptions 
     return { kind: "ok", response: { status: response.status, headers, mediaType, body, metadata: updateMetadata(), ...(consume === undefined ? {} : { streamed: true as const }) } };
   } catch (error) {
     if (error instanceof BudgetEnded) { return { kind: error.kind }; }
+    // the application's own failure, which its fetch adapter hands back on purpose (AdapterFailure): returned as it is, never read
+    if (isAdapterFailure(error)) {
+      return { kind: "transport-failure", reason: "adapter", message: "the fetch adapter failed the request", cause: error.cause, ...(metadata === undefined ? {} : { metadata }) };
+    }
     // Node's fetch (undici) names the reason in `cause` ("unexpected redirect", "connect ECONNREFUSED …"). Browsers never say why:
     // a refused redirect is a plain network error (Fetch, redirect mode "error") and CORS details only reach the console — Chrome
     // "Failed to fetch", Firefox "NetworkError when attempting to fetch resource.", Safari "Load failed". The reason stays

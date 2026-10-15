@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { send } from "../src/http/transport.js";
+import { AdapterFailure } from "../src/http/adapterFailure.js";
 
 // How a rejected fetch is classified. Node's fetch (undici) names the reason in `cause`; browsers reject with a TypeError whose
 // message never says why (Fetch turns a refused redirect into a plain network error, CORS details only reach the console).
@@ -37,6 +38,24 @@ describe("transport failures", () => {
     const thrown = await send(request, { fetch: rejecting("plain string") });
     expect(thrown).toMatchObject({ kind: "transport-failure", reason: "network" });
     expect(JSON.stringify(thrown)).not.toContain("plain string");
+  });
+
+  it("hands back the failure an adapter wraps in AdapterFailure, as it was thrown, and nothing else", async () => {
+    class GroupChanged extends Error {}
+    const own = new GroupChanged("the group changed while the request was on its way");
+    const outcome = await send(request, { fetch: rejecting(new AdapterFailure(own)) });
+    expect(outcome).toMatchObject({ kind: "transport-failure", reason: "adapter", message: "the fetch adapter failed the request" });
+    expect(outcome.kind === "transport-failure" ? outcome.cause : undefined).toBe(own);
+    // one from another copy of the runtime carries the same brand
+    const foreign = Object.assign(new Error("wrapped", { cause: own }), { [Symbol.for("@kkdev92/tisilia-runtime/adapter-failure")]: true });
+    expect(await send(request, { fetch: rejecting(foreign) })).toMatchObject({ kind: "transport-failure", reason: "adapter", cause: own });
+    // a response body the adapter fails while it is read
+    const failingBody = (async () => new Response(new ReadableStream({ pull() { throw new AdapterFailure(own); } }))) as unknown as typeof fetch;
+    expect(await send(request, { fetch: failingBody })).toMatchObject({ kind: "transport-failure", reason: "adapter", cause: own });
+    // a value merely called a cause is not handed back
+    const plain = await send(request, { fetch: rejecting(new Error("refused", { cause: own })) });
+    expect(plain).toMatchObject({ kind: "transport-failure", reason: "network" });
+    expect("cause" in plain).toBe(false);
   });
 
   it("keeps URLs and query strings out of platform error diagnostics", async () => {

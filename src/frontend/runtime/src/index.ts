@@ -78,6 +78,7 @@ export { suggestedFileName, safeFileName } from "./http/filename.js";
 export { standardBinder, codecBinder, enumBinder, formatScalarForBinding, formatScalarForRequestCulture } from "./http/binders.js";
 export type { Binder, ParameterLocation, NullPolicy, StandardBinderOptions, EnumBinderOptions } from "./http/binders.js";
 export { send } from "./http/transport.js";
+export { AdapterFailure } from "./http/adapterFailure.js";
 export type { TransportRequest, TransportResponse, TransportOutcome, TransportOptions } from "./http/transport.js";
 export { execute, executeWithRaw, download, subscribe, prepareRequest, fetchResponse, decodeResponse } from "./http/client.js";
 export { supportsRequestStreams } from "./http/transport.js";

@@ -13,6 +13,8 @@ import { createHydrationEnvelope } from "../src/hydration.js";
 import { resolveLimits } from "../src/json/limits.js";
 import { parseJson } from "../src/json/parser.js";
 import { CodecError } from "../src/codec/errors.js";
+import { AdapterFailure } from "../src/http/adapterFailure.js";
+import { failureEnvelopeOf } from "../src/hydration.js";
 
 let server: Server;
 let baseUrl: string;
@@ -288,6 +290,18 @@ describe("execute", () => {
     expect(JSON.stringify(badValue)).not.toContain("secret");
     // a forwarded cookie is sent: the Nuxt module passes it during SSR (browsers drop forbidden headers themselves)
     await expect(execute(getUser, { id, verbose: true }, { baseUrl, credentialProvider: () => [["Cookie", "a=b"]] })).resolves.toMatchObject({ kind: "response" });
+  });
+
+  it("returns the failure an adapter wraps with the operation, and keeps it out of a hydration envelope", async () => {
+    const own = { code: "group-changed", token: "secret" };
+    const result = await execute(getUser, { id, verbose: true }, { baseUrl, transport: { fetch: (async () => { throw new AdapterFailure(own); }) as unknown as typeof fetch } });
+    expect(result).toMatchObject({ kind: "transport-failure", operationId: getUser.id, reason: "adapter" });
+    expect(result.kind === "transport-failure" ? result.cause : undefined).toBe(own);
+    if (result.kind === "transport-failure") {
+      const envelope = failureEnvelopeOf({ operationId: getUser.id, semanticHash: "sha256:" + "0".repeat(64), requestIdentity: "rid:sha256:" + "0".repeat(64), scopeNonce: "n" }, result);
+      expect(envelope).toMatchObject({ kind: "failure", code: "transport", safeMessageId: "transport.adapter" });
+      expect(JSON.stringify(envelope)).not.toContain("secret");
+    }
   });
 
   it("classifies problem+json, text and bodyless cases by status and media type", async () => {

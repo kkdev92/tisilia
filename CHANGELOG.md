@@ -8,6 +8,18 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+### Added
+
+- **An adapter's own failure, handed back.** A fetch adapter (`transport.fetch`) that throws `new AdapterFailure(cause)`
+  makes the operation's result a transport failure with reason `adapter` whose `cause` is that value, as it was thrown: an
+  application that sends requests through its own stack can tell its own failures apart. The runtime never reads the value,
+  copies it into a message or puts it into a hydration envelope; anything else an adapter throws is still classified with
+  fixed text.
+
+### Changed
+
+- `TransportFailure.reason` has a new value, `adapter`: a `switch` over the reasons that must be exhaustive needs a case for it.
+
 ## [0.2.0-alpha] - 2026-10-09
 
 Many endpoints that 0.1.0-alpha refused to export, or described wrongly, are now described as the server reads and

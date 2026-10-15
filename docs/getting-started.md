@@ -288,6 +288,31 @@ expose Content-Disposition for a name to be available. A binary application/json
 decode using one deadline. Custom fetch adapters must provide a Web ReadableStream or a native null body; no arrayBuffer fallback
 is used. Ordinary generated calls return a complete buffer within the limit.
 
+A fetch adapter that sends requests through the application's own stack — token refresh, retries, its own typed errors — can
+hand its failure back to the caller as it is:
+
+```ts
+import { AdapterFailure } from "@kkdev92/tisilia-runtime";
+
+const client = createShopClient({
+  baseUrl,
+  transport: {
+    fetch: async (input, init) => {
+      try { return await appFetch(input, init); }
+      catch (error) { throw new AdapterFailure(error); }
+    },
+  },
+});
+const result = await client.ordersGet({ id });
+if (result.kind === "transport-failure" && result.reason === "adapter") {
+  // result.cause is what appFetch threw
+}
+```
+
+The runtime never reads that value, copies it into a message or puts it into a hydration envelope (which says
+`transport.adapter`). Anything else an adapter throws is classified with fixed text, since it may carry request headers or
+bodies.
+
 For incremental downloads, use the exported operation descriptor with the runtime's `download` function:
 
 ```ts
