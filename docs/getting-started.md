@@ -384,6 +384,23 @@ with the declared type. The handler is found by
 the operation id written as a constant — `WithTisiliaOperation("id")` on the Map call, or `[TisiliaOperation("id")]` on
 the action, method or lambda — and export checks that the endpoint runs the handler the source declares it for.
 
+### Failures every operation shares
+
+An API whose operations share their failures — a ProblemDetails for 400, 404 and 409 everywhere — declares them once, with
+ASP.NET Core's own metadata: `ProducesProblem` on a route group (.NET 9 and later) for minimal APIs, and a global
+`ProducesResponseTypeAttribute` filter for controllers.
+
+```csharp
+var api = app.MapGroup("/api").ProducesProblem(400).ProducesProblem(404).ProducesProblem(409);
+
+builder.Services.AddControllers(o =>
+    o.Filters.Add(new ProducesResponseTypeAttribute(typeof(ProblemDetails), 404, "application/problem+json")));
+```
+
+Every operation under the declaration has those cases: the generated client reads such a response as a `kind: "response"`
+result whose `data` is the ProblemDetails, instead of `unexpected-response`, and a `ProblemHttpResult` a handler returns
+is described by them.
+
 A path the generator cannot read leaves the operation undescribed, and SV34 names it with its place
 (`Endpoints/Todos.cs(14,9)`): a result held in a variable or returned by a method of the application, a value passed as
 `object`, an anonymous type or a tuple, a status code or content type that is not a constant, `Json(value, options)`, a
