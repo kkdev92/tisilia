@@ -18,7 +18,11 @@ using Tisilia.Generator.Validation;
 
 namespace Tisilia.AspNetCore.Export;
 
-public sealed record ExportResult(DiagnosticBag Diagnostics, string? Text, JsonObject? Root, int OperationCount, ContractIndex? Index = null, Conformance.RunnerAdapterTable? Adapters = null);
+public sealed record ExportResult(DiagnosticBag Diagnostics, string? Text, JsonObject? Root, int OperationCount, ContractIndex? Index = null, Conformance.RunnerAdapterTable? Adapters = null)
+{
+    /// <summary>Each converter in effect that the export found serializing a type without a binding, with that type (SV05).</summary>
+    internal IReadOnlyList<(Type Converter, Type ClrType)> Unbound { get; init; } = [];
+}
 
 /// <summary>
 /// Builds the <c>tisilia.contract</c> from resolved ASP.NET Core metadata (ApiExplorer descriptions for both MVC and
@@ -198,7 +202,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
 
         if (bag.HasErrors)
         {
-            return new ExportResult(bag, null, null, count);
+            return new ExportResult(bag, null, null, count) { Unbound = [.. mappers.Values.SelectMany(m => m.Unbound).Distinct()] };
         }
 
         var root = builder.BuildJson();

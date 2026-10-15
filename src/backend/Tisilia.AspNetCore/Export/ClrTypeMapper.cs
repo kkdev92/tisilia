@@ -24,6 +24,9 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
 
     /// <summary>The models this mapper wrote with the CLR type behind each (and an object's members): what documentation is read from.</summary>
     public List<DocumentedType> Documented { get; } = [];
+
+    /// <summary>Each converter in effect that this mapper found serializing a type without a binding, with that type: what doctor groups by converter.</summary>
+    internal List<(Type Converter, Type ClrType)> Unbound { get; } = [];
     private readonly HashSet<(Type, WireDirection)> _inProgress = [];
     private readonly HashSet<string> _pairedRegistered = new(StringComparer.Ordinal);
     private readonly HashSet<PairedCodecRegistration> _pairedRefused = [];
@@ -439,6 +442,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         {
             bag.Error(TisiliaCodes.MissingCapability, "SV05", path, $"type '{type}' is serialized by converter factory '{effectiveConverter}', but {factoryProblem}", [type.FullName ?? type.Name],
                 "return the closed type's registration from the callback given to TisiliaOptions.Codecs.AddPairedFactory (ClrType = the type, ConverterType = the factory), or register the type with AddPaired");
+            Unbound.Add((effectiveConverter, type));
             _cache[key] = null;
             return null;
         }
@@ -468,6 +472,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
                     "register a paired codec with TisiliaOptions.Codecs.AddPaired(...) or a portable definition");
             }
 
+            Unbound.Add((effectiveConverter, type));
             _cache[key] = null;
             return null;
         }
@@ -1731,6 +1736,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
     {
         if (!options.Codecs.TryGetPaired(type, converterType, out var reg))
         {
+            Unbound.Add((converterType, type));
             if (options.Codecs.PairedFactoryProblem(type, converterType) is { } factoryProblem)
             {
                 bag.Error(TisiliaCodes.MissingCapability, "SV05", path, $"custom converter factory '{converterType}' for '{type}' has no paired binding for it: {factoryProblem}", [type.FullName ?? type.Name],

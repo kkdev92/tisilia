@@ -28,7 +28,10 @@ public sealed class DoctorOutputTests
             new DoctorCause("TIS1302/SV05", "type 'A' is serialized by custom converter 'C' which has no registered Tisilia binding", null, ["b", "d"], ["/a"]),
             new DoctorCause("TIS1302/SV05", "type 'B' is serialized by custom converter 'C' which has no registered Tisilia binding", null, ["d"], ["/b"]),
             new DoctorCause("TIS1108/SV34", "operation 'c' declares no response types", null, ["c"], ["/c"]),
-        ]), TisiliaJson.IndentedOptions))!.AsObject();
+        ])
+    {
+        UnboundConverters = [new DoctorUnboundConverter("C", false, ["A", "B"], ["b", "d"], "register each type with TisiliaOptions.Codecs.AddPaired (ConverterType = typeof(C))")],
+    }, TisiliaJson.IndentedOptions))!.AsObject();
 
     [Fact]
     public void With_an_output_file_stdout_carries_a_summary_of_the_report()
@@ -43,6 +46,8 @@ public sealed class DoctorOutputTests
         Assert.Equal("""{"unsupported-feature":2,"requires-declaration":1,"supported":1}""", summary["readiness"]!.ToJsonString());
         // each reason once: how many causes it has, and in how many operations
         Assert.Equal("""[{"reasonCode":"TIS1302/SV05","causes":2,"operations":2},{"reasonCode":"TIS1108/SV34","causes":1,"operations":1}]""", summary["causes"]!.ToJsonString());
+        // each converter without a binding once: how many types it serializes so, and in how many operations
+        Assert.Equal("""[{"converter":"C","factory":false,"types":2,"operations":2}]""", summary["unboundConverters"]!.ToJsonString());
         Assert.DoesNotContain("operationIds", stdout.ToString(), StringComparison.Ordinal);
     }
 
@@ -58,5 +63,6 @@ public sealed class DoctorOutputTests
         Commands.WriteDoctorReport(Report(), "/project/tisilia.doctor.json", json: false, summaryOnly: false, text);
         Assert.Contains("d: unsupported-feature /d", text.ToString(), StringComparison.Ordinal);
         Assert.Contains("cause TIS1302/SV05: type 'B'", text.ToString(), StringComparison.Ordinal);
+        Assert.Contains("unbound converter C: 2 type(s) in 2 operation(s): A, B; Fix: register each type with", text.ToString(), StringComparison.Ordinal);
     }
 }

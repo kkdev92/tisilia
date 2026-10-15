@@ -203,9 +203,10 @@ public static partial class Commands
     }
 
     /// <summary>
-    /// What doctor prints, once the report is in its file: as text, every cause, binding probe and operation; as JSON, the report — or,
-    /// when <c>--output</c> named the file (<paramref name="summaryOnly"/>), a summary of it rather than the same JSON again: the counts,
-    /// the readiness of the operations, the causes by reason, and where the report is.
+    /// What doctor prints, once the report is in its file: as text, every converter without a binding, cause, binding probe and
+    /// operation; as JSON, the report — or, when <c>--output</c> named the file (<paramref name="summaryOnly"/>), a summary of it rather
+    /// than the same JSON again: the counts, the readiness of the operations, the causes by reason, the converters without a binding,
+    /// and where the report is.
     /// </summary>
     public static void WriteDoctorReport(System.Text.Json.Nodes.JsonObject report, string output, bool json, bool summaryOnly, TextWriter stdout)
     {
@@ -219,6 +220,13 @@ public static partial class Commands
 
         stdout.WriteLine($"doctor: {report["overall"]}; selected {report["selectedCount"]}, analyzed {report["analyzedCount"]}, unanalyzed {report["unanalyzedCount"]}; HTTP unobserved");
         stdout.WriteLine($"scope: {report["executionScope"]}; DateTime: {report["dateTimeScope"]}");
+        foreach (var converter in report["unboundConverters"]?.AsArray().OfType<System.Text.Json.Nodes.JsonObject>() ?? [])
+        {
+            var types = converter["types"]!.AsArray().Select(type => type!.GetValue<string>()).ToList();
+            var kind = converter["factory"]!.GetValue<bool>() ? "converter factory" : "converter";
+            stdout.WriteLine($"unbound {kind} {converter["converter"]}: {types.Count} type(s) in {converter["operationIds"]!.AsArray().Count} operation(s): {string.Join(", ", types)}; Fix: {converter["fix"]}");
+        }
+
         foreach (var cause in report["causes"]!.AsArray())
         {
             var ids = string.Join(", ", cause!["operationIds"]!.AsArray().Select(id => id!.GetValue<string>()));
@@ -242,7 +250,8 @@ public static partial class Commands
 
     /// <summary>
     /// A doctor report in brief (<c>tisilia.doctor-summary</c>): the counts and the exit code, how many operations have each readiness,
-    /// and, for each reason, how many causes and operations it has, most operations first.
+    /// for each reason how many causes and operations it has, most operations first, and for each converter without a binding how
+    /// many types and operations it has, in the report's order.
     /// </summary>
     public static System.Text.Json.Nodes.JsonObject DoctorSummary(System.Text.Json.Nodes.JsonObject report, string output)
     {
@@ -264,6 +273,18 @@ public static partial class Commands
             causes.Add(new System.Text.Json.Nodes.JsonObject { ["reasonCode"] = reason, ["causes"] = count, ["operations"] = operationCount });
         }
 
+        var converters = new System.Text.Json.Nodes.JsonArray();
+        foreach (var converter in report["unboundConverters"]?.AsArray().OfType<System.Text.Json.Nodes.JsonObject>() ?? [])
+        {
+            converters.Add(new System.Text.Json.Nodes.JsonObject
+            {
+                ["converter"] = converter["converter"]?.DeepClone(),
+                ["factory"] = converter["factory"]?.DeepClone(),
+                ["types"] = converter["types"]?.AsArray().Count ?? 0,
+                ["operations"] = converter["operationIds"]?.AsArray().Count ?? 0,
+            });
+        }
+
         return new System.Text.Json.Nodes.JsonObject
         {
             ["format"] = "tisilia.doctor-summary",
@@ -276,6 +297,7 @@ public static partial class Commands
             ["unanalyzedCount"] = report["unanalyzedCount"]?.DeepClone(),
             ["readiness"] = readiness,
             ["causes"] = causes,
+            ["unboundConverters"] = converters,
             ["exitCode"] = report["exitCode"]?.DeepClone(),
         };
     }
@@ -294,6 +316,7 @@ public static partial class Commands
             selectionKnown = false,
             operations = Array.Empty<object>(),
             causes = new[] { new { reasonCode = "startup-unavailable", message = reason, fix = "inspect startup privately using isolated settings; application exception text is withheld", operationIds = Array.Empty<string>(), paths = Array.Empty<string>() } },
+            unboundConverters = Array.Empty<object>(),
             executionScope = "application-startup-and-metadata; no handler probing; allow flag is not a sandbox",
             exitCode = ExitCodes.ExternalProcessFailed,
         };

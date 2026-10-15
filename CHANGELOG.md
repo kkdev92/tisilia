@@ -44,6 +44,11 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   application that sends requests through its own stack can tell its own failures apart. The runtime never reads the value,
   copies it into a message or puts it into a hydration envelope; anything else an adapter throws is still classified with
   fixed text.
+- **Converters without a binding, once each.** `tisilia doctor` lists each converter that serializes types without a binding
+  once (`unboundConverters`), with those types, the operations they reach and the fix: a factory with every closed type it
+  creates, which one `AddPairedFactory` binds, and a generic converter with every type its closed forms serialize, where the
+  causes are one per type. The JSON summary counts the types and operations of each, and the text output prints one line for
+  each.
 
 ### Changed
 
