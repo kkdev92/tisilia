@@ -8,6 +8,13 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+### Fixed
+
+- Export refused the paired registrations that `tisilia codec generate` writes for a portable codec module (SV01:
+  `DotnetOracleExport '' is not a JavaScript identifier`), so an application that used one could not export its contract.
+  Such a registration uses the builtin oracles and names no oracle export; the check of a registration's names, new in
+  0.3.0-alpha, now leaves the oracle names out when `BuiltinOracles` is set.
+
 ## [0.3.0-alpha] - 2026-10-15
 
 One callback now binds the closed types a converter factory serializes, an enum can be held by the names the server

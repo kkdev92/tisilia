@@ -153,6 +153,25 @@ public sealed class PairedFactoryTests
     }
 
     [Fact]
+    public async Task A_registration_with_builtin_oracles_names_no_oracle_exports()
+    {
+        // what the portable generator writes for every type of a module: the builtin oracles and empty oracle names. Before, the check of
+        // a registration's names refused the empty ones (SV01), so an application with a portable codec module could not export
+        await using var app = await StartAsync(o => o.Codecs.AddPairedFactory<TestKeyConverterFactory>(type => Registration(type, builtinOracles: true)), MapOrders);
+        var export = Export(app);
+        Assert.False(export.Diagnostics.HasErrors, string.Join("\n", export.Diagnostics.Items));
+        var index = export.Index!;
+        var equivalences = index.Equivalences.Values.Where(e => e.DomainTypeId is "test.OrderKey" or "test.CustomerKey").ToList();
+        Assert.NotEmpty(equivalences);
+        Assert.All(equivalences, e =>
+        {
+            Assert.Equal(Builtins.OracleStructural, Assert.IsType<BuiltinImpl>(e.DotnetOracle).Id);
+            Assert.Equal(Builtins.OracleStructural, Assert.IsType<BuiltinImpl>(e.TypescriptOracle).Id);
+        });
+        Assert.DoesNotContain(index.Modules[ModuleId].Exports, e => e.Role == ExportRole.Oracle);
+    }
+
+    [Fact]
     public async Task Route_values_of_a_closed_type_take_the_factory_registration()
     {
         // before: a type only route values reach had no registration yet, so the value went as unchecked text (SV30)
@@ -206,7 +225,7 @@ public sealed class PairedFactoryTests
     private static ExportResult Export(WebApplication app) => app.Services.GetRequiredService<TisiliaContractExporter>().ExportFresh();
 
     /// <summary>A key: a brand over the builtin Guid, read and written in the Guid's own grammar; one module export per role for every key type.</summary>
-    private static PairedCodecRegistration Registration(Type type, string? converterExport = null, bool parameters = false, Func<object, object, bool>? oracle = null, Type? converterType = null)
+    private static PairedCodecRegistration Registration(Type type, string? converterExport = null, bool parameters = false, Func<object, object, bool>? oracle = null, Type? converterType = null, bool builtinOracles = false)
     {
         var modelId = "test." + type.Name;
         var value = type.GetProperty(nameof(OrderKey.Value))!;
@@ -229,8 +248,9 @@ public sealed class PairedFactoryTests
             ],
             DotnetConverterExport = converterExport ?? nameof(TestKeyConverterFactory),
             DomainRuleExport = "keyDomainRule",
-            DotnetOracleExport = "KeyOracle",
-            TypescriptOracleExport = "keyOracle",
+            BuiltinOracles = builtinOracles,
+            DotnetOracleExport = builtinOracles ? "" : "KeyOracle",
+            TypescriptOracleExport = builtinOracles ? "" : "keyOracle",
             Request = new PairedDirection(f => f.StringWire(modelId + ".read", WireDirection.ServerRead, Builtins.Grammar("guid")), "keyRequestEncode", "keyValidate", "keyRequestInput"),
             Response = new PairedDirection(f => f.StringWire(modelId + ".write", WireDirection.ServerWrite, Builtins.Grammar("guid")), "keyResponseDecode", "keyValidate"),
             ConverterContext = [],
