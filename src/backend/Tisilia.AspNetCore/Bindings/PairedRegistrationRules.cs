@@ -63,8 +63,12 @@ internal static partial class PairedRegistrationRules
         yield return (nameof(r.TsName), r.TsName);
         yield return (nameof(r.DotnetConverterExport), r.DotnetConverterExport);
         yield return (nameof(r.DomainRuleExport), r.DomainRuleExport);
-        yield return (nameof(r.DotnetOracleExport), r.DotnetOracleExport);
-        yield return (nameof(r.TypescriptOracleExport), r.TypescriptOracleExport);
+        if (!r.BuiltinOracles)
+        {
+            // a registration with builtin oracles names no oracle export (the portable generator leaves both names empty)
+            yield return (nameof(r.DotnetOracleExport), r.DotnetOracleExport);
+            yield return (nameof(r.TypescriptOracleExport), r.TypescriptOracleExport);
+        }
         foreach (var (direction, value) in new[] { (nameof(r.Request), r.Request), (nameof(r.Response), r.Response) })
         {
             if (value is null)
