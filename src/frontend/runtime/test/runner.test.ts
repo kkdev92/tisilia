@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { CodecRegistry, enumNameCodec, scalarCodec, webNumbers } from "../src/index.js";
+import { CodecRegistry, enumCodec, enumNameCodec, mapCodec, scalarCodec, webNumbers } from "../src/index.js";
 import { builtinOracle, runRunner } from "../src/conformance/runner.js";
 
 const contract = {
@@ -25,12 +25,31 @@ const contract = {
         nameDomain: true,
       },
     },
+    {
+      id: "app.color",
+      shape: {
+        kind: "enum",
+        underlyingPrimitiveId: "tisilia.int32@0.1",
+        flags: false,
+        allowUndefinedInteger: false,
+        members: [
+          { name: "Red", value: "1" },
+          { name: "Green", value: "2" },
+          { name: "Blue", value: "3" },
+        ],
+      },
+    },
+    { id: "app.color-map", shape: { kind: "map", key: { typeId: "app.color", codecId: "app.color.codec", semanticNullable: false }, value: { typeId: "std.int64", codecId: "std.int64.codec.r", semanticNullable: false }, comparerId: "tisilia.comparer.ordinal@0.1" } },
+    { id: "app.kind-map", shape: { kind: "map", key: { typeId: "app.kind.names", codecId: "app.kind.names.codec", semanticNullable: false }, value: { typeId: "std.int64", codecId: "std.int64.codec.r", semanticNullable: false }, comparerId: "tisilia.comparer.ordinal@0.1" } },
   ],
   codecs: [
     { id: "std.int64.codec.r", typeId: "std.int64", capabilities: { request: { equivalenceId: "std.int64.request" }, response: { equivalenceId: "std.int64.response" }, requestKey: { equivalenceId: "std.int64.key" }, responseKey: { equivalenceId: "std.int64.key" } } },
     { id: "std.decimal.codec", typeId: "std.decimal", capabilities: { request: { equivalenceId: "std.decimal.request" }, response: { equivalenceId: "std.decimal.response" } } },
     { id: "std.json-value.codec", typeId: "std.json-value", capabilities: { request: { equivalenceId: "std.json-value.request" }, response: { equivalenceId: "std.json-value.response" } } },
     { id: "app.kind.names.codec", typeId: "app.kind.names", capabilities: { request: { equivalenceId: "app.kind.names.request" }, response: { equivalenceId: "app.kind.names.response" }, requestKey: { equivalenceId: "app.kind.names.key" }, responseKey: { equivalenceId: "app.kind.names.key" } } },
+    { id: "app.color.codec", typeId: "app.color", capabilities: { request: { equivalenceId: "app.color.request" }, response: { equivalenceId: "app.color.response" }, requestKey: { equivalenceId: "app.color.key" }, responseKey: { equivalenceId: "app.color.key" } } },
+    { id: "app.color-map.codec", typeId: "app.color-map", capabilities: { response: { equivalenceId: "app.color-map.response" } } },
+    { id: "app.kind-map.codec", typeId: "app.kind-map", capabilities: { response: { equivalenceId: "app.kind-map.response" } } },
   ],
   equivalences: [
     { id: "std.int64.request", domainTypeId: "std.int64", scope: "request", typescriptOracle: { kind: "builtin", id: "tisilia.oracle.structural@0.1" } },
@@ -43,6 +62,11 @@ const contract = {
     { id: "app.kind.names.request", domainTypeId: "app.kind.names", scope: "request", typescriptOracle: { kind: "builtin", id: "tisilia.oracle.structural@0.1" } },
     { id: "app.kind.names.response", domainTypeId: "app.kind.names", scope: "response", typescriptOracle: { kind: "builtin", id: "tisilia.oracle.structural@0.1" } },
     { id: "app.kind.names.key", domainTypeId: "app.kind.names", scope: "key", typescriptOracle: { kind: "builtin", id: "tisilia.oracle.structural@0.1" } },
+    { id: "app.color.request", domainTypeId: "app.color", scope: "request", typescriptOracle: { kind: "builtin", id: "tisilia.oracle.structural@0.1" } },
+    { id: "app.color.response", domainTypeId: "app.color", scope: "response", typescriptOracle: { kind: "builtin", id: "tisilia.oracle.structural@0.1" } },
+    { id: "app.color.key", domainTypeId: "app.color", scope: "key", typescriptOracle: { kind: "builtin", id: "tisilia.oracle.structural@0.1" } },
+    { id: "app.color-map.response", domainTypeId: "app.color-map", scope: "response", typescriptOracle: { kind: "builtin", id: "tisilia.oracle.structural@0.1" } },
+    { id: "app.kind-map.response", domainTypeId: "app.kind-map", scope: "response", typescriptOracle: { kind: "builtin", id: "tisilia.oracle.structural@0.1" } },
   ],
   comparers: [],
   bindings: [],
@@ -61,6 +85,12 @@ async function exchange(lines: string[]): Promise<Record<string, unknown>[]> {
   registry.register(scalarCodec("decimal"));
   registry.register(scalarCodec("json-value"));
   registry.register(enumNameCodec({ id: "app.kind.names.codec", typeId: "app.kind.names", names: ["usage", "stock"] }));
+  const color = enumCodec({ id: "app.color.codec", typeId: "app.color", underlying: "int32", flags: false, allowUndefinedInteger: false, stringForm: false, members: [{ name: "Red", value: 1n }, { name: "Green", value: 2n }, { name: "Blue", value: 3n }] });
+  registry.register(color);
+  const int64 = registry.get("std.int64.codec.r");
+  const kind = registry.get("app.kind.names.codec");
+  registry.register(mapCodec({ id: "app.color-map.codec", typeId: "app.color-map", key: () => color, value: () => int64, valueNullable: false, comparer: "ordinal" }));
+  registry.register(mapCodec({ id: "app.kind-map.codec", typeId: "app.kind-map", key: () => kind, value: () => int64, valueNullable: false, comparer: "ordinal" }));
   const input = new PassThrough();
   const output = new PassThrough();
   const chunks: Buffer[] = [];
@@ -146,6 +176,21 @@ describe("conformance runner (TypeScript side)", () => {
       "codec",
       "codec",
       "codec",
+    ]);
+  });
+
+  it("projects a dictionary key of an enum held by its integers as the member's value", async () => {
+    // System.Text.Json writes an enum key by the member's name, and the domain of an enum held by its integers is the values. Before,
+    // the key went into the domain as its name on the wire, so every response round trip of such a dictionary was a mismatch
+    const number = (text: string) => ({ kind: "number", text });
+    const out = await exchange([
+      record({ requestId: "r.1", action: "ts-decode-response", adapterId: "app.color-map.codec", inputs: [{ kind: "object", entries: [{ name: "Green", value: number("1") }, { name: "Blue", value: number("-1") }] }] }),
+      record({ requestId: "r.2", action: "ts-decode-response", adapterId: "app.kind-map.codec", inputs: [{ kind: "object", entries: [{ name: "stock", value: number("5") }] }] }),
+    ]);
+    expect(out.map((r) => r["outputs"] ?? r["code"])).toEqual([
+      [{ kind: "object", entries: [{ name: "2", value: number("1") }, { name: "3", value: number("-1") }] }],
+      // an enum held by name keeps the name, which is its domain
+      [{ kind: "object", entries: [{ name: "stock", value: number("5") }] }],
     ]);
   });
 

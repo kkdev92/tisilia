@@ -14,6 +14,11 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   `DotnetOracleExport '' is not a JavaScript identifier`), so an application that used one could not export its contract.
   Such a registration uses the builtin oracles and names no oracle export; the check of a registration's names, new in
   0.3.0-alpha, now leaves the oracle names out when `BuiltinOracles` is set.
+- `tisilia conformance` reported a dictionary keyed by an enum held by its integers as a mismatch in every response round
+  trip: the TypeScript runner put the key into the domain as the member's name, which System.Text.Json writes for an enum
+  key, where the domain has the member's value. Generated clients were not affected; they read such a key as the value.
+- `tisilia conformance` failed every request round trip of a model with a `Memory<byte>` or `ReadOnlyMemory<byte>` member
+  (`projection.clr-type-mismatch`): the .NET runner projected the bytes scalar only from a `byte[]`.
 
 ## [0.3.0-alpha] - 2026-10-15
 
