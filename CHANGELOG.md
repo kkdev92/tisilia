@@ -8,6 +8,13 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+## [0.3.1-alpha] - 2026-10-16
+
+Export accepts the registrations that `tisilia codec generate` writes for a portable codec module again, which
+0.3.0-alpha refused, and `tisilia conformance` no longer fails cases that the client and the server agree on: a
+dictionary keyed by an enum held by its integers, and a `Memory<byte>` or `ReadOnlyMemory<byte>` member. The format
+versions are unchanged.
+
 ### Fixed
 
 - Export refused the paired registrations that `tisilia codec generate` writes for a portable codec module (SV01:
@@ -19,6 +26,10 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   key, where the domain has the member's value. Generated clients were not affected; they read such a key as the value.
 - `tisilia conformance` failed every request round trip of a model with a `Memory<byte>` or `ReadOnlyMemory<byte>` member
   (`projection.clr-type-mismatch`): the .NET runner projected the bytes scalar only from a `byte[]`.
+
+### Compatibility
+
+- Use matching **0.3.1-alpha** NuGet and npm packages when exporting contracts and generating clients.
 
 ## [0.3.0-alpha] - 2026-10-15
 
@@ -343,7 +354,8 @@ The first preview.
 - Custom fetch adapters must expose a Web `ReadableStream` or a native `null` body.
 - The .NET packages and `@kkdev92/tisilia-runtime` have no third-party runtime dependencies.
 
-[Unreleased]: https://github.com/kkdev92/tisilia/compare/v0.3.0-alpha...HEAD
+[Unreleased]: https://github.com/kkdev92/tisilia/compare/v0.3.1-alpha...HEAD
+[0.3.1-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.3.1-alpha
 [0.3.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.3.0-alpha
 [0.2.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.2.0-alpha
 [0.1.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.1.0-alpha
