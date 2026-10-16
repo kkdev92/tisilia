@@ -464,10 +464,14 @@ class DomainBridge {
           throw new RunnerFailure("contract", "projection.not-a-map", path);
         }
         const keyCodec = this.registry.get(shape.key.codecId);
+        // an enum held by its integers has the member's value in the domain, though its key on the wire is the member's name
+        // (System.Text.Json writes an enum key by name): such a key is projected like the value; other keys keep their wire text
+        const keyShape = this.model(shape.key.typeId).shape;
+        const byValue = keyShape.kind === "enum" && keyShape.nameDomain !== true;
         const ctx = createCodecContext();
         const entries: JsonEntry[] = [];
         for (const [k, v] of value.entries()) {
-          const name = keyCodec.encodeKey !== undefined ? keyCodec.encodeKey(k, ctx) : keyText(this.toAst(k, shape.key, path));
+          const name = keyCodec.encodeKey !== undefined && !byValue ? keyCodec.encodeKey(k, ctx) : keyText(this.toAst(k, shape.key, path));
           entries.push({ name, value: this.toAst(v, shape.value, path + "/" + name) });
         }
         return { kind: "object", entries };

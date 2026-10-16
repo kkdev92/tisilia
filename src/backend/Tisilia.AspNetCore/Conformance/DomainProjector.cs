@@ -332,7 +332,13 @@ public sealed class DomainProjector(ContractIndex index, RunnerAdapterTable adap
                 case "guid":
                     return DomainAst.String(DomainAst.FormatGuid((Guid)value));
                 case "bytes":
-                    return DomainAst.String(Convert.ToBase64String((byte[])value));
+                    // Memory<byte> and ReadOnlyMemory<byte> are bytes in the contract too
+                    return DomainAst.String(value switch
+                    {
+                        Memory<byte> memory => Convert.ToBase64String(memory.Span),
+                        ReadOnlyMemory<byte> memory => Convert.ToBase64String(memory.Span),
+                        _ => Convert.ToBase64String((byte[])value),
+                    });
                 case "json-value":
                     return value switch
                     {
