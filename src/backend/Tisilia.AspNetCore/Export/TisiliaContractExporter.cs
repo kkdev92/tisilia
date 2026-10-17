@@ -1263,8 +1263,11 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
     /// The contract hashes the application's module artifacts byte for byte, so bytes that depend on the commit or the checkout change
     /// the semanticHash without a code change — committed contracts and generated clients go stale and evidence lapses. The causes are
     /// reported once per file: the .NET SDK puts the git commit into an assembly's InformationalVersion (SourceRevisionId) and into the
-    /// Source Link map of its PDB, whose content the assembly's PDB id and checksum hash (.NET 8 and later), and Git for Windows checks
-    /// a script out with CRLF unless .gitattributes pins it (core.autocrlf=true by default).
+    /// Source Link map of its PDB, whose content the assembly's PDB id and checksum hash (.NET 8 and later); the PDB also records the
+    /// identity of every referenced assembly, so a project the assembly references that carries the commit changes it as well; the
+    /// C# compiler can number the anonymous delegate types of lambdas with optional parameters differently from one build of the
+    /// same source to the next; and Git for Windows checks a script out with CRLF unless .gitattributes pins it (core.autocrlf=true
+    /// by default).
     /// Tisilia's own module (tisilia-additional) is versioned by its package and installed with its own .gitattributes.
     /// </summary>
     private void ReportUnstableArtifacts(JsonObject root, DiagnosticBag bag)
@@ -1298,15 +1301,36 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
 
             var informationalVersion = Generator.Canonical.SourceRevision.InformationalVersion(file);
             var sourceLinkCommit = Generator.Canonical.SourceRevision.SourceLinkCommit(file);
-            if (informationalVersion is null && sourceLinkCommit is null)
+            if (informationalVersion is not null || sourceLinkCommit is not null)
             {
-                continue;
+                var where = new[] { informationalVersion is null ? null : $"InformationalVersion {informationalVersion}", sourceLinkCommit is null ? null : $"Source Link of its PDB, commit {sourceLinkCommit}" }.OfType<string>();
+                var settings = new[] { informationalVersion is null ? null : "<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>", sourceLinkCommit is null ? null : "<EnableSourceLink>false</EnableSourceLink>" }.OfType<string>();
+                bag.Warning(TisiliaCodes.ModuleArtifact, "SV44", "/modules", $"{artifact.Key.Path} (modules {string.Join(", ", modules)}) embeds the source revision ({string.Join("; ", where)}): its digest and the contract's semanticHash change with every commit, so a committed contract and its generated client go stale without a code change", modules,
+                    $"set {string.Join(" and ", settings)} in the project that builds it (a released package keeps them: its assembly never changes)");
             }
 
-            var where = new[] { informationalVersion is null ? null : $"InformationalVersion {informationalVersion}", sourceLinkCommit is null ? null : $"Source Link of its PDB, commit {sourceLinkCommit}" }.OfType<string>();
-            var settings = new[] { informationalVersion is null ? null : "<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>", sourceLinkCommit is null ? null : "<EnableSourceLink>false</EnableSourceLink>" }.OfType<string>();
-            bag.Warning(TisiliaCodes.ModuleArtifact, "SV44", "/modules", $"{artifact.Key.Path} (modules {string.Join(", ", modules)}) embeds the source revision ({string.Join("; ", where)}): its digest and the contract's semanticHash change with every commit, so a committed contract and its generated client go stale without a code change", modules,
-                $"set {string.Join(" and ", settings)} in the project that builds it (a released package keeps them: its assembly never changes)");
+            var stamped = Generator.Canonical.SourceRevision.StampedProjectReferences(file);
+            if (stamped.Count > 0)
+            {
+                var references = stamped.Select(reference => $"{Path.GetFileName(reference.Path)} ({(reference.InformationalVersion is not null ? $"InformationalVersion {reference.InformationalVersion}" : $"Source Link of its PDB, commit {reference.SourceLinkCommit}")})");
+                var settings = new[]
+                {
+                    stamped.Any(reference => reference.InformationalVersion is not null) ? "<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>" : null,
+                    stamped.Any(reference => reference.SourceLinkCommit is not null) ? "<EnableSourceLink>false</EnableSourceLink>" : null,
+                }.OfType<string>();
+                bag.Warning(TisiliaCodes.ModuleArtifact, "SV44", "/modules", $"{artifact.Key.Path} (modules {string.Join(", ", modules)}) references projects that embed the source revision ({string.Join("; ", references)}): its PDB records the identity of each assembly it references, so its digest and the contract's semanticHash change with every commit even though it carries no commit itself", modules,
+                    $"set {string.Join(" and ", settings)} in those projects as well, for example in a Directory.Build.props above them, or keep the module in an assembly that references none of them");
+            }
+
+            var numbered = Generator.Canonical.AnonymousDelegates.UnstablyNumbered(file);
+            if (numbered.Count > 0)
+            {
+                var methods = numbered.SelectMany(numberedDelegate => numberedDelegate.Methods).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+                var where = methods.Count <= 3 ? string.Join(", ", methods) : $"{string.Join(", ", methods.Take(3))} and {methods.Count - 3} more";
+                var created = numbered.Count == 1 ? "one of them is" : $"{numbered.Count} of them are";
+                bag.Warning(TisiliaCodes.ModuleArtifact, "SV44", "/modules", $"{artifact.Key.Path} (modules {string.Join(", ", modules)}) can build to different bytes from the same source: the C# compiler gives a lambda or method with an optional or params parameter that becomes a Delegate (a minimal API route handler, say) a delegate type of its own, and numbers these types in an order that depends on which lambda its parallel build reaches first. {created} created in more than one place ({numbered.Sum(numberedDelegate => numberedDelegate.Uses)} times, in {where}), so its digest and the contract's semanticHash can change between two builds of the same commit", modules,
+                    "give those parameters no default value and no params (in a minimal API route handler a nullable parameter is optional without one), or keep the module in an assembly of its own");
+            }
         }
     }
 

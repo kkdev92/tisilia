@@ -23,6 +23,9 @@ _Built for teams that need consistent value semantics across .NET and TypeScript
 >
 > The contract format, Codec ABI, portable codec DSL and conformance protocol all use version 0.1. Format versions
 > are separate from the package version and may still change incompatibly before 1.0.0.
+>
+> This README follows the `main` branch, which is ahead of `0.3.1-alpha`: the changes the changelog lists under
+> [Unreleased](CHANGELOG.md#unreleased) are not in the published packages yet.
 
 ---
 

@@ -8,6 +8,19 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+### Fixed
+
+- `export` warned when the assembly of a codec or behavior module embedded the source revision, but not when a project
+  that assembly references did. The assembly's PDB records the identity of each assembly it references, so such a project
+  still made the module's digest, and with it the contract's `semanticHash`, change with every commit. `export` now names
+  those projects, found through the application's `.deps.json`, and the getting-started guide says to set the two
+  properties for them as well.
+- `export` did not warn when the C# compiler could build such an assembly to different bytes from the same source. It
+  numbers the delegate types it creates for lambdas and methods with an optional or `params` parameter that become a
+  `Delegate`, minimal API route handlers for example, in an order that depends on its parallel build, so the module's
+  digest and the contract's `semanticHash` could change between two builds of the same commit. `export` now warns when
+  the numbering can change and names the methods that create those delegates, and the guides say how to avoid it.
+
 ## [0.3.1-alpha] - 2026-10-16
 
 Export accepts the registrations that `tisilia codec generate` writes for a portable codec module again, which

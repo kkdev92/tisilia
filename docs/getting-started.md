@@ -90,9 +90,15 @@ and `erasableSyntaxOnly`.
 
 **Keeping the contract stable.** The contract's `semanticHash` covers the bytes of the assemblies that implement your own
 codecs or behaviors, so build them reproducibly. Set `<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>`
-and `<EnableSourceLink>false</EnableSourceLink>` for local builds: otherwise the .NET SDK writes the git commit into the
-assembly's version and into its PDB's Source Link map, which a deterministic build hashes into the assembly, and every commit
-changes the hash (`export` warns about both). An assembly
+and `<EnableSourceLink>false</EnableSourceLink>` for local builds of that assembly and of the projects it references, for
+example in a `Directory.Build.props` next to the solution: otherwise the .NET SDK writes the git commit into each assembly's
+version and into its PDB's Source Link map, which a deterministic build hashes into the assembly, and since the PDB also
+records the identity of every assembly it references, a commit in a referenced project changes the hash too. Either way every
+commit changes it (`export` warns about each case). The C# compiler can also build such an assembly to different bytes from
+the same source: it gives a lambda or method with an optional or `params` parameter that becomes a `Delegate`, a minimal API
+route handler for example, a delegate type of its own, and numbers these types in an order that depends on its parallel
+build. Give such parameters no default value and no `params` (in a route handler a nullable parameter is optional without a
+default), or keep those handlers out of that assembly; `export` warns when the numbering can change. An assembly
 also records the path it was built in, so export where the contract is maintained, or with `ContinuousIntegrationBuild=true`
 (which normalizes the paths). It is compiled anew whenever a library it references changes (a package update included), so
 export and generate again after such an update: a client from the previous contract answers `contract-mismatch` under the

@@ -132,6 +132,9 @@ needs to know (the names of an enum, say) goes in `ConverterContext`: non-secret
 ## Keeping the contract stable
 
 The contract records the digest of the assembly named as the `Dotnet` artifact, so any change to that assembly changes the
-contract, and the client has to be generated again. Keep the converters and their registrations in a small assembly of
-their own rather than in the API project, and build it reproducibly (see
-[Configure and generate](getting-started.md#4-configure-and-generate) in the getting-started guide).
+contract, and the client has to be generated again. That includes a new build of a project it references, since its PDB
+records the identity of each referenced assembly, and a build of the same source in which the compiler numbered the
+delegate types of route handlers with optional parameters differently. Keep the converters and their registrations in a
+small assembly of their own rather than in the API project, referencing as few of your projects as it can, and build it and
+those projects reproducibly (see [Configure and generate](getting-started.md#4-configure-and-generate) in the
+getting-started guide).
