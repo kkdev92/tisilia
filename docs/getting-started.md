@@ -145,8 +145,21 @@ Options: `baseUrl` (required; may carry a path, `https://host/app`), `credential
 the operation allows), `signal`, `limits`, and the contract guard `expectedSemanticHash` + `semanticHashHeader` (with
 `o.EmitSemanticHashHeader = true` on the server: a response produced under another contract is `contract-mismatch`), and
 `transport: { fetch }` for another fetch implementation, a test double for one; a body it does not give as a web stream is
-read whole and then checked against `maxBodyBytes`. Every method takes per-call overrides as its second argument;
-`limits` merge entry by entry with the client's.
+read whole and then checked against `maxBodyBytes`. Every method takes per-call overrides as its second argument.
+
+`limits` merge entry by entry: the defaults below, then the generation config's `limits` (written into the generated client
+when they differ from the defaults), then the client's, then the call's. Each is a safe integer within its range. Generation
+refuses any other value in the config, and a call given one in the client's or its own `limits` rejects with a `RangeError`
+rather than switch the check off.
+
+| limit | default | range |
+| --- | --- | --- |
+| `maxBodyBytes` | 16,777,216 | 1 and up |
+| `maxDepth` | 64 | 1–1,024 |
+| `maxTokens` | 1,000,000 | 1 and up |
+| `maxNumberCharacters` | 4,096 | 1–4,096 |
+| `timeoutMs` | 30,000 | 1–2,147,483,647 |
+| `maxDiagnosticBytes` | 262,144 | 0 and up |
 
 **Browsers.** The current versions of Chrome, Edge, Firefox and Safari; older ones are not a target (no polyfills). The
 runtime, generated clients and portable codec modules are ES2022. Web Crypto's `subtle` exists in secure contexts only: a
@@ -367,6 +380,12 @@ if (result.kind === "transport-failure" && result.reason === "adapter") {
 The runtime never reads that value, copies it into a message or puts it into a hydration envelope (which says
 `transport.adapter`). Anything else an adapter throws is classified with fixed text, since it may carry request headers or
 bodies.
+
+The call's deadline covers the adapter too, its own retries and waits included: when `timeoutMs` runs out, the call is a
+`timeout` and the `signal` the adapter was given in `init` is aborted, whatever the adapter is still doing. An adapter in front
+of a stack that keeps its own time, waiting without a limit or retrying on its own schedule, sets `limits.timeoutMs` to that
+stack's budget and passes `init.signal` on when the stack can stop. The deadline cannot be switched off; 2,147,483,647 ms is
+its largest value.
 
 For incremental downloads, use the exported operation descriptor with the runtime's `download` function:
 
