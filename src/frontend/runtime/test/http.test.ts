@@ -304,6 +304,26 @@ describe("execute", () => {
     }
   });
 
+  it("counts an adapter's own retries against the call's deadline and aborts the signal it was given", async () => {
+    // the application's stack behind the adapter retries every 5 ms until it is told to stop
+    let attempts = 0;
+    let given: AbortSignal | undefined;
+    const fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const signal = init?.signal;
+      if (!signal) { throw new Error("no signal reached the adapter"); }
+      given = signal;
+      while (!signal.aborted) {
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      throw new AdapterFailure("stopped");
+    }) as unknown as typeof globalThis.fetch;
+    const result = await execute(getUser, { id, verbose: true }, { baseUrl, limits: { timeoutMs: 50 }, transport: { fetch } });
+    expect(result).toMatchObject({ kind: "timeout", operationId: getUser.id, timeoutMs: 50 });
+    expect(given?.aborted).toBe(true);
+    expect(attempts).toBeGreaterThan(1);
+  });
+
   it("classifies problem+json, text and bodyless cases by status and media type", async () => {
     await expect(execute(getUser, { id, mode: "notfound" }, { baseUrl })).resolves.toMatchObject({ kind: "response", caseId: "users.get.not-found", data: { title: "nope", status: 404 } });
     await expect(execute(getUser, { id, mode: "gone" }, { baseUrl })).resolves.toMatchObject({ kind: "response", caseId: "users.get.gone", data: "it is gone é" });
