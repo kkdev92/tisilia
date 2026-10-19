@@ -8,6 +8,13 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+## [0.4.0-alpha] - 2026-10-19
+
+`tisilia doctor` names the paired registrations a conformance run cannot use, `tisilia generate` warns when JavaScript
+compiled from its previous output is left next to a file it changed, and `tisilia check` says to pass the evidence when
+it compares an output that conformance evidence qualified. `export` also warns about two more ways a module's digest,
+and with it the contract's `semanticHash`, can change without a code change. The format versions are unchanged.
+
 ### Added
 
 - **Registrations without the delegates conformance runs need.** `tisilia doctor` lists the paired registrations that lack
@@ -39,6 +46,10 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 - `check` without `--evidence` reported an output generated with conformance evidence as out of date and said to run
   `generate`, which without the evidence marks the qualified operations unqualified. It now warns (TIS1604) with the
   evidence ids and says to check with that evidence before generating.
+
+### Compatibility
+
+- Use matching **0.4.0-alpha** NuGet and npm packages when exporting contracts and generating clients.
 
 ## [0.3.1-alpha] - 2026-10-16
 
@@ -386,7 +397,8 @@ The first preview.
 - Custom fetch adapters must expose a Web `ReadableStream` or a native `null` body.
 - The .NET packages and `@kkdev92/tisilia-runtime` have no third-party runtime dependencies.
 
-[Unreleased]: https://github.com/kkdev92/tisilia/compare/v0.3.1-alpha...HEAD
+[Unreleased]: https://github.com/kkdev92/tisilia/compare/v0.4.0-alpha...HEAD
+[0.4.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.4.0-alpha
 [0.3.1-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.3.1-alpha
 [0.3.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.3.0-alpha
 [0.2.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.2.0-alpha
