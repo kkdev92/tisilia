@@ -16,6 +16,9 @@ public static partial class SourceRevision
     /// <summary>Portable PDB custom debug information "Source Link" (on the module), dotnet/runtime PortablePdb-Metadata.md.</summary>
     public static readonly Guid SourceLinkKind = new("CC110556-A091-4D38-9FEC-25AB9A351A6A");
 
+    /// <summary>Portable PDB custom debug information "Compilation Metadata References" (on the module), dotnet/runtime PortablePdb-Metadata.md.</summary>
+    internal static readonly Guid CompilationMetadataReferencesKind = new("7E4D4708-096E-4C5C-AEDA-CB10BA6A740D");
+
     /// <summary>The InformationalVersion when it ends in a commit (<c>1.0.0+3f2a…</c>), else null.</summary>
     public static string? InformationalVersion(string assembly)
         => System.Diagnostics.FileVersionInfo.GetVersionInfo(assembly).ProductVersion is { } version && CommitSuffix().IsMatch(version) ? version : null;
@@ -25,6 +28,18 @@ public static partial class SourceRevision
     /// the assembly or its PDB cannot be read: the digest still binds whatever the bytes are.
     /// </summary>
     public static string? SourceLinkCommit(string assembly)
+        => ModuleDebugInformation(assembly, SourceLinkKind) is { } map && Commit().Match(System.Text.Encoding.UTF8.GetString(map)) is { Success: true } commit ? commit.Value : null;
+
+    /// <summary>
+    /// Whether the assembly's portable PDB (next to it or embedded) records the assemblies it was compiled against, as the C#
+    /// compiler does with each one's MVID, size and time stamp. Only then can a referenced assembly change the assembly's bytes.
+    /// An assembly built without a PDB (<c>DebugType</c> <c>none</c>) or with a Windows PDB records none. False also when the
+    /// assembly or its PDB cannot be read.
+    /// </summary>
+    internal static bool RecordsReferences(string assembly) => ModuleDebugInformation(assembly, CompilationMetadataReferencesKind) is not null;
+
+    /// <summary>The value of the module's custom debug information of <paramref name="kind"/> in the assembly's portable PDB, else null.</summary>
+    private static byte[]? ModuleDebugInformation(string assembly, Guid kind)
     {
         try
         {
@@ -41,10 +56,9 @@ public static partial class SourceRevision
                 foreach (var handle in reader.GetCustomDebugInformation(EntityHandle.ModuleDefinition))
                 {
                     var information = reader.GetCustomDebugInformation(handle);
-                    if (reader.GetGuid(information.Kind) == SourceLinkKind)
+                    if (reader.GetGuid(information.Kind) == kind)
                     {
-                        var map = System.Text.Encoding.UTF8.GetString(reader.GetBlobBytes(information.Value));
-                        return Commit().Match(map) is { Success: true } commit ? commit.Value : null;
+                        return reader.GetBlobBytes(information.Value);
                     }
                 }
             }
@@ -63,10 +77,16 @@ public static partial class SourceRevision
     /// assembly's PDB id, checksum and MVID hash, so a commit stamped into a referenced project changes the assembly too, even when
     /// the assembly itself carries no commit. The projects come from the application's <c>.deps.json</c> next to the assembly
     /// (libraries of type <c>project</c>); packages are left out, since a released package does not change between commits.
-    /// Empty when no deps file there lists the assembly.
+    /// Empty when the assembly's PDB records no references (<see cref="RecordsReferences"/>) or when no deps file there lists
+    /// the assembly.
     /// </summary>
     public static IReadOnlyList<StampedReference> StampedProjectReferences(string assembly)
     {
+        if (!RecordsReferences(assembly))
+        {
+            return [];
+        }
+
         var directory = Path.GetDirectoryName(Path.GetFullPath(assembly));
         if (directory is null || !Directory.Exists(directory))
         {

@@ -1268,7 +1268,8 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
     /// the semanticHash without a code change — committed contracts and generated clients go stale and evidence lapses. The causes are
     /// reported once per file: the .NET SDK puts the git commit into an assembly's InformationalVersion (SourceRevisionId) and into the
     /// Source Link map of its PDB, whose content the assembly's PDB id and checksum hash (.NET 8 and later); the PDB also records the
-    /// identity of every referenced assembly, so a project the assembly references that carries the commit changes it as well; the
+    /// identity of every referenced assembly, so a project the assembly references that carries the commit changes it as well
+    /// (unless the assembly is built without a PDB, which then records none); the
     /// C# compiler can number the anonymous delegate types of lambdas with optional parameters differently from one build of the
     /// same source to the next; and Git for Windows checks a script out with CRLF unless .gitattributes pins it (core.autocrlf=true
     /// by default).
@@ -1323,7 +1324,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
                     stamped.Any(reference => reference.SourceLinkCommit is not null) ? "<EnableSourceLink>false</EnableSourceLink>" : null,
                 }.OfType<string>();
                 bag.Warning(TisiliaCodes.ModuleArtifact, "SV44", "/modules", $"{artifact.Key.Path} (modules {string.Join(", ", modules)}) references projects that embed the source revision ({string.Join("; ", references)}): its PDB records the identity of each assembly it references, so its digest and the contract's semanticHash change with every commit even though it carries no commit itself", modules,
-                    $"set {string.Join(" and ", settings)} in those projects as well, for example in a Directory.Build.props above them, or keep the module in an assembly that references none of them");
+                    $"set {string.Join(" and ", settings)} in those projects as well, for example in a Directory.Build.props above them, keep the module in an assembly that references none of them, or build that assembly without a PDB (<DebugType>none</DebugType>)");
             }
 
             var numbered = Generator.Canonical.AnonymousDelegates.UnstablyNumbered(file);

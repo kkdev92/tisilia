@@ -176,4 +176,6 @@ records the identity of each referenced assembly, and a build of the same source
 delegate types of route handlers with optional parameters differently. Keep the converters and their registrations in a
 small assembly of their own rather than in the API project, referencing as few of your projects as it can, and build it and
 those projects reproducibly (see [Configure and generate](getting-started.md#4-configure-and-generate) in the
-getting-started guide).
+getting-started guide). To make it independent of the projects it references, build it without a PDB
+(`<DebugType>none</DebugType>` in its project file): the PDB is where the identity of the referenced assemblies is recorded,
+and an embedded one (`embedded`) records it too. Stack traces through that assembly then show no file names or line numbers.
