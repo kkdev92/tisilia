@@ -160,6 +160,7 @@ public static partial class OwnedOutput
         // endings: watchers see no change, and a CRLF checkout is not rewritten with LF, which git (core.autocrlf=true) would
         // then list as modified although its content is the same
         var staged = new List<(string Temp, string Final)>();
+        var changed = new List<string>();
         try
         {
             foreach (var file in plan.Files)
@@ -174,6 +175,7 @@ public static partial class OwnedOutput
                 var temp = full + ".tisilia-tmp";
                 File.WriteAllBytes(temp, file.Bytes);
                 staged.Add((temp, full));
+                changed.Add(file.Path);
             }
 
             var manifestFull = Path.Combine(root, OutputPlan.ManifestFileName);
@@ -221,10 +223,37 @@ public static partial class OwnedOutput
                 if (full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal) && File.Exists(full) && LineEndings.StillWritten(File.ReadAllBytes(full), old.Digest))
                 {
                     File.Delete(full);
+                    changed.Add(old.Path);
                 }
             }
         }
 
+        ReportStaleCompiledFiles(root, plan, changed, bag);
         return true;
+    }
+
+    /// <summary>
+    /// Warns about JavaScript compiled from generated files this generation changed or removed. Generation never touches such a
+    /// file, and a bundler that finds <c>client.js</c> next to <c>client.ts</c> loads the <c>.js</c>, so the application would
+    /// keep running the previous client while TypeScript checks it against the new one.
+    /// </summary>
+    private static void ReportStaleCompiledFiles(string root, OutputPlan plan, IEnumerable<string> changed, DiagnosticBag bag)
+    {
+        var generated = plan.Files.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
+        var stale = changed
+            .Where(path => path.EndsWith(".ts", StringComparison.Ordinal) && !path.EndsWith(".d.ts", StringComparison.Ordinal))
+            .Select(path => path[..^".ts".Length] + ".js")
+            .Where(path => !generated.Contains(path) && File.Exists(Path.Combine(root, path.Replace('/', Path.DirectorySeparatorChar))))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        if (stale.Count == 0)
+        {
+            return;
+        }
+
+        bag.Warning(TisiliaCodes.StaleCompiledOutput, "SV48", "",
+            $"{string.Join(", ", stale)} {(stale.Count == 1 ? "was" : "were")} compiled from the previous output, and generation changed or removed the .ts next to {(stale.Count == 1 ? "it" : "them")}: a bundler loads that .js before the .ts, so the application would run the previous client while TypeScript checks it against this one",
+            fix: "compile the output again (and run conformance again when evidence qualifies it); delete the .js of a file generation removed");
     }
 }

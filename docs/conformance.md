@@ -226,4 +226,6 @@ Next to the `.ts`, the compiled files are what the bundler loads. Vite resolves 
 `.ts` only when that `.js` does not exist, and tries `.js` before `.ts` for an import without an extension (its default
 `resolve.extensions`; Nuxt lists them in the same order). TypeScript still takes the types from the `.ts`. The
 application therefore runs the build the evidence observed: when `generate` changes the output, compile and run
-`conformance` again, and keep the compiled files wherever `generate --evidence` or `check --evidence` runs.
+`conformance` again, and keep the compiled files wherever `generate --evidence` or `check --evidence` runs. A compiled
+file left from the previous output would keep the application on the previous client while TypeScript checks it against
+the new one, so `generate` warns (TIS1507) when it changes or removes a `.ts` whose `.js` is next to it.

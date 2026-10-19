@@ -349,6 +349,68 @@ public sealed class PipelineTests : IDisposable
         Assert.Equal([Generator.Conformance.EvidenceValidator.ReasonArtifactMismatch], UsersGet().ReasonCodes);
     }
 
+    [Fact]
+    public void Generation_warns_about_JavaScript_compiled_from_a_file_it_changed_or_removed()
+    {
+        // a bundler loads client.js before client.ts: JavaScript compiled from the previous output keeps the application on the
+        // previous client while TypeScript checks it against the new one, and generation never touches a file it did not write
+        var configPath = WriteConfig(c => c["target"]!["moduleMode"] = "bundler");
+        var output = Path.Combine(_root, "web", "generated");
+        var (plan, bag) = Plan(configPath);
+        Assert.True(OwnedOutput.Write(output, plan!.Output, previous: null, force: false, bag), string.Join("\n", bag.Items));
+        var sources = plan.Output.Files.Select(f => f.Path).Where(path => path.EndsWith(".ts", StringComparison.Ordinal)).ToList();
+        foreach (var source in sources)
+        {
+            File.WriteAllText(Path.Combine(output, source[..^".ts".Length] + ".js"), "// compiled\n");
+        }
+
+        static string[] Named(Diagnostic warning) => warning.Message.Split(" w", 2)[0].Split(", ");
+
+        // a file the previous generation owned and this one no longer writes, compiled as well: removing it leaves its .js
+        const string extra = "// generated before\n";
+        File.WriteAllText(Path.Combine(output, "extra.ts"), extra);
+        File.WriteAllText(Path.Combine(output, "extra.js"), "// compiled\n");
+        var manifestPath = Path.Combine(output, OutputPlan.ManifestFileName);
+        var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!;
+        manifest["files"]!.AsArray().Add(new JsonObject { ["path"] = "extra.ts", ["digest"] = Generator.Canonical.TisiliaHash.Sha256OfBytes(System.Text.Encoding.UTF8.GetBytes(extra)) });
+        File.WriteAllText(manifestPath, manifest.ToJsonString(TisiliaJson.IndentedOptions) + "\n");
+        var removing = new DiagnosticBag();
+        Assert.True(OwnedOutput.Write(output, plan.Output, OwnedOutput.ReadManifest(output, removing), force: false, removing), string.Join("\n", removing.Items));
+        var removed = Assert.Single(removing.Items, d => d.Code == TisiliaCodes.StaleCompiledOutput);
+        Assert.Equal(DiagnosticSeverity.Warning, removed.Severity);
+        Assert.Equal(["extra.js"], Named(removed));
+        Assert.False(File.Exists(Path.Combine(output, "extra.ts")));
+        Assert.True(File.Exists(Path.Combine(output, "extra.js")));
+
+        // the same output again changes nothing and says nothing
+        var unchanged = new DiagnosticBag();
+        Assert.True(OwnedOutput.Write(output, plan.Output, OwnedOutput.ReadManifest(output, unchanged), force: false, unchanged));
+        Assert.DoesNotContain(unchanged.Items, d => d.Code == TisiliaCodes.StaleCompiledOutput);
+
+        // publishing only users.get rewrites the client: the compiled files of the sources it rewrote are named, and no others
+        var (evidence, _) = ConformanceTests.SyntheticEvidence(plan.Index, Generator.Closure.ContractClosure.Compute(plan.Index, ["users.get"]));
+        var evidencePath = Path.Combine(_root, "api", "tisilia.evidence.json");
+        File.WriteAllText(evidencePath, evidence.ToJsonString(TisiliaJson.Options));
+        var narrowedConfig = WriteConfig(c =>
+        {
+            c["target"]!["moduleMode"] = "bundler";
+            c["coveragePolicy"] = "qualified-only";
+        });
+        var narrowedBag = new DiagnosticBag { File = narrowedConfig };
+        var narrowed = Pipeline.BuildPlan(Pipeline.LoadConfig(narrowedConfig, narrowedBag)!, narrowedBag, [evidencePath], new HashSet<string> { "ci" })!;
+        var rewritten = narrowed.Output.Files
+            .Where(f => f.Path.EndsWith(".ts", StringComparison.Ordinal) && File.ReadAllText(Path.Combine(output, f.Path)) != f.Content)
+            .Select(f => f.Path[..^".ts".Length] + ".js")
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        Assert.Contains("client.js", rewritten);
+        Assert.True(rewritten.Count < sources.Count);
+        var written = new DiagnosticBag();
+        Assert.True(OwnedOutput.Write(output, narrowed.Output, OwnedOutput.ReadManifest(output, written), force: false, written), string.Join("\n", written.Items));
+        Assert.Equal(rewritten, Named(Assert.Single(written.Items, d => d.Code == TisiliaCodes.StaleCompiledOutput)));
+        Assert.All(sources, source => Assert.Equal("// compiled\n", File.ReadAllText(Path.Combine(output, source[..^".ts".Length] + ".js"))));
+    }
+
     // ------------------------------------------------------------------ line endings (Git for Windows checks text out with CRLF)
 
     [Fact]

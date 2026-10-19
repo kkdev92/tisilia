@@ -17,6 +17,10 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   none of them, so before, nothing said one was missing until a conformance run failed those cases. The JSON summary counts
   the types and operations of each, and the text output prints one line for each; neither is a blocker or changes the exit
   code.
+- **JavaScript compiled from a previous output.** `generate` warns (TIS1507) when it changes or removes a generated `.ts`
+  whose compiled `.js` is next to it. Generation never touches that file, and a bundler loads it before the `.ts`, so the
+  application kept running the previous client while TypeScript checked it against the new one, and a method the new
+  client added failed only when it was called.
 
 ### Fixed
 
