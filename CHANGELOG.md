@@ -24,7 +24,9 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   that assembly references did. The assembly's PDB records the identity of each assembly it references, so such a project
   still made the module's digest, and with it the contract's `semanticHash`, change with every commit. `export` now names
   those projects, found through the application's `.deps.json`, and the getting-started guide says to set the two
-  properties for them as well.
+  properties for them as well. An assembly built without a PDB (`<DebugType>none</DebugType>`) records no referenced
+  assembly, so `export` names no project for it, and the guides give that as the other way to keep the module's assembly
+  independent of its references.
 - `export` did not warn when the C# compiler could build such an assembly to different bytes from the same source. It
   numbers the delegate types it creates for lambdas and methods with an optional or `params` parameter that become a
   `Delegate`, minimal API route handlers for example, in an order that depends on its parallel build, so the module's

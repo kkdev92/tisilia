@@ -16,8 +16,12 @@ public sealed class SourceRevisionTests : IDisposable
 
     public void Dispose() => Directory.Delete(_dir, recursive: true);
 
-    /// <summary>A minimal assembly with an embedded portable PDB that carries <paramref name="sourceLink"/> (none when null).</summary>
-    private string WriteAssembly(string name, string? sourceLink)
+    /// <summary>
+    /// A minimal assembly with an embedded portable PDB that carries <paramref name="sourceLink"/> (none when null) and, with
+    /// <paramref name="references"/>, the record of the assemblies it was compiled against that the C# compiler writes; with
+    /// <paramref name="pdb"/> false, an assembly built without a PDB (<c>DebugType</c> <c>none</c>).
+    /// </summary>
+    private string WriteAssembly(string name, string? sourceLink, bool references = false, bool pdb = true)
     {
         var metadata = new MetadataBuilder();
         var assemblyName = metadata.GetOrAddString(name);
@@ -25,18 +29,36 @@ public sealed class SourceRevisionTests : IDisposable
         metadata.AddAssembly(assemblyName, new Version(1, 0, 0, 0), default, default, default, AssemblyHashAlgorithm.Sha1);
         metadata.AddTypeDefinition(default, default, metadata.GetOrAddString("<Module>"), default, MetadataTokens.FieldDefinitionHandle(1), MetadataTokens.MethodDefinitionHandle(1));
 
-        var debug = new DebugDirectoryBuilder();
-        var pdb = new MetadataBuilder();
-        if (sourceLink is not null)
+        DebugDirectoryBuilder? debug = null;
+        if (pdb)
         {
-            pdb.AddCustomDebugInformation(EntityHandle.ModuleDefinition, pdb.GetOrAddGuid(SourceRevision.SourceLinkKind), pdb.GetOrAddBlobUTF8(sourceLink));
-        }
+            debug = new DebugDirectoryBuilder();
+            var debugMetadata = new MetadataBuilder();
+            if (sourceLink is not null)
+            {
+                debugMetadata.AddCustomDebugInformation(EntityHandle.ModuleDefinition, debugMetadata.GetOrAddGuid(SourceRevision.SourceLinkKind), debugMetadata.GetOrAddBlobUTF8(sourceLink));
+            }
 
-        var pdbBuilder = new PortablePdbBuilder(pdb, metadata.GetRowCounts(), default);
-        var pdbBlob = new BlobBuilder();
-        var pdbId = pdbBuilder.Serialize(pdbBlob);
-        debug.AddCodeViewEntry(name + ".pdb", pdbId, pdbBuilder.FormatVersion);
-        debug.AddEmbeddedPortablePdbEntry(pdbBlob, pdbBuilder.FormatVersion);
+            if (references)
+            {
+                // one reference, as the compiler writes it: file name, aliases, flags (an assembly), time stamp, size and MVID
+                var reference = new BlobBuilder();
+                reference.WriteUTF8("Direct.dll");
+                reference.WriteByte(0);
+                reference.WriteByte(0);
+                reference.WriteByte(1);
+                reference.WriteUInt32(0);
+                reference.WriteUInt32(0);
+                reference.WriteGuid(Guid.NewGuid());
+                debugMetadata.AddCustomDebugInformation(EntityHandle.ModuleDefinition, debugMetadata.GetOrAddGuid(SourceRevision.CompilationMetadataReferencesKind), debugMetadata.GetOrAddBlob(reference));
+            }
+
+            var pdbBuilder = new PortablePdbBuilder(debugMetadata, metadata.GetRowCounts(), default);
+            var pdbBlob = new BlobBuilder();
+            var pdbId = pdbBuilder.Serialize(pdbBlob);
+            debug.AddCodeViewEntry(name + ".pdb", pdbId, pdbBuilder.FormatVersion);
+            debug.AddEmbeddedPortablePdbEntry(pdbBlob, pdbBuilder.FormatVersion);
+        }
 
         var image = new BlobBuilder();
         new ManagedPEBuilder(PEHeaderBuilder.CreateLibraryHeader(), new MetadataRootBuilder(metadata), new BlobBuilder(), debugDirectoryBuilder: debug).Serialize(image);
@@ -61,7 +83,7 @@ public sealed class SourceRevisionTests : IDisposable
     {
         const string commit = "b661016562c639606f38ee2c9f22845bec3f86c5";
         var map = "{\"documents\":{\"C:\\\\repo\\\\*\":\"https://raw.githubusercontent.com/owner/repo/" + commit + "/*\"}}";
-        var module = WriteAssembly("Module", null);
+        var module = WriteAssembly("Module", null, references: true);
         WriteAssembly("Direct", map);
         WriteAssembly("Transitive", map);
         WriteAssembly("Clean", null);
@@ -122,7 +144,7 @@ public sealed class SourceRevisionTests : IDisposable
     [Fact]
     public void Without_a_deps_file_that_lists_the_assembly_no_reference_is_reported()
     {
-        var module = WriteAssembly("Module", null);
+        var module = WriteAssembly("Module", null, references: true);
         WriteAssembly("Direct", "{\"documents\":{\"C:\\\\repo\\\\*\":\"https://raw.githubusercontent.com/owner/repo/b661016562c639606f38ee2c9f22845bec3f86c5/*\"}}");
         Assert.Empty(SourceRevision.StampedProjectReferences(module));
 
@@ -130,6 +152,44 @@ public sealed class SourceRevisionTests : IDisposable
         File.WriteAllText(Path.Combine(_dir, "Other.deps.json"), """{ "targets": { ".NETCoreApp,Version=v10.0": { "Other/1.0.0": { "dependencies": { "Direct": "1.0.0" }, "runtime": { "Other.dll": {} } }, "Direct/1.0.0": { "runtime": { "Direct.dll": {} } } } }, "libraries": { "Other/1.0.0": { "type": "project" }, "Direct/1.0.0": { "type": "project" } } }""");
         File.WriteAllText(Path.Combine(_dir, "Broken.deps.json"), "{ not json");
         Assert.Empty(SourceRevision.StampedProjectReferences(module));
+    }
+
+    [Fact]
+    public void Only_a_module_whose_PDB_records_its_references_depends_on_their_commits()
+    {
+        // the record of the assemblies it was compiled against is what ties an assembly to the projects it references: built
+        // without a PDB (DebugType none), or with a PDB that has no such record, it does not change when they do
+        WriteAssembly("Direct", "{\"documents\":{\"C:\\\\repo\\\\*\":\"https://raw.githubusercontent.com/owner/repo/b661016562c639606f38ee2c9f22845bec3f86c5/*\"}}");
+        File.WriteAllText(Path.Combine(_dir, "App.deps.json"), """
+            {
+              "targets": {
+                ".NETCoreApp,Version=v10.0": {
+                  "App/1.0.0": { "dependencies": { "Module": "1.0.0" }, "runtime": { "App.dll": {} } },
+                  "Module/1.0.0": { "dependencies": { "Direct": "1.0.0" }, "runtime": { "Module.dll": {} } },
+                  "Direct/1.0.0": { "runtime": { "Direct.dll": {} } }
+                }
+              },
+              "libraries": {
+                "App/1.0.0": { "type": "project" },
+                "Module/1.0.0": { "type": "project" },
+                "Direct/1.0.0": { "type": "project" }
+              }
+            }
+            """);
+
+        Assert.False(SourceRevision.RecordsReferences(WriteAssembly("Module", null, pdb: false)));
+        Assert.Empty(SourceRevision.StampedProjectReferences(Path.Combine(_dir, "Module.dll")));
+        Assert.False(SourceRevision.RecordsReferences(WriteAssembly("Module", null)));
+        Assert.Empty(SourceRevision.StampedProjectReferences(Path.Combine(_dir, "Module.dll")));
+        Assert.True(SourceRevision.RecordsReferences(WriteAssembly("Module", null, references: true)));
+        Assert.Equal(["Direct.dll"], SourceRevision.StampedProjectReferences(Path.Combine(_dir, "Module.dll")).Select(reference => Path.GetFileName(reference.Path)));
+    }
+
+    [Fact]
+    public void The_compiler_records_the_references_of_this_test_assembly_in_its_PDB()
+    {
+        // the record the check looks for, in a PDB the C# compiler wrote (this project builds with the default portable PDB)
+        Assert.True(SourceRevision.RecordsReferences(typeof(SourceRevisionTests).Assembly.Location));
     }
 
     [Fact]
