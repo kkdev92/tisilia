@@ -32,6 +32,9 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
   `Delegate`, minimal API route handlers for example, in an order that depends on its parallel build, so the module's
   digest and the contract's `semanticHash` could change between two builds of the same commit. `export` now warns when
   the numbering can change and names the methods that create those delegates, and the guides say how to avoid it.
+- `check` without `--evidence` reported an output generated with conformance evidence as out of date and said to run
+  `generate`, which without the evidence marks the qualified operations unqualified. It now warns (TIS1604) with the
+  evidence ids and says to check with that evidence before generating.
 
 ## [0.3.1-alpha] - 2026-10-16
 

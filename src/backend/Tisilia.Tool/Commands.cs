@@ -66,7 +66,8 @@ public static partial class Commands
         var configPath = cli.Require("config");
         var bag = new DiagnosticBag { File = configPath };
         var config = Pipeline.LoadConfig(configPath, bag);
-        var plan = config is null ? null : Pipeline.BuildPlan(config, bag, EvidencePaths(cli), TrustedIssuers(cli));
+        var evidencePaths = EvidencePaths(cli);
+        var plan = config is null ? null : Pipeline.BuildPlan(config, bag, evidencePaths, TrustedIssuers(cli));
         if (config is null || plan is null)
         {
             Output.Report(bag, json, null);
@@ -74,12 +75,44 @@ public static partial class Commands
         }
 
         var differences = OwnedOutput.Check(config.OutputRoot, plan.Output);
+        var qualifiedWithoutEvidence = differences.Count > 0 && evidencePaths.Count == 0 && WarnQualifiedWithoutEvidence(config.OutputRoot, plan.Output.Manifest, bag);
         Output.Report(bag, json, new { upToDate = differences.Count == 0, differences, coverage = plan.Output.Manifest.Coverage },
             differences.Count == 0
                 ? $"up to date: {config.OutputRoot}; {CoverageSummary(plan.Index.Operations.Count, plan.Output.Manifest.Coverage)}"
-                : $"{differences.Count} difference(s) in {config.OutputRoot}; run generate:" + Environment.NewLine + string.Join(Environment.NewLine, differences.Take(20).Select(d => "  " + d)) + (differences.Count > 20 ? Environment.NewLine + $"  … {differences.Count - 20} more" : ""),
+                : $"{differences.Count} difference(s) in {config.OutputRoot}; {(qualifiedWithoutEvidence ? "check with that evidence before you generate" : "run generate")}:" + Environment.NewLine + string.Join(Environment.NewLine, differences.Take(20).Select(d => "  " + d)) + (differences.Count > 20 ? Environment.NewLine + $"  … {differences.Count - 20} more" : ""),
             differences.Count == 0 ? null : "OUT OF DATE");
         return Task.FromResult(differences.Count == 0 ? ExitCodes.Success : ExitCodes.DiffMismatch);
+    }
+
+    /// <summary>
+    /// Without evidence, <c>check</c> plans every operation unqualified, so an owned manifest that records operations as
+    /// qualified by conformance evidence differs from the plan, and the usual advice, run generate, would drop the
+    /// qualification. Warns with the evidence ids instead; true when it did.
+    /// </summary>
+    private static bool WarnQualifiedWithoutEvidence(string outputRoot, Documents.GenerationManifest planned, DiagnosticBag bag)
+    {
+        // a manifest that cannot be read is already among the differences and says nothing about coverage
+        var owned = OwnedOutput.ReadManifest(outputRoot, new DiagnosticBag());
+        var operations = planned.Coverage.Select(c => c.OperationId).ToHashSet(StringComparer.Ordinal);
+        var qualified = owned?.Coverage.Where(c => c.Status == Documents.CoverageStatus.Qualified && operations.Contains(c.OperationId)).ToList() ?? [];
+        if (qualified.Count == 0)
+        {
+            return false;
+        }
+
+        var them = qualified.Count == 1 ? "it" : "them";
+        bag.Add(new Diagnostic
+        {
+            Code = TisiliaCodes.CoverageNotQualified,
+            Severity = DiagnosticSeverity.Warning,
+            Rule = "SV46",
+            File = Path.Combine(outputRoot, OutputPlan.ManifestFileName),
+            Path = "/coverage",
+            RelatedIds = qualified.SelectMany(c => c.EvidenceIds).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList(),
+            Message = $"the manifest records {qualified.Count} operation{(qualified.Count == 1 ? "" : "s")} as qualified by conformance evidence, but check got no --evidence, so it plans {them} unqualified",
+            Fix = $"pass the evidence that generate used, with its issuer (--evidence <file> --trusted-issuer <id>); generate without it marks {them} unqualified",
+        });
+        return true;
     }
 
     public static int Diff(CommandLine cli, bool json)

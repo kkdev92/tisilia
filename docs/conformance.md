@@ -171,8 +171,10 @@ and that the recorded node/browser artifacts still exist under the generation ou
 Invalid records produce warnings and `unqualified` coverage with reason codes (`untrusted-issuer`,
 `evidence-hash-mismatch`, `evidence-closure-mismatch`, `evidence-artifact-mismatch`, `evidence-failed`,
 `evidence-skipped`, `missing-required-tests`, …). `generate` and `check` print the resulting coverage in their
-`--format json` result (`check` only plans; it never writes). With `coveragePolicy: qualified-only` only qualified
-operations are published, and generation fails when none qualifies.
+`--format json` result (`check` only plans; it never writes). Give `check` the evidence `generate` got: without it, `check`
+plans every operation unqualified, so an output generated with evidence differs; `check` then warns (TIS1604) and says to
+check with that evidence rather than to generate, which would drop the qualification. With `coveragePolicy: qualified-only`
+only qualified operations are published, and generation fails when none qualifies.
 
 ## Running it
 
