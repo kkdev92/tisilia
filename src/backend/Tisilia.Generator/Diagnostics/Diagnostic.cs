@@ -172,6 +172,7 @@ public static class TisiliaCodes
     public const string NameMapping = "TIS1504";
     public const string NameCollision = "TIS1505";
     public const string OwnershipConflict = "TIS1506";
+    public const string StaleCompiledOutput = "TIS1507";
 
     // TIS1600–1699: evidence / qualification
     public const string HashMismatch = "TIS1601";
