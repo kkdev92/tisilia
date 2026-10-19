@@ -119,6 +119,8 @@ try {
     assert.deepEqual(summary.causes.map(c => c.reasonCode).sort(), [...new Set(doctor.causes.map(c => c.reasonCode))].sort());
     // each converter without a binding once, in every report, with or without one
     assert.deepEqual(summary.unboundConverters.map(c => [c.converter, c.types, c.operations]), doctor.unboundConverters.map(c => [c.converter, c.types.length, c.operationIds.length]));
+    // each converter whose registrations lack delegates conformance runs need once, likewise
+    assert.deepEqual(summary.conformanceGaps.map(c => [c.converter, c.missing, c.types, c.operations]), doctor.conformanceGaps.map(c => [c.converter, c.missing, c.types.length, c.operationIds.length]));
     if (mode === "diagnostics") assert(doctor.causes.some(c => c.operationIds.includes("bad.date.one") && c.operationIds.includes("bad.date.two")));
     if (mode === "diagnostics") assert.deepEqual(doctor.unboundConverters.map(c => [c.converter, c.factory, c.types, c.operationIds, c.fix.includes("AddPaired (ConverterType = typeof(UnsupportedDateConverter))")]), [["UnsupportedDateConverter", false, ["System.DateTime"], ["bad.date.one", "bad.date.two"], true]]);
     report.diagnostics.push({ mode, code: expected, selected: doctor.selectedCount, analyzed: doctor.analyzedCount });
@@ -128,6 +130,7 @@ try {
       assert(human.stdout.includes("HTTP unobserved"));
       for (const cause of doctor.causes) { assert(human.stdout.includes(cause.message)); for (const id of cause.operationIds) assert(human.stdout.includes(id)); }
       for (const unbound of doctor.unboundConverters) assert(human.stdout.includes(`unbound converter ${unbound.converter}: ${unbound.types.length} type(s) in ${unbound.operationIds.length} operation(s)`));
+      for (const gap of doctor.conformanceGaps) assert(human.stdout.includes(`conformance delegates missing for ${gap.converter} (${gap.missing.join(", ")}): ${gap.types.length} type(s) in ${gap.operationIds.length} operation(s)`));
     }
   }
   // declared custom bindings run only on --allow-execute-binders; the fixture's Paging.BindAsync also reads size, which its declaration leaves out

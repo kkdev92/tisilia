@@ -8,6 +8,16 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+### Added
+
+- **Registrations without the delegates conformance runs need.** `tisilia doctor` lists the paired registrations that lack
+  `Project` or `Construct`, or `Oracle` when they name oracle exports (`conformanceGaps`), once per converter with the types
+  and operations they reach. The .NET runner projects the values the server reads with `Project`, builds the values it
+  writes with `Construct`, and compares two values built by `Construct` with `Oracle`; export and the generated client need
+  none of them, so before, nothing said one was missing until a conformance run failed those cases. The JSON summary counts
+  the types and operations of each, and the text output prints one line for each; neither is a blocker or changes the exit
+  code.
+
 ### Fixed
 
 - `export` warned when the assembly of a codec or behavior module embedded the source revision, but not when a project

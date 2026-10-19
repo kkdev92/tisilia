@@ -27,6 +27,9 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
 
     /// <summary>Each converter in effect that this mapper found serializing a type without a binding, with that type: what doctor groups by converter.</summary>
     internal List<(Type Converter, Type ClrType)> Unbound { get; } = [];
+
+    /// <summary>Each paired registration this mapper bound a type with: what doctor checks for the delegates conformance runs need.</summary>
+    internal List<(PairedCodecRegistration Registration, Type ClrType)> PairedBound { get; } = [];
     private readonly HashSet<(Type, WireDirection)> _inProgress = [];
     private readonly HashSet<string> _pairedRegistered = new(StringComparer.Ordinal);
     private readonly HashSet<PairedCodecRegistration> _pairedRefused = [];
@@ -1791,6 +1794,8 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
 
             return null;
         }
+
+        PairedBound.Add((reg, type));
 
         // SV15: the binding key includes the settings of the instance in effect. Another instance of the same
         // converter type (other constructor arguments, another profile) gets its own binding/codec ids and its own conformance
