@@ -78,7 +78,8 @@ dotnet tisilia generate --config tisilia.json
 
 `init` writes `tisilia.json` with the default settings and takes the `apiId` from the contract. Paths in the
 config are relative to it and may not leave its directory, so put it where both the contract and the output are below it
-(the repository root). `--module-mode nodenext` targets Node ESM; the default `bundler` targets Vite, Nuxt and other bundlers.
+(the repository root). `--module-mode nodenext` targets Node ESM; the default `bundler` targets Vite, Nuxt and other bundlers
+([A client the bundler compiles](conformance.md#a-client-the-bundler-compiles) says how conformance evidence qualifies one).
 
 The output directory is owned by the generator (`tisilia.generation-manifest.json` records what it wrote): a file it did not
 write is never overwritten, and a generated file you edited only with `--force`. A manifest `generate` cannot read — broken,
