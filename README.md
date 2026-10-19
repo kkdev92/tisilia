@@ -212,7 +212,8 @@ as part of development and CI. It generates clients for ASP.NET Core APIs and re
   values, and `WithTisiliaRequestHeaders` the headers a caller passes through without a type.
 - **Enums.** An enum is a number in TypeScript, because `JsonStringEnumConverter` also reads integers and writes a value
   no member defines as an integer. Only an enum the server reads and writes by name alone (`allowIntegerValues: false`)
-  can be held by its names (`TisiliaOptions.Enums`); one whose converter reads integers and a `[Flags]` enum keep their
+  can be held by its names (`TisiliaOptions.Enums`, or a [paired codec](docs/paired-codecs.md#an-enum-held-by-name) for a
+  converter of your own); one whose converter reads integers and a `[Flags]` enum keep their
   integers, with a warning (SV49).
 - **Members a request leaves out.** A presence wrapper (`TisiliaOptions.PresenceWrappers`) makes an object member
   optional in both directions; inside a collection, a dictionary or a body it is a converter like any other. A response

@@ -129,6 +129,45 @@ registrations of one factory can share a settings text, a module and its exports
 needs to know (the names of an enum, say) goes in `ConverterContext`: non-secret entries reach the module as
 `context.context.get(name)`. Conformance compares each type with the `Oracle` of its own registration.
 
+## An enum held by name
+
+When the converter reads and writes an enum by name alone — it writes a name for every value and refuses numbers — the client
+can hold the names instead of the integers. Give the registration an enum shape whose domain is its names, and let the
+projection go through the names:
+
+```csharp
+Shape = _ => new EnumShape
+{
+    UnderlyingPrimitiveId = Builtins.Scalar("int32"),
+    Flags = false,
+    AllowUndefinedInteger = false,
+    Members =
+    [
+        new EnumMember { Name = nameof(Finish.Matte), Value = "0", SerializedName = "matte" },
+        new EnumMember { Name = nameof(Finish.HighGloss), Value = "1", SerializedName = "high-gloss" },
+    ],
+    // the client holds each member's serialized name (its name when it has none), the text the converter writes
+    NameDomain = true,
+},
+Request = new PairedDirection(f => f.StringWire("shop.Finish.read", WireDirection.ServerRead, Builtins.Grammar("enum-name")), "finishRequestEncode", "finishValidate", "finishRequestInput"),
+Response = new PairedDirection(f => f.StringWire("shop.Finish.write", WireDirection.ServerWrite, Builtins.Grammar("enum-name")), "finishResponseDecode", "finishValidate"),
+// for tisilia conformance: the name the client holds, and back
+Project = value => DomainAst.String(FinishNames.Of((Finish)value)),
+Construct = ast => ast is JsonStringValue text ? FinishNames.Parse(text.Value) : throw new FormatException("a finish is one of its names"),
+```
+
+The generated type is the union of the names, with a const object that maps each member to its name:
+
+```ts
+export type Finish = "matte" | "high-gloss";
+export const Finish = { Matte: "matte", HighGloss: "high-gloss" } as const;
+```
+
+The module's exports take and return the names, and conformance builds its cases from them. A name domain is neither
+`[Flags]` nor open to integers no member defines, and no name stands for two values (SV49). An enum that System.Text.Json's
+own `JsonStringEnumConverter` writes needs no registration: declare its domain with `TisiliaOptions.Enums` (see
+[What the types say](getting-started.md#6-what-the-types-say)).
+
 ## Keeping the contract stable
 
 The contract records the digest of the assembly named as the `Dotnet` artifact, so any change to that assembly changes the
