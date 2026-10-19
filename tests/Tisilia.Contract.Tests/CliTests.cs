@@ -143,6 +143,41 @@ public sealed class CliTests : IDisposable
         }
     }
 
+    [Fact]
+    public void Check_without_the_evidence_of_a_qualified_output_says_to_pass_it_rather_than_generate()
+    {
+        InitFixtureProject();
+        // evidence that qualifies users.get, as conformance writes it, and an output generated with it
+        var bag = new Generator.Diagnostics.DiagnosticBag();
+        var loaded = Generator.Validation.ContractLoader.Load(File.ReadAllText(Path.Combine(_dir, "api", "tisilia.contract.json")), bag)!;
+        var index = Generator.Validation.SemanticValidator.Validate(loaded, bag)!;
+        var (node, evidence) = ConformanceTests.SyntheticEvidence(index, Generator.Closure.ContractClosure.Compute(index, ["users.get"]));
+        File.WriteAllText(Path.Combine(_dir, "api", "tisilia.evidence.json"), node.ToJsonString(TisiliaJson.Options));
+        string[] withEvidence = ["--evidence", "api/tisilia.evidence.json", "--trusted-issuer", "ci"];
+        Assert.Equal(ExitCodes.Success, Run(["generate", "--config", "tisilia.json", .. withEvidence]).ExitCode);
+        Assert.Equal(ExitCodes.Success, Run(["check", "--config", "tisilia.json", .. withEvidence]).ExitCode);
+
+        // without it, check plans users.get unqualified and the manifest differs; generating, the usual advice, would drop the
+        // qualification, so check names the evidence instead
+        var text = Run("check", "--config", "tisilia.json");
+        Assert.Equal(ExitCodes.DiffMismatch, text.ExitCode);
+        Assert.Contains("warning TIS1604 [SV46]: the manifest records 1 operation as qualified by conformance evidence, but check got no --evidence, so it plans it unqualified", text.Stdout, StringComparison.Ordinal);
+        Assert.Contains("; check with that evidence before you generate:", text.Stdout, StringComparison.Ordinal);
+        Assert.DoesNotContain("run generate", text.Stdout, StringComparison.Ordinal);
+        var report = System.Text.Json.Nodes.JsonNode.Parse(Run("check", "--config", "tisilia.json", "--format", "json").Stdout)!;
+        var warning = Assert.Single(report["diagnostics"]!.AsArray(), d => d!["code"]!.GetValue<string>() == Generator.Diagnostics.TisiliaCodes.CoverageNotQualified)!;
+        Assert.EndsWith(Path.Combine("web", "generated", "tisilia.generation-manifest.json"), warning["file"]!.GetValue<string>(), StringComparison.Ordinal);
+        Assert.Equal(evidence.Id, Assert.Single(warning["relatedIds"]!.AsArray())!.GetValue<string>());
+
+        // an output generated without evidence has no qualification to lose: a difference there is still "run generate"
+        Assert.Equal(ExitCodes.Success, Run("generate", "--config", "tisilia.json").ExitCode);
+        File.AppendAllText(Path.Combine(_dir, "web", "generated", "index.ts"), "// edited\n");
+        var plain = Run("check", "--config", "tisilia.json");
+        Assert.Equal(ExitCodes.DiffMismatch, plain.ExitCode);
+        Assert.Contains("run generate:", plain.Stdout, StringComparison.Ordinal);
+        Assert.DoesNotContain("TIS1604", plain.Stdout, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("watch", "--config", "tisilia.json", "--runs", "two")]
     [InlineData("watch", "--config", "tisilia.json", "--debounce-ms", "-5")]
