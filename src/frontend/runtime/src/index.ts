@@ -100,6 +100,6 @@ export type { HydrationEnvelope, JsonEnvelope, BodylessEnvelope, TextEnvelope, F
 export { createContractRegistry, numbersOf, contextFor } from "./contract/interpreter.js";
 export type { ContractDocument, ContractRegistry, ContractRegistryOptions, ContractOperation, ContractFormField, ContractCodec, ContractModel, ContractWire, ContractModule, ContractTypeUse, ContractWireRef, ContractXmlMember, ContractXmlName } from "./contract/interpreter.js";
 
-export const runtimeVersion = "0.3.1-alpha";
+export const runtimeVersion = "0.4.0-alpha";
 export const abiVersion = "0.1";
 export const httpDescriptorVersion = "0.1";
