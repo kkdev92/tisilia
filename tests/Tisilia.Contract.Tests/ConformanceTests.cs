@@ -147,7 +147,8 @@ public class ConformanceTests
 
     // ------------------------------------------------------------------ evidence (SV45/SV46/SV53)
 
-    internal static (JsonObject Node, ConformanceEvidence Evidence) SyntheticEvidence(ContractIndex index, ContractClosure closure, string issuer = "ci")
+    /// <summary>Evidence of passed cases that no runner observed; <paramref name="clientArtifacts"/> are the compiled client files it records.</summary>
+    internal static (JsonObject Node, ConformanceEvidence Evidence) SyntheticEvidence(ContractIndex index, ContractClosure closure, string issuer = "ci", IReadOnlyList<Artifact>? clientArtifacts = null)
     {
         var suite = SuiteBuilder.Build(index, closure, new SuiteOptions { Seed = 1, CasesPerCodec = 2 });
         var results = suite.Cases.Select(c => new CaseResult(c.Id, c.Category, CaseStatus.Passed, "")).ToList();
@@ -158,7 +159,7 @@ public class ConformanceTests
             Matrix = new RuntimeMatrix { Dotnet = "10.0.12", Aspnetcore = "10.0.12", Stj = "10.0.0", Typescript = "6.0.3", Node = "24.13.1", Os = "test", Architecture = "x64" },
             Context = [new NameValue { Name = "dotnet.timeZone", Value = "UTC" }],
             ModuleArtifacts = closure.DeclaredModuleArtifacts(),
-            ApplicationArtifacts = [new Artifact { Target = ArtifactTarget.Dotnet, Path = "bin/App.dll", Digest = "sha256:" + new string('a', 64) }],
+            ApplicationArtifacts = [new Artifact { Target = ArtifactTarget.Dotnet, Path = "bin/App.dll", Digest = "sha256:" + new string('a', 64) }, .. clientArtifacts ?? []],
             Limits = Limits.Default,
             RunnerDigest = "sha256:" + new string('c', 64),
             IssuedAt = new DateTimeOffset(2026, 9, 30, 12, 0, 0, TimeSpan.Zero),

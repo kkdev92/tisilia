@@ -188,3 +188,40 @@ startup code runs, as it does for `export`), runs the suite and writes the evide
 operations the evidence covers as qualified.
 
 Exit codes: 0 verdict passed, 5 verdict failed, 6 a runner could not be started, 7 without `--allow-execute-adapters`.
+
+## A client the bundler compiles
+
+With `moduleMode: bundler` the application's bundler compiles the generated `.ts` itself, while the evidence is bound to
+the `.js` that `conformance` ran: `generate --evidence` and `check --evidence` qualify operations only while each of those
+files is under the output directory with the bytes the evidence recorded, and a missing or changed one leaves them
+unqualified (`evidence-artifact-mismatch`). So compile the output in place, with a tsconfig of its own and no `outDir`
+(the generated code imports module scripts by paths relative to the output directory), and keep the compiled files next
+to the generated ones: `generate` and `check` leave files they did not write alone. For an output directory
+`src/web/src/api`, a `tsconfig.tisilia.json` beside `tisilia.json`:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "noEmitOnError": true
+  },
+  "include": ["src/web/src/api"]
+}
+```
+
+```text
+npx tsc -p tsconfig.tisilia.json
+dotnet tisilia conformance --config tisilia.json --project src/Api --allow-execute-adapters \
+    --output src/Api/tisilia.evidence.json --issuer local
+dotnet tisilia generate --config tisilia.json --evidence src/Api/tisilia.evidence.json --trusted-issuer local
+```
+
+Next to the `.ts`, the compiled files are what the bundler loads. Vite resolves an import that names a `.js` file to the
+`.ts` only when that `.js` does not exist, and tries `.js` before `.ts` for an import without an extension (its default
+`resolve.extensions`; Nuxt lists them in the same order). TypeScript still takes the types from the `.ts`. The
+application therefore runs the build the evidence observed: when `generate` changes the output, compile and run
+`conformance` again, and keep the compiled files wherever `generate --evidence` or `check --evidence` runs.

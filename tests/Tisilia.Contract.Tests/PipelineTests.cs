@@ -305,6 +305,50 @@ public sealed class PipelineTests : IDisposable
         Assert.Equal("// mine\n", File.ReadAllText(client));
     }
 
+    [Fact]
+    public void A_client_compiled_in_place_qualifies_while_its_compiled_files_are_unchanged()
+    {
+        // a bundler's client is compiled next to the generated sources for conformance, which records each compiled file:
+        // generation and check leave those files alone, and the evidence qualifies only while they hold the bytes it recorded
+        var configPath = WriteConfig(c => c["target"]!["moduleMode"] = "bundler");
+        var output = Path.Combine(_root, "web", "generated");
+        var (plan, bag) = Plan(configPath);
+        Assert.True(OwnedOutput.Write(output, plan!.Output, previous: null, force: false, bag), string.Join("\n", bag.Items));
+        var compiled = plan.Output.Files.Where(f => f.Path.EndsWith(".ts", StringComparison.Ordinal)).Select(f => f.Path[..^".ts".Length] + ".js")
+            .ToDictionary(path => path, path => System.Text.Encoding.UTF8.GetBytes("// compiled " + path + "\n"));
+        foreach (var (path, bytes) in compiled)
+        {
+            File.WriteAllBytes(Path.Combine(output, path), bytes);
+        }
+
+        var artifacts = compiled.Select(c => new Artifact { Target = ArtifactTarget.Node, Path = "web/generated/" + c.Key, Digest = Generator.Canonical.TisiliaHash.Sha256OfBytes(c.Value) }).ToList();
+        var (evidence, _) = ConformanceTests.SyntheticEvidence(plan.Index, Generator.Closure.ContractClosure.Compute(plan.Index, ["users.get"]), clientArtifacts: artifacts);
+        var evidencePath = Path.Combine(_root, "api", "tisilia.evidence.json");
+        File.WriteAllText(evidencePath, evidence.ToJsonString(TisiliaJson.Options));
+        Pipeline.Plan WithEvidence()
+        {
+            var evidenceBag = new DiagnosticBag { File = configPath };
+            return Pipeline.BuildPlan(Pipeline.LoadConfig(configPath, evidenceBag)!, evidenceBag, [evidencePath], new HashSet<string> { "ci" })!;
+        }
+
+        CoverageEntry UsersGet() => WithEvidence().Output.Manifest.Coverage.Single(c => c.OperationId == "users.get");
+
+        var qualified = WithEvidence();
+        Assert.Equal(CoverageStatus.Qualified, qualified.Output.Manifest.Coverage.Single(c => c.OperationId == "users.get").Status);
+        Assert.True(OwnedOutput.Write(output, qualified.Output, OwnedOutput.ReadManifest(output, bag), force: false, bag), string.Join("\n", bag.Items));
+        Assert.Empty(OwnedOutput.Check(output, qualified.Output));
+        Assert.All(compiled, c => Assert.Equal(c.Value, File.ReadAllBytes(Path.Combine(output, c.Key))));
+
+        // a file compiled again to other bytes, or a missing one, is a client build the evidence did not observe
+        var client = Path.Combine(output, "client.js");
+        File.WriteAllText(client, "// compiled again\n");
+        Assert.Equal([Generator.Conformance.EvidenceValidator.ReasonArtifactMismatch], UsersGet().ReasonCodes);
+        File.WriteAllBytes(client, compiled["client.js"]);
+        Assert.Equal(CoverageStatus.Qualified, UsersGet().Status);
+        File.Delete(Path.Combine(output, "registry.js"));
+        Assert.Equal([Generator.Conformance.EvidenceValidator.ReasonArtifactMismatch], UsersGet().ReasonCodes);
+    }
+
     // ------------------------------------------------------------------ line endings (Git for Windows checks text out with CRLF)
 
     [Fact]
