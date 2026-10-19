@@ -227,6 +227,13 @@ public static partial class Commands
             stdout.WriteLine($"unbound {kind} {converter["converter"]}: {types.Count} type(s) in {converter["operationIds"]!.AsArray().Count} operation(s): {string.Join(", ", types)}; Fix: {converter["fix"]}");
         }
 
+        foreach (var gap in report["conformanceGaps"]?.AsArray().OfType<System.Text.Json.Nodes.JsonObject>() ?? [])
+        {
+            var types = gap["types"]!.AsArray().Select(type => type!.GetValue<string>()).ToList();
+            var missing = string.Join(", ", gap["missing"]!.AsArray().Select(name => name!.GetValue<string>()));
+            stdout.WriteLine($"conformance delegates missing for {gap["converter"]} ({missing}): {types.Count} type(s) in {gap["operationIds"]!.AsArray().Count} operation(s): {string.Join(", ", types)}; Fix: {gap["fix"]}");
+        }
+
         foreach (var cause in report["causes"]!.AsArray())
         {
             var ids = string.Join(", ", cause!["operationIds"]!.AsArray().Select(id => id!.GetValue<string>()));
@@ -285,6 +292,18 @@ public static partial class Commands
             });
         }
 
+        var gaps = new System.Text.Json.Nodes.JsonArray();
+        foreach (var gap in report["conformanceGaps"]?.AsArray().OfType<System.Text.Json.Nodes.JsonObject>() ?? [])
+        {
+            gaps.Add(new System.Text.Json.Nodes.JsonObject
+            {
+                ["converter"] = gap["converter"]?.DeepClone(),
+                ["missing"] = gap["missing"]?.DeepClone(),
+                ["types"] = gap["types"]?.AsArray().Count ?? 0,
+                ["operations"] = gap["operationIds"]?.AsArray().Count ?? 0,
+            });
+        }
+
         return new System.Text.Json.Nodes.JsonObject
         {
             ["format"] = "tisilia.doctor-summary",
@@ -298,6 +317,7 @@ public static partial class Commands
             ["readiness"] = readiness,
             ["causes"] = causes,
             ["unboundConverters"] = converters,
+            ["conformanceGaps"] = gaps,
             ["exitCode"] = report["exitCode"]?.DeepClone(),
         };
     }
@@ -317,6 +337,7 @@ public static partial class Commands
             operations = Array.Empty<object>(),
             causes = new[] { new { reasonCode = "startup-unavailable", message = reason, fix = "inspect startup privately using isolated settings; application exception text is withheld", operationIds = Array.Empty<string>(), paths = Array.Empty<string>() } },
             unboundConverters = Array.Empty<object>(),
+            conformanceGaps = Array.Empty<object>(),
             executionScope = "application-startup-and-metadata; no handler probing; allow flag is not a sandbox",
             exitCode = ExitCodes.ExternalProcessFailed,
         };

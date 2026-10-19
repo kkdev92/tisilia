@@ -19,11 +19,23 @@ public sealed record DoctorCause(string ReasonCode, string Message, string? Fix,
 /// </summary>
 public sealed record DoctorUnboundConverter(string Converter, bool Factory, IReadOnlyList<string> Types, IReadOnlyList<string> OperationIds, string Fix);
 
+/// <summary>
+/// The paired registrations of one converter without the delegates conformance runs need, once per converter and the delegates
+/// they lack. The .NET runner projects the values the server reads with <c>Project</c> (without it those cases fail with
+/// <c>projection.paired-without-project-delegate</c>), builds the values it writes from the domain AST with <c>Construct</c>
+/// (without it the converter in effect reads the domain AST as though it were the wire), and compares two values built by
+/// <c>Construct</c> with <c>Oracle</c> when the registration names oracle exports (without either, each comparison fails with
+/// <c>compare.oracle-not-registered</c>). The export and the generated client do not need these delegates.
+/// </summary>
+public sealed record DoctorConformanceGap(string Converter, IReadOnlyList<string> Missing, IReadOnlyList<string> Types, IReadOnlyList<string> OperationIds, string Fix);
+
 public sealed record DoctorReport(bool AnalysisComplete, int SelectedCount, int AnalyzedCount, int UnanalyzedCount,
     IReadOnlyList<DoctorOperation> Operations, IReadOnlyList<DoctorCause> Causes)
 {
     /// <summary>The converters without a binding, each once with its types and operations, most operations first.</summary>
     public IReadOnlyList<DoctorUnboundConverter> UnboundConverters { get; init; } = [];
+    /// <summary>The paired registrations without the delegates conformance runs need, once per converter and missing delegates.</summary>
+    public IReadOnlyList<DoctorConformanceGap> ConformanceGaps { get; init; } = [];
     public string Format => "tisilia.doctor-report";
     public string Version => TisiliaJson.DraftVersion;
     public string Overall => !AnalysisComplete ? "analysis-incomplete" : Operations.Any(o => o.Readiness != "supported") || BindingProbes.Any(p => p.Status != "matches") ? "blockers" : "supported";
@@ -76,6 +88,7 @@ public sealed partial class TisiliaContractExporter
             var complete = true;
             var analyzed = 0;
             var unbound = new List<(string OperationId, Type Converter, Type ClrType)>();
+            var paired = new List<(string OperationId, Bindings.PairedCodecRegistration Registration, Type ClrType)>();
             try { _ = services.GetRequiredService<IApiDescriptionGroupCollectionProvider>().ApiDescriptionGroups; }
             catch (Exception)
             {
@@ -97,6 +110,7 @@ public sealed partial class TisiliaContractExporter
                         : diagnostics.Any(d => d.Code == TisiliaCodes.SchemaViolation || d.Code == TisiliaCodes.DuplicateId) ? "invalid-contract" : "unsupported-feature";
                     operations.Add(Identity(group, readiness, diagnostics));
                     unbound.AddRange(result.Unbound.Select(u => (group.Key, u.Converter, u.ClrType)));
+                    paired.AddRange(result.PairedBound.Select(p => (group.Key, p.Registration, p.ClrType)));
                 }
                 catch (Exception)
                 {
@@ -115,10 +129,19 @@ public sealed partial class TisiliaContractExporter
                     g.Select(u => u.ClrType.ToString()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
                     g.Select(u => u.OperationId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(), UnboundFix(g.Key)))
                 .OrderByDescending(c => c.OperationIds.Count).ThenBy(c => c.Converter, StringComparer.Ordinal).ToArray();
+            var conformanceGaps = paired.Select(p => (p.OperationId, p.Registration, p.ClrType, Missing: MissingForConformance(p.Registration)))
+                .Where(p => p.Missing.Count > 0)
+                .GroupBy(p => (Converter: FixUnit(p.Registration.ConverterType).ToString(), Missing: string.Join(",", p.Missing)))
+                .Select(g => new DoctorConformanceGap(g.Key.Converter, g.First().Missing,
+                    g.Select(p => p.ClrType.ToString()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
+                    g.Select(p => p.OperationId).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray(),
+                    $"give the paired registration{(g.Select(p => p.ClrType).Distinct().Count() > 1 ? "s" : "")} of '{g.Key.Converter}' {string.Join(", ", g.First().Missing)}: conformance runs need them"))
+                .OrderByDescending(c => c.OperationIds.Count).ThenBy(c => c.Converter, StringComparer.Ordinal).ToArray();
             var serverTimeZone = options.Value.DateTimes.ServerTimeZone;
             return new DoctorReport(complete, groups.Length, analyzed, groups.Length - analyzed, operations, causes)
             {
                 UnboundConverters = unboundConverters,
+                ConformanceGaps = conformanceGaps,
                 DateTimeDefault = options.Value.DateTimes.Default?.ToString(),
                 DateTimeMembers = options.Value.DateTimes.DescribeMembers(),
                 DateTimeServerTimeZone = serverTimeZone?.Id,
@@ -133,6 +156,20 @@ public sealed partial class TisiliaContractExporter
 
     private static Type FixUnit(Type converter)
         => converter.IsConstructedGenericType && !typeof(JsonConverterFactory).IsAssignableFrom(converter) ? converter.GetGenericTypeDefinition() : converter;
+
+    /// <summary>
+    /// The delegates conformance runs need that the registration lacks: <c>Project</c> and <c>Construct</c> always, and <c>Oracle</c>
+    /// when the registration names oracle exports (builtin oracles compare the projected domain).
+    /// </summary>
+    private static IReadOnlyList<string> MissingForConformance(Bindings.PairedCodecRegistration registration)
+    {
+        var missing = new List<string>();
+        if (registration.Project is null) { missing.Add(nameof(Bindings.PairedCodecRegistration.Project)); }
+        if (registration.Construct is null) { missing.Add(nameof(Bindings.PairedCodecRegistration.Construct)); }
+        if (registration.Oracle is null && !registration.BuiltinOracles) { missing.Add(nameof(Bindings.PairedCodecRegistration.Oracle)); }
+
+        return missing;
+    }
 
     // what binds every type a converter serializes: a factory's registration (or, once one is registered, its callback) or each type's
     private string UnboundFix(Type converter) => !typeof(JsonConverterFactory).IsAssignableFrom(converter)

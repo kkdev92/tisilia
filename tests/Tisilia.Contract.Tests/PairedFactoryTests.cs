@@ -202,6 +202,53 @@ public sealed class PairedFactoryTests
         }
     }
 
+    [Fact]
+    public async Task Doctor_lists_the_registrations_without_the_delegates_conformance_runs_need()
+    {
+        // export and generation need none of the delegates; the .NET runner projects what the server reads with Project, builds what it
+        // writes with Construct, and compares the values of a registration that names oracle exports with Oracle
+        await using var app = await StartAsync(o => o.Codecs.AddPairedFactory<TestKeyConverterFactory>(type => Registration(type, conformance: false)), MapOrders);
+        var export = Export(app);
+        Assert.False(export.Diagnostics.HasErrors, string.Join("\n", export.Diagnostics.Items));
+
+        var report = app.Services.GetRequiredService<TisiliaContractExporter>().Diagnose();
+        var gap = Assert.Single(report.ConformanceGaps);
+        Assert.Equal(typeof(TestKeyConverterFactory).ToString(), gap.Converter);
+        Assert.Equal(["Project", "Construct", "Oracle"], gap.Missing);
+        Assert.Equal([typeof(CustomerKey).ToString(), typeof(OrderKey).ToString()], gap.Types);
+        Assert.Equal(["orders.create"], gap.OperationIds);
+        Assert.Contains("conformance runs need them", gap.Fix, StringComparison.Ordinal);
+        Assert.Equal("supported", report.Overall);
+
+        // what the run would meet
+        var index = export.Index!;
+        var runner = new DotnetRunnerCore(index, export.Adapters!, app.Services.GetRequiredService<IOptions<TisiliaOptions>>().Value.Codecs.Paired);
+        var profile = index.Codecs["test.OrderKey.codec"].ProfileIds[0];
+        var key = DomainAst.String("6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b");
+        var compare = Assert.Throws<RunnerFailureException>(() => runner.Handle(RunnerProtocol.Request("keys", "test.OrderKey", RunnerAction.Compare, "test.OrderKey.response", profile, [], [key, key])));
+        Assert.Equal("compare.oracle-not-registered", compare.SafeMessageId);
+        var read = Assert.Throws<RunnerFailureException>(() => runner.Handle(RunnerProtocol.Request("keys", "test.OrderKey", RunnerAction.DotnetRead, "test.OrderKey.codec", profile, [], [key])));
+        Assert.Equal("projection.paired-without-project-delegate", read.SafeMessageId);
+        // without Construct the converter in effect reads the domain AST as though it were the wire, which a key's domain is
+        var written = runner.Handle(RunnerProtocol.Request("keys", "test.OrderKey", RunnerAction.DotnetWrite, "test.OrderKey.codec", profile, [], [key]));
+        Assert.Equal("6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b", Assert.IsType<JsonStringValue>(written).Value);
+    }
+
+    [Fact]
+    public async Task Doctor_asks_a_registration_with_builtin_oracles_for_no_oracle()
+    {
+        await using var app = await StartAsync(o => o.Codecs.AddPairedFactory<TestKeyConverterFactory>(type => Registration(type, builtinOracles: true, conformance: false)), MapOrders);
+        var gap = Assert.Single(app.Services.GetRequiredService<TisiliaContractExporter>().Diagnose().ConformanceGaps);
+        Assert.Equal(["Project", "Construct"], gap.Missing);
+    }
+
+    [Fact]
+    public async Task Doctor_lists_no_gap_when_every_registration_has_its_delegates()
+    {
+        await using var app = await StartAsync(o => o.Codecs.AddPairedFactory<TestKeyConverterFactory>(type => Registration(type)), MapOrders);
+        Assert.Empty(app.Services.GetRequiredService<TisiliaContractExporter>().Diagnose().ConformanceGaps);
+    }
+
     private static void MapOrders(WebApplication app)
         => app.MapPost("/orders", (Order order) => TypedResults.Ok(order)).WithTisiliaOperation("orders.create");
 
@@ -225,7 +272,7 @@ public sealed class PairedFactoryTests
     private static ExportResult Export(WebApplication app) => app.Services.GetRequiredService<TisiliaContractExporter>().ExportFresh();
 
     /// <summary>A key: a brand over the builtin Guid, read and written in the Guid's own grammar; one module export per role for every key type.</summary>
-    private static PairedCodecRegistration Registration(Type type, string? converterExport = null, bool parameters = false, Func<object, object, bool>? oracle = null, Type? converterType = null, bool builtinOracles = false)
+    private static PairedCodecRegistration Registration(Type type, string? converterExport = null, bool parameters = false, Func<object, object, bool>? oracle = null, Type? converterType = null, bool builtinOracles = false, bool conformance = true)
     {
         var modelId = "test." + type.Name;
         var value = type.GetProperty(nameof(OrderKey.Value))!;
@@ -256,9 +303,9 @@ public sealed class PairedFactoryTests
             ConverterContext = [],
             SettingsText = "TestKeyConverterFactory: the Guid in its D form",
             ParameterGrammarId = parameters ? Builtins.Grammar("guid") : null,
-            Project = key => DomainAst.String(((Guid)value.GetValue(key)!).ToString("D", CultureInfo.InvariantCulture)),
-            Construct = ast => ast is JsonStringValue text ? from.Invoke(null, [Guid.ParseExact(text.Value, "D")])! : throw new FormatException("a key is a Guid string"),
-            Oracle = oracle ?? ((a, b) => a.Equals(b)),
+            Project = conformance ? key => DomainAst.String(((Guid)value.GetValue(key)!).ToString("D", CultureInfo.InvariantCulture)) : null,
+            Construct = conformance ? ast => ast is JsonStringValue text ? from.Invoke(null, [Guid.ParseExact(text.Value, "D")])! : throw new FormatException("a key is a Guid string") : null,
+            Oracle = conformance ? oracle ?? ((a, b) => a.Equals(b)) : null,
         };
     }
 

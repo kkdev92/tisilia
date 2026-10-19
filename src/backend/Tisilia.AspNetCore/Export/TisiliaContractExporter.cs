@@ -22,6 +22,9 @@ public sealed record ExportResult(DiagnosticBag Diagnostics, string? Text, JsonO
 {
     /// <summary>Each converter in effect that the export found serializing a type without a binding, with that type (SV05).</summary>
     internal IReadOnlyList<(Type Converter, Type ClrType)> Unbound { get; init; } = [];
+
+    /// <summary>Each paired registration the export bound a type with, with that type.</summary>
+    internal IReadOnlyList<(Bindings.PairedCodecRegistration Registration, Type ClrType)> PairedBound { get; init; } = [];
 }
 
 /// <summary>
@@ -200,9 +203,10 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             profile.Finish();
         }
 
+        IReadOnlyList<(Bindings.PairedCodecRegistration Registration, Type ClrType)> pairedBound = [.. mappers.Values.SelectMany(m => m.PairedBound).Distinct()];
         if (bag.HasErrors)
         {
-            return new ExportResult(bag, null, null, count) { Unbound = [.. mappers.Values.SelectMany(m => m.Unbound).Distinct()] };
+            return new ExportResult(bag, null, null, count) { Unbound = [.. mappers.Values.SelectMany(m => m.Unbound).Distinct()], PairedBound = pairedBound };
         }
 
         var root = builder.BuildJson();
@@ -216,7 +220,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             index = SemanticValidator.Validate(loaded, bag);
         }
 
-        return bag.HasErrors ? new ExportResult(bag, null, null, count) : new ExportResult(bag, text, root, count, index, adapters);
+        return bag.HasErrors ? new ExportResult(bag, null, null, count) { PairedBound = pairedBound } : new ExportResult(bag, text, root, count, index, adapters) { PairedBound = pairedBound };
     }
 
     private static Operation? BuildOperation(ApiDescription description, TisiliaOperationAttribute metadata, bool isMvc, Func<ProfileContext> profile, Func<ClrTypeMapper> mapper, Func<int, ProfileContext> responseProfile, Func<int, ClrTypeMapper> responseMapper, Func<ProfileContext> eventProfile, Func<ClrTypeMapper> eventMapper, Bindings.DateTimeWire? dateTimeWire, RouteEndpoint endpoint, ParameterPolicyFactory policyFactory, Microsoft.AspNetCore.Mvc.ModelBinding.IModelMetadataProvider? modelMetadata, Bindings.CustomBindingCollection customBinding, ContractBuilder builder, DiagnosticBag bag, string opPath, bool problemDetails, bool mapClientErrors, bool nullAsNoContent, ApiDocumentation documentation, IServiceProvider services, XmlTypeMapper xml)

@@ -908,10 +908,15 @@ Use `tisilia doctor --project ./MyApi --allow-execute-project --format json --ou
 each selected operation, grouped causes, effective DateTime declarations, and selected/analyzed/unanalyzed counts. Each
 converter that serializes types without a binding is listed once (`unboundConverters`), with those types, the operations
 they reach and the fix — a factory with every closed type it creates, which one `AddPairedFactory` binds, and a generic
-converter (``Converter`1[T]``) with every type its closed forms serialize. The
+converter (``Converter`1[T]``) with every type its closed forms serialize. The paired registrations without the delegates
+conformance runs need are listed once per converter (`conformanceGaps`), with the delegates they lack: `Project`, which
+projects the values the server reads, `Construct`, which builds the values it writes, and, when the registration names
+oracle exports, `Oracle`, which compares two values built by `Construct`. Export and the generated client do not need
+these delegates, so this is no blocker and does not change the exit code. The
 report is written to `--output` (next to the project without it); with `--format json` and `--output`, stdout carries a
 summary of it rather than the same JSON again — the counts, how many operations have each readiness, how many causes
-and operations each reason has, and how many types and operations each unbound converter has (`tisilia.doctor-summary`). Exit 0 means
+and operations each reason has, and how many types and operations each unbound converter and each conformance gap has
+(`tisilia.doctor-summary`). Exit 0 means
 metadata is supported, 3 means blockers, and 6 means startup/metadata analysis is incomplete. HTTP remains unobserved. The command
 executes application startup (and, with `--allow-execute-binders`, the declared binding code), so run it with isolated settings;
 the flags are not a sandbox. Strict export writes no partial contract.
