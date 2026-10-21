@@ -8,6 +8,19 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+## [0.4.1-alpha] - 2026-10-21
+
+The Nuxt module depends on `@nuxt/kit` 4.6.2. Apart from the version, nothing else in the packages changes, and the format
+versions are unchanged.
+
+### Changed
+
+- `@kkdev92/tisilia-nuxt` depends on `@nuxt/kit` 4.6.2 instead of 4.6.1, the version Nuxt 4.6.2 itself depends on.
+
+### Compatibility
+
+- Use matching **0.4.1-alpha** NuGet and npm packages when exporting contracts and generating clients.
+
 ## [0.4.0-alpha] - 2026-10-19
 
 `tisilia doctor` names the paired registrations a conformance run cannot use, `tisilia generate` warns when JavaScript
@@ -397,7 +410,8 @@ The first preview.
 - Custom fetch adapters must expose a Web `ReadableStream` or a native `null` body.
 - The .NET packages and `@kkdev92/tisilia-runtime` have no third-party runtime dependencies.
 
-[Unreleased]: https://github.com/kkdev92/tisilia/compare/v0.4.0-alpha...HEAD
+[Unreleased]: https://github.com/kkdev92/tisilia/compare/v0.4.1-alpha...HEAD
+[0.4.1-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.4.1-alpha
 [0.4.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.4.0-alpha
 [0.3.1-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.3.1-alpha
 [0.3.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.3.0-alpha
