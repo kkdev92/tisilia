@@ -8,7 +8,7 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
-## [0.4.1-alpha] - 2026-10-21
+## [0.4.1-alpha] - 2026-10-22
 
 The Nuxt module depends on `@nuxt/kit` 4.6.2. Apart from the version, nothing else in the packages changes, and the format
 versions are unchanged.
