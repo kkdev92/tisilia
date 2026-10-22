@@ -60,7 +60,8 @@ jobs:
       # No dependency cache in a release build: what is published is built from what the lockfile names, fetched now.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24.22.1
+          node-version: 24.x
+          check-latest: true
 
       - name: npm ci
         run: npm ci
@@ -289,7 +290,8 @@ jobs:
       # reads each tarball, and --dry-run stops it there, without credentials.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24.22.1
+          node-version: 24.x
+          check-latest: true
 
       - name: Check npm publish accepts the tarballs
         run: |
@@ -415,7 +417,8 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 24.22.1
+          node-version: 24.x
+          check-latest: true
           registry-url: https://registry.npmjs.org
 
       - name: Publish to npm
