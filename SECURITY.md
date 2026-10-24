@@ -64,19 +64,16 @@ connections, `nosniff`, `no-referrer` and `no-store`.
 
 ## Nuxt dependency advisories
 
-As of 2026-10-16, Nuxt 4.5 and 4.6 bring two upstream advisories that have no published fix into a consumer installation:
+As of 2026-10-24, Nuxt 4.5 and 4.6 bring one upstream advisory that has no published fix into a consumer installation:
 
-- [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm): `braces` through 3.0.3
-  can exhaust the stack on deeply nested patterns. Nitro uses it through `globby` / `fast-glob` / `micromatch`
-  for build-time file matching. Build only trusted source and configuration; never pass request data into glob patterns.
 - [GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv): `node-forge` through 1.4.0
   accepts malformed RSA signature encodings. It comes through `listhen`, which uses it for local certificate handling and
   which Nitro depends on (Nuxt 4.5's CLI does too). Do not use the development server or `nuxt preview` as a production
   server, and do not use this dependency to verify untrusted signatures or certificates.
 
-In this repository both come only through the Nuxt module's development dependency on Nuxt and neither is in Tisilia's
-packages, so their Dependabot alerts are dismissed as tolerable risk. The dependencies have not been patched or ignored,
-and a Nuxt consumer's own installation still contains them. A workspace audit with `--omit=dev` excludes the workspace's
+In this repository it comes only through the Nuxt module's development dependency on Nuxt and is not in Tisilia's
+packages, so its Dependabot alert is dismissed as tolerable risk. The dependency has not been patched or ignored,
+and a Nuxt consumer's own installation still contains it. A workspace audit with `--omit=dev` excludes the workspace's
 Nuxt development dependency and does not describe a Nuxt consumer's full installation. Run `npm audit` in the consuming
 application too.
 
