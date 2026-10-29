@@ -64,12 +64,12 @@ connections, `nosniff`, `no-referrer` and `no-store`.
 
 ## Nuxt dependency advisories
 
-As of 2026-10-24, Nuxt 4.5 and 4.6 bring one upstream advisory that has no published fix into a consumer installation:
+As of 2026-10-29, Nuxt 4.5 and 4.6 bring one upstream advisory that has no published fix into a consumer installation:
 
-- [GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv): `node-forge` through 1.4.0
-  accepts malformed RSA signature encodings. It comes through `listhen`, which uses it for local certificate handling and
-  which Nitro depends on (Nuxt 4.5's CLI does too). Do not use the development server or `nuxt preview` as a production
-  server, and do not use this dependency to verify untrusted signatures or certificates.
+- [GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4): `deepmerge` 4.2.0 through 4.3.1
+  lets a merged source object inject properties into the prototype of the object it returns. It comes through
+  `@rollup/plugin-node-resolve`, which Nitro uses when it bundles the server, and that plugin merges only its own default
+  options with it. Do not use this dependency to merge untrusted objects.
 
 In this repository it comes only through the Nuxt module's development dependency on Nuxt and is not in Tisilia's
 packages, so its Dependabot alert is dismissed as tolerable risk. The dependency has not been patched or ignored,
@@ -79,7 +79,11 @@ application too.
 
 A fix that the dependency ranges already admit reaches a fresh install, but an existing `package-lock.json` keeps the
 version it recorded: run `npm update <package>` or `npm audit fix` in the consuming application, then build again.
-Nuxt DevTools 3.4.3 is such a fix: every Nuxt 4.5 and 4.6 release admits it, and it no longer depends on `simple-git`,
+`node-forge` 1.4.1 is such a fix. Through 1.4.0 it accepts malformed RSA signature encodings
+([GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv)), and 1.4.1 also fixes the other advisories
+its maintainers published for those versions on 2026-10-27. It comes through `listhen`, which uses it for local
+certificate handling and which Nitro depends on (Nuxt 4.5's CLI does too), and every `listhen` 1.x release admits 1.4.1.
+Nuxt DevTools 3.4.3 is another: every Nuxt 4.5 and 4.6 release admits it, and it no longer depends on `simple-git`,
 which carried [GHSA-858h-whjf-mvg5](https://github.com/advisories/GHSA-858h-whjf-mvg5),
 [GHSA-g4wm-2vf7-vfgr](https://github.com/advisories/GHSA-g4wm-2vf7-vfgr),
 [GHSA-x6jw-m9v5-85vh](https://github.com/advisories/GHSA-x6jw-m9v5-85vh) and, through `@simple-git/argv-parser`,
