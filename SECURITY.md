@@ -64,32 +64,49 @@ connections, `nosniff`, `no-referrer` and `no-store`.
 
 ## Nuxt dependency advisories
 
-As of 2026-10-29, Nuxt 4.5 and 4.6 bring one upstream advisory that has no published fix into a consumer installation:
+As of 2026-11-04, Nuxt 4.5 and 4.6 bring three upstream advisories into a consumer installation, and no release that
+the dependency ranges admit fixes them:
 
 - [GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4): `deepmerge` 4.2.0 through 4.3.1
-  lets a merged source object inject properties into the prototype of the object it returns. It comes through
-  `@rollup/plugin-node-resolve`, which Nitro uses when it bundles the server, and that plugin merges only its own default
-  options with it. Do not use this dependency to merge untrusted objects.
+  lets a merged source object inject properties into the prototype of the object it returns, and no release fixes it.
+  It comes through `@rollup/plugin-node-resolve`, which Nitro uses when it bundles the server, and that plugin merges only
+  its own default options with it. Do not use this dependency to merge untrusted objects.
+- [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4): `glob` 9.0.0 through 14.0.1 keeps
+  reading directories after a walk is cancelled through its `signal` option. 14.0.2 fixes it.
+- [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249): `minimatch` before 11.0.1 can spend
+  excessive CPU time and memory preprocessing a pattern crafted to multiply its parts. 11.0.1 fixes it.
 
-In this repository it comes only through the Nuxt module's development dependency on Nuxt and is not in Tisilia's
-packages, so its Dependabot alert is dismissed as tolerable risk. The dependency has not been patched or ignored,
-and a Nuxt consumer's own installation still contains it. A workspace audit with `--omit=dev` excludes the workspace's
-Nuxt development dependency and does not describe a Nuxt consumer's full installation. Run `npm audit` in the consuming
+Nitro uses `glob` and `minimatch` only while it builds the server: `@vercel/nft` traces the server's dependencies with
+them, and an archive package zips the output for the Azure Functions preset. The patterns come from Nitro and from the
+code it traces, and no cancellation signal is passed. Both fixes are new major versions, which the current releases of
+these packages do not accept yet. Do not use these dependencies with patterns or signals from untrusted input.
+
+In this repository all three come only through the Nuxt module's development dependency on Nuxt and are not in
+Tisilia's packages, so their Dependabot alerts are dismissed. The dependencies have not been patched or ignored, and a
+Nuxt consumer's own installation still contains them. A workspace audit with `--omit=dev` excludes the workspace's Nuxt
+development dependency and does not describe a Nuxt consumer's full installation. Run `npm audit` in the consuming
 application too.
 
 A fix that the dependency ranges already admit reaches a fresh install, but an existing `package-lock.json` keeps the
 version it recorded: run `npm update <package>` or `npm audit fix` in the consuming application, then build again.
-`node-forge` 1.4.1 is such a fix. Through 1.4.0 it accepts malformed RSA signature encodings
+`nitropack` 2.13.6 is such a fix. It fixes three advisories in the server's proxy and redirect route rules and its cached
+handlers ([GHSA-rhhp-7488-3qwf](https://github.com/nitrojs/nitro/security/advisories/GHSA-rhhp-7488-3qwf),
+[GHSA-39r7-wfcx-99xg](https://github.com/nitrojs/nitro/security/advisories/GHSA-39r7-wfcx-99xg) and
+[GHSA-pqxc-r4h5-jc95](https://github.com/nitrojs/nitro/security/advisories/GHSA-pqxc-r4h5-jc95)), and every Nuxt 4.5
+and 4.6 release admits it. `node-forge` 1.4.1 is another. Through 1.4.0 it accepts malformed RSA signature encodings
 ([GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv)), and 1.4.1 also fixes the other advisories
 its maintainers published for those versions on 2026-10-27. It comes through `listhen`, which uses it for local
 certificate handling and which Nitro depends on (Nuxt 4.5's CLI does too), and every `listhen` 1.x release admits 1.4.1.
-Nuxt DevTools 3.4.3 is another: every Nuxt 4.5 and 4.6 release admits it, and it no longer depends on `simple-git`,
-which carried [GHSA-858h-whjf-mvg5](https://github.com/advisories/GHSA-858h-whjf-mvg5),
+Nuxt DevTools 3.4.3 and later are another: every Nuxt 4.5 and 4.6 release admits them, and they no longer depend on
+`simple-git`, which carried [GHSA-858h-whjf-mvg5](https://github.com/advisories/GHSA-858h-whjf-mvg5),
 [GHSA-g4wm-2vf7-vfgr](https://github.com/advisories/GHSA-g4wm-2vf7-vfgr),
 [GHSA-x6jw-m9v5-85vh](https://github.com/advisories/GHSA-x6jw-m9v5-85vh) and, through `@simple-git/argv-parser`,
 [GHSA-v5rq-49vh-5v5c](https://github.com/advisories/GHSA-v5rq-49vh-5v5c). A Nuxt server build copies the server's runtime
 dependencies into `.output`; Vue's compiler, for example, brings `source-map-js`, fixed in 1.2.2 for
 [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q).
+
+Advisories in Nuxt itself are Nuxt's to fix. Nuxt 4.6.4 is a security release that fixes eight of
+[them](https://github.com/nuxt/nuxt/security/advisories) and requires `nitropack` 2.13.6, and the Nuxt module accepts it.
 
 For a Node deployment, build in a trusted environment and deploy only Nuxt's standalone `.output` directory, starting
 `node .output/server/index.mjs` as described in the [Nuxt deployment guide](https://nuxt.com/docs/4.x/getting-started/deployment).
