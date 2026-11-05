@@ -81,6 +81,56 @@ public class ContractDiffTests(ITestOutputHelper output)
         Assert.Empty(result.ReviewRequired);
     }
 
+    [Fact]
+    public void Removing_an_exposed_response_header_is_breaking()
+    {
+        var changed = SampleContracts.UsersApiJson();
+        Operation(changed, "users.get")["responses"]![0]!["exposedHeaders"] = new JsonArray();
+        var result = Diff(SampleContracts.UsersApiJson(), changed);
+        var entry = Assert.Single(result.Breaking);
+        Assert.Equal(("response-header-removed", "users.get"), (entry.Kind, entry.Id));
+        Assert.Contains("etag", entry.Message, StringComparison.Ordinal);
+        Assert.Empty(result.Compatible);
+        Assert.Empty(result.ReviewRequired);
+    }
+
+    [Fact]
+    public void Adding_an_exposed_response_header_requires_review_of_the_new_public_data()
+    {
+        var changed = SampleContracts.UsersApiJson();
+        Operation(changed, "users.get")["responses"]![0]!["exposedHeaders"] = new JsonArray("etag", "x-correlation-id");
+        var result = Diff(SampleContracts.UsersApiJson(), changed);
+        var entry = Assert.Single(result.ReviewRequired);
+        Assert.Equal(("response-header-added", "users.get"), (entry.Kind, entry.Id));
+        Assert.Contains("x-correlation-id", entry.Message, StringComparison.Ordinal);
+        Assert.Empty(result.Compatible);
+        Assert.Empty(result.Breaking);
+    }
+
+    [Fact]
+    public void Replacing_exposed_response_headers_reports_both_removal_and_addition()
+    {
+        var changed = SampleContracts.UsersApiJson();
+        Operation(changed, "users.get")["responses"]![0]!["exposedHeaders"] = new JsonArray("retry-after");
+        var result = Diff(SampleContracts.UsersApiJson(), changed);
+        Assert.Equal("response-header-removed", Assert.Single(result.Breaking).Kind);
+        Assert.Equal("response-header-added", Assert.Single(result.ReviewRequired).Kind);
+        Assert.Empty(result.Compatible);
+    }
+
+    [Fact]
+    public void Exposed_response_header_comparison_ignores_case_order_and_duplicates()
+    {
+        var before = SampleContracts.UsersApiJson();
+        Operation(before, "users.get")["responses"]![0]!["exposedHeaders"] = new JsonArray("etag", "x-correlation-id");
+        var after = before.DeepClone().AsObject();
+        Operation(after, "users.get")["responses"]![0]!["exposedHeaders"] = new JsonArray("X-Correlation-ID", "ETag", "ETAG");
+        var result = Diff(before, after);
+        Assert.Empty(result.Breaking);
+        Assert.Empty(result.Compatible);
+        Assert.Empty(result.ReviewRequired);
+    }
+
     [Theory]
     [InlineData("application/pdf", "optional")]
     [InlineData("application/octet-stream", "required")]

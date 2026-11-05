@@ -41,6 +41,58 @@ public class ValidationTests(ITestOutputHelper output)
         Assert.Equal(2, index!.Operations.Count);
     }
 
+    [Theory]
+    [InlineData("authorization")]
+    [InlineData("Proxy-Authorization")]
+    [InlineData("cookie")]
+    [InlineData("COOKIE2")]
+    [InlineData("Set-Cookie")]
+    [InlineData("set-cookie2")]
+    public void Credential_response_headers_cannot_be_exposed_even_for_server_only_cases(string header)
+    {
+        foreach (var hydration in new[] { "browser-safe", "server-only" })
+        {
+            var root = SampleContracts.UsersApiJson();
+            var response = root["operations"]![0]!["responses"]![0]!;
+            response["hydration"] = hydration;
+            response["exposedHeaders"] = new JsonArray(header);
+            var (_, bag) = ValidateAll(root, verifyHashes: false);
+            var diagnostic = Assert.Single(bag.Items, d => d.Code == TisiliaCodes.SecretExposure);
+            Assert.Equal("SV36", diagnostic.Rule);
+            Assert.EndsWith("/responses/0/exposedHeaders/0", diagnostic.Path, StringComparison.Ordinal);
+            Assert.Contains(header, diagnostic.Message, StringComparison.Ordinal);
+        }
+    }
+
+    [Theory]
+    [InlineData("ETag")]
+    [InlineData("Retry-After")]
+    [InlineData("X-Correlation-ID")]
+    [InlineData("X-Continuation-Token")]
+    [InlineData("Content-Length")]
+    [InlineData("Connection")]
+    public void Noncredential_response_metadata_headers_remain_valid(string header)
+    {
+        var root = SampleContracts.UsersApiJson();
+        root["operations"]![0]!["responses"]![0]!["exposedHeaders"] = new JsonArray(header);
+        var (index, bag) = ValidateAll(root, verifyHashes: false);
+        Assert.False(bag.HasErrors);
+        Assert.NotNull(index);
+    }
+
+    [Theory]
+    [InlineData("invalid header")]
+    [InlineData("ETag\r\nX-Injected")]
+    [InlineData("ETag: injected")]
+    [InlineData("*")]
+    public void Invalid_or_wildcard_exposed_response_header_names_are_rejected(string header)
+    {
+        var root = SampleContracts.UsersApiJson();
+        root["operations"]![0]!["responses"]![0]!["exposedHeaders"] = new JsonArray(header);
+        var (_, bag) = ValidateAll(root, verifyHashes: false);
+        Assert.Contains(bag.Items, d => d.Code == TisiliaCodes.UnsafeRouteOrHeader && d.Rule == "SV32");
+    }
+
     [Fact]
     public void Unknown_field_is_rejected_by_schema()
     {

@@ -627,6 +627,16 @@ public sealed partial class SemanticValidator
                 {
                     Error(TisiliaCodes.UnsafeRouteOrHeader, "SV32", JsonPointer.Append(JsonPointer.Append(rp, "exposedHeaders"), k), $"operation '{op.Id}': exposed header '{r.ExposedHeaders[k]}' is not a valid HTTP token", [op.Id]);
                 }
+                else if (r.ExposedHeaders[k] == "*")
+                {
+                    Error(TisiliaCodes.UnsafeRouteOrHeader, "SV32", JsonPointer.Append(JsonPointer.Append(rp, "exposedHeaders"), k), $"operation '{op.Id}': wildcard '*' cannot expose response headers", [op.Id, r.Id],
+                        "name each response header explicitly; exposedHeaders does not support wildcards");
+                }
+                else if (HttpRules.IsCredentialResponseHeader(r.ExposedHeaders[k]))
+                {
+                    Error(TisiliaCodes.SecretExposure, "SV36", JsonPointer.Append(JsonPointer.Append(rp, "exposedHeaders"), k), $"operation '{op.Id}': credential response header '{r.ExposedHeaders[k]}' cannot be exposed to the client or a hydration envelope", [op.Id, r.Id],
+                        "remove the credential header from exposedHeaders; the application's authentication transport handles credentials");
+                }
             }
         }
 

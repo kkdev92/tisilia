@@ -22,7 +22,7 @@ builder.Services.AddAntiforgery();
 builder.Services.AddCors(o =>
 {
     o.AddDefaultPolicy(p => p.WithOrigins("http://127.0.0.1:4179").AllowAnyMethod().AllowAnyHeader().AllowCredentials());
-    o.AddPolicy("exposed", p => p.WithOrigins("http://127.0.0.1:4179").AllowAnyMethod().AllowAnyHeader().WithExposedHeaders("Content-Disposition", "Content-Range"));
+    o.AddPolicy("exposed", p => p.WithOrigins("http://127.0.0.1:4179").AllowAnyMethod().AllowAnyHeader().WithExposedHeaders("Content-Disposition", "Content-Range", "ETag", "X-Correlation-ID", "Retry-After", "X-Undeclared"));
 });
 builder.Services.Configure<RouteOptions>(o => { o.ConstraintMap["incoming"] = typeof(IncomingConstraint); o.ConstraintMap["slug"] = typeof(SlugTransformer); });
 var registered = mode != "before";
@@ -64,6 +64,13 @@ Select(group.MapPost("/upload", (Stream body) => Upload(body)).Accepts<Stream>("
 Select(group.MapPost("/upload-pipe", (System.IO.Pipelines.PipeReader body) => Upload(body.AsStream())).Accepts<System.IO.Pipelines.PipeReader>("application/octet-stream").Produces<FileContentResult>(200, "application/octet-stream"), "upload.pipe");
 Select(group.MapPost("/upload-optional", (Stream body) => Upload(body)).Accepts<Stream>(isOptional: true, "application/octet-stream").Produces<FileContentResult>(200, "application/octet-stream"), "upload.optional");
 Observed Observe(HttpContext c, string? first, string? second = null) => new(first, second, c.Request.PathBase.Value ?? "");
+void ResponseHeaders(HttpContext c)
+{
+    c.Response.Headers.ETag = "\"adoption-v1\"";
+    c.Response.Headers["X-Correlation-ID"] = "adoption-correlation";
+    c.Response.Headers.RetryAfter = "17";
+    c.Response.Headers["X-Undeclared"] = "not-part-of-the-contract";
+}
 if (mode != "preserve")
 {
     Select(group.MapGet("/required/{id:guid}", (HttpContext c, Guid id) => Observe(c, id.ToString())), "route.required");
@@ -76,8 +83,11 @@ if (mode != "preserve")
     Select(group.MapGet("/incoming/{id:incoming}", (HttpContext c, string id) => Observe(c, id)), "route.incoming");
     Select(group.MapGet("/name/{名前}", (HttpContext c, [FromRoute(Name = "名前")] string value) => Observe(c, value)), "route.name");
     Select(group.MapGet("/casing/{ID}", (HttpContext c, [FromRoute(Name = "id")] string value) => Observe(c, value)), "route.casing");
-    Select(group.MapGet("/bytes", () => TypedResults.Ok(Known.Bytes)), "json.bytes");
-    Select(group.MapGet("/async", Known.Values), "json.async");
+    Select(group.MapGet("/bytes", (HttpContext c) => { ResponseHeaders(c); return TypedResults.Ok(Known.Bytes); })
+        .WithTisiliaResponseHeaders("X-Correlation-ID").WithTisiliaResponseHeaders(200, "ETag").RequireCors("exposed"), "json.bytes");
+    // Same declared headers, but deliberately no CORS exposure: only Node can see them on this endpoint.
+    Select(group.MapGet("/async", (HttpContext c) => { ResponseHeaders(c); return Known.Values(); })
+        .WithTisiliaResponseHeaders("X-Correlation-ID").WithTisiliaResponseHeaders(200, "ETag"), "json.async");
 }
 Select(group.MapGet("/file", () => Results.File(Known.Bytes, "application/pdf", "report.pdf")).Produces<FileContentResult>(200, "application/pdf").RequireCors("exposed"), "file.get");
 Select(group.MapPost("/file", () => { Interlocked.Increment(ref posts); return Results.File(Known.Bytes, "text/html", "report.html"); }).Produces<FileContentResult>(200, "text/html").RequireCors("exposed"), "file.post");
@@ -86,11 +96,16 @@ Select(group.MapGet("/stream", () => TypedResults.File(new MemoryStream(Known.By
 Select(group.MapGet("/concrete", () => TypedResults.File(Known.Bytes, "application/pdf", "concrete.pdf")).Produces(200, contentType: "application/pdf"), "file.concrete");
 Select(group.MapGet("/empty", () => TypedResults.File(Array.Empty<byte>(), "application/pdf")).Produces<FileContentResult>(200, "application/pdf"), "file.empty");
 Select(group.MapGet("/json-file", () => Results.File(Known.Bytes, "application/json; charset=iso-8859-1")).Produces<FileContentResult>(200, "application/json"), "file.json");
-Select(group.MapGet("/none", () => TypedResults.NoContent()), "file.none");
+Select(group.MapGet("/none", (HttpContext c) => { ResponseHeaders(c); return TypedResults.NoContent(); })
+    .WithTisiliaResponseHeaders("X-Correlation-ID").WithTisiliaResponseHeaders(204, "ETag").RequireCors("exposed"), "file.none");
 if (mode != "preserve")
 {
-    Select(group.MapGet("/union/{status:int}", (int status) => status == 200 ? Results.File(Known.Bytes, "application/pdf") : Results.Json(new Failure(9007199254740993L), statusCode: status))
-        .Produces<FileContentResult>(200, "application/pdf").Produces<Failure>(400).Produces<Failure>(404).Produces<Failure>(412).Produces<Failure>(416), "file.union");
+    Select(group.MapGet("/union/{status:int}", (HttpContext c, int status) =>
+    {
+        ResponseHeaders(c);
+        return status == 200 ? Results.File(Known.Bytes, "application/pdf") : Results.Json(new Failure(9007199254740993L), statusCode: status);
+    }).Produces<FileContentResult>(200, "application/pdf").Produces<Failure>(400).Produces<Failure>(404).Produces<Failure>(412).Produces<Failure>(416).Produces<Failure>(429)
+        .WithTisiliaResponseHeaders("X-Correlation-ID").WithTisiliaResponseHeaders(429, "Retry-After").RequireCors("exposed"), "file.union");
 }
 Select(group.MapGet("/gzip", (Delegate)(async (HttpContext c) =>
 {

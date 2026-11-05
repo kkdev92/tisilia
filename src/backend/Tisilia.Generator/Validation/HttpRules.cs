@@ -33,6 +33,18 @@ public static partial class HttpRules
            || name.Equals("x-http-method-override", StringComparison.OrdinalIgnoreCase)
            || name.Equals("x-method-override", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Standard credential headers never exposed through a response case, including a browser-safe SSR envelope.
+    /// Other metadata headers are not classified by substrings: a continuation token is application data, not an authentication token.
+    /// </summary>
+    public static bool IsCredentialResponseHeader(string name)
+        => name.Equals("authorization", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("proxy-authorization", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("cookie", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("cookie2", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("set-cookie", StringComparison.OrdinalIgnoreCase)
+           || name.Equals("set-cookie2", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>RFC 9110 token: 1*tchar.</summary>
     public static bool IsHttpToken(string s)
     {

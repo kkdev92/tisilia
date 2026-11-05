@@ -23,6 +23,9 @@ _Built for teams that need consistent value semantics across .NET and TypeScript
 >
 > The contract format, Codec ABI, portable codec DSL and conformance protocol all use version 0.1. Format versions
 > are separate from the package version and may still change incompatibly before 1.0.0.
+>
+> This README follows the `main` branch, which is ahead of `0.4.1-alpha`: the changes the changelog lists under
+> [Unreleased](CHANGELOG.md#unreleased) are not in the published packages yet.
 
 ---
 
@@ -53,6 +56,7 @@ _Built for teams that need consistent value semantics across .NET and TypeScript
 - **Responses Read From the Handlers**: a handler that returns `Results.Ok(value)` or an `IActionResult` declares no response types; a source generator reads its return paths at build time, and export describes them as the typed declaration would
 - **Fail Closed**: a converter without a binding, or a response whose wire format cannot be determined exactly — anything the contract cannot describe exactly is a diagnostic with a fix, checked by 55 semantic rules (SV01–SV55)
 - **Calls That Return, Not Throw**: a call gives a declared response case or a named failure — `unexpected-response`, `codec-failure`, `transport-failure`, `timeout`, `limit-failure`, `contract-mismatch` — and never follows a redirect; a fetch adapter of your own that throws an `AdapterFailure` gets its cause back in the `transport-failure`
+- **Response Headers**: `WithTisiliaResponseHeaders` / `[TisiliaResponseHeaders]` name the headers a client may read — an `ETag`, a correlation id, `Retry-After` — on every response case or on the cases of one status; a declared response carries no other header, and credential headers cannot be named
 - **File Transfers**: raw uploads to `Stream` / `PipeReader` endpoints — finite bytes everywhere, and streamed from Node — buffered downloads, and incremental downloads to an asynchronous sink, with byte limits and cancellation
 - **Forms and Events**: URL-encoded and multipart forms with nested models, constructor parameters, enums, exact scalar values, indexed collections and file parts; typed SSE subscriptions with incremental decoding, backpressure and cancellation, reconnecting with `Last-Event-ID` where the server declares that it resumes
 - **Endpoint JSON Options**: `WithTisiliaJsonOptions<T>` exports and enforces the settings used by `TypedResults.Json` and MVC `JsonResult`, with separate request, response and error profiles

@@ -17,6 +17,7 @@ import { SseParser, type ServerSentEvent } from "./sse.js";
 import { encodeForm, FormLimitError, type FormFieldDescriptor } from "./forms.js";
 import { readXmlBody, writeXmlBody, type XmlRoot } from "../codec/xml.js";
 import { parseXmlBytes, XmlParseError } from "../xml/parser.js";
+import { exposedResponseHeaders } from "./responseHeaders.js";
 
 export type HttpMethod = "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS";
 
@@ -511,7 +512,7 @@ async function fetchWithinBudget(operation: OperationDescriptor, args: unknown, 
   const forcedBodyless = operation.method === "HEAD" || response.status === 204 || response.status === 205 || response.status === 304;
   const media = response.mediaType === undefined ? undefined : parseMediaType(response.mediaType);
   const exposed = (c: ResponseCaseDescriptor): (readonly [string, string])[] =>
-    response.headers.filter(([n]) => c.exposedHeaders.some((e) => e.toLowerCase() === n));
+    exposedResponseHeaders(response.headers, c.exposedHeaders);
 
   // bodyless case selection: only when the declared case is bodyless
   const bodyless = statusCases.find((c) => c.body.kind === "none");
@@ -546,8 +547,10 @@ export function decodeResponse(operation: OperationDescriptor, raw: RawOutcome, 
   }
   const context = codecContextFor((selected.body.kind === "json" || selected.body.kind === "sse") && selected.body.profileId !== undefined ? { ...operation, profileId: selected.body.profileId } : operation, options, limits, budget);
   const retained = options.retainRawBody === true ? { rawBody: raw.body } : {};
+  // The raw response can also come from a hydration envelope or a caller of this public decoder.
+  const headers = exposedResponseHeaders(raw.headers, selected.exposedHeaders);
   if (raw.bodyKind === "none" || selected.body.kind === "none") {
-    return { kind: "response", caseId: selected.caseId, status: raw.status, headers: raw.headers };
+    return { kind: "response", caseId: selected.caseId, status: raw.status, headers };
   }
   try {
     budget?.check();
@@ -559,17 +562,16 @@ export function decodeResponse(operation: OperationDescriptor, raw: RawOutcome, 
         events.push(decodeSseEvent(operation, selected, event, raw.metadata, options, budget));
       }
       parser.finish();
-      return { kind: "response", caseId: selected.caseId, status: raw.status, headers: raw.headers, data: events };
+      return { kind: "response", caseId: selected.caseId, status: raw.status, headers, data: events };
     }
     if (selected.body.kind === "binary") {
-      const headers = raw.headers.filter(([name]) => selected.exposedHeaders.some(h => h.toLowerCase() === name.toLowerCase()));
       const filename = suggestedFileName(headers.find(([name]) => name.toLowerCase() === "content-disposition")?.[1]);
       const data: BufferedFile = { bytes: raw.body, contentType: raw.mediaType!, ...(filename === undefined ? {} : { suggestedFileName: filename }) };
       return { kind: "response", caseId: selected.caseId, status: raw.status, headers, data };
     }
     if (selected.body.kind === "text") {
       const text = decodeUtf8Strict(raw.body);
-      return { kind: "response", caseId: selected.caseId, status: raw.status, headers: raw.headers, data: text };
+      return { kind: "response", caseId: selected.caseId, status: raw.status, headers, data: text };
     }
     if (selected.body.kind === "xml") {
       if (raw.body.byteLength === 0) {
@@ -577,7 +579,7 @@ export function decodeResponse(operation: OperationDescriptor, raw: RawOutcome, 
       }
       const element = parseXmlBytes(raw.body, { limits, checkpoint: context.checkpoint });
       const data = readXmlBody(resolveCodec(selected.body.codec), selected.body.root, element, selected.body.nullable, context);
-      return { kind: "response", caseId: selected.caseId, status: raw.status, headers: raw.headers, data };
+      return { kind: "response", caseId: selected.caseId, status: raw.status, headers, data };
     }
     if (raw.body.byteLength === 0) {
       return { kind: "codec-failure", operationId: operation.id, caseId: selected.caseId, metadata: raw.metadata, code: "empty-body", path: "", message: "declared JSON case received an empty body (JSON null is a body)", ...retained };
@@ -596,7 +598,7 @@ export function decodeResponse(operation: OperationDescriptor, raw: RawOutcome, 
       }
       data = codec.decodeResponse(wire, context);
     }
-    return { kind: "response", caseId: selected.caseId, status: raw.status, headers: raw.headers, data };
+    return { kind: "response", caseId: selected.caseId, status: raw.status, headers, data };
   } catch (error) {
     if (error instanceof SseDecodeFailure) { return error.failure; }
     if (error instanceof XmlParseError) {

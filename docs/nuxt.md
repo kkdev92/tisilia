@@ -39,6 +39,30 @@ rest, and the resolved config (`useRuntimeConfig()`) has every member. The modul
 aliases because nuxt.config's `runtimeConfig` type (`Overrideable<RuntimeConfig>`) makes nested members optional only for types
 that extend `Record<string, unknown>`, which an interface does not (`src/frontend/nuxt/test/config-types.ts`).
 
+## Optional members and type checking
+
+Enable `exactOptionalPropertyTypes` alongside `strict` to catch a present `undefined` member in a generated request model.
+`strict` alone does not enable it. Set the options through `nuxt.config.ts`, so Nuxt writes them into its generated TypeScript
+configuration:
+
+```ts [nuxt.config.ts]
+export default defineNuxtConfig({
+  typescript: {
+    tsConfig: {
+      compilerOptions: {
+        strict: true,
+        exactOptionalPropertyTypes: true,
+      },
+    },
+  },
+})
+```
+
+Run `nuxt typecheck` to check calls from Vue components as well as TypeScript files. The Tisilia module leaves the
+application's compiler options to the application. An optional object member is omitted by leaving it out; null is a
+separate value, accepted only when its type includes `null`. A member explicitly set to `undefined` fails request encoding
+before sending. [What the types say](getting-started.md#6-what-the-types-say) shows how to construct a body from form values.
+
 ## Composables
 
 | composable | purpose |
@@ -93,6 +117,11 @@ the policy must also expose that header (ASP.NET Core: `WithExposedHeaders("x-ti
 response headers CORS does not list, so the guard would find no hash and let every response through; in development the
 module warns once (`[tisilia] the contract guard found no '…' header`). During SSR the server reads every header and the
 guard always runs.
+
+The response headers a case declares (`exposedHeaders`, from `WithTisiliaResponseHeaders`) travel in its hydration envelope,
+so a hydrated result has the `headers` of the server render. A call the browser makes itself sees a header only when the
+API's CORS policy exposes it as well; expose the same names to get the same `headers` either way. Credential headers never
+enter an envelope.
 
 ## Request identity and scope
 
