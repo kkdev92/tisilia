@@ -8,6 +8,28 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+### Added
+
+- **Response headers a client may read.** `WithTisiliaResponseHeaders("X-Correlation-ID")` on an endpoint, a route group
+  or the builder `MapControllers` returns, and `[TisiliaResponseHeaders]` on a controller or an action, add header names to
+  the operation's response cases (`exposedHeaders`), and a declared response's `headers` hold those the response carries.
+  `WithTisiliaResponseHeaders(429, "Retry-After")` adds them to the cases of one status, which the operation must declare
+  (SV28). Declarations add up, and the contract records each name once, in lowercase, sorted. Until now only file
+  responses exposed headers (`content-disposition`, and `content-range` for 206), so an `ETag` or a correlation id never
+  reached the client. Tisilia neither writes the headers nor changes CORS; a browser on another origin also needs the
+  API's CORS policy to expose them.
+
+### Changed
+
+- Validation refuses `*` in a response case's `exposedHeaders` (SV32), which the HTTP token grammar admits, and the
+  credential headers `authorization`, `proxy-authorization`, `cookie`, `cookie2`, `set-cookie` and `set-cookie2` (SV36).
+- `tisilia diff` compares the headers each response case exposes: a header a case stops exposing is a breaking change,
+  and one it starts to expose needs review (`reviewRequired`), since its value can reach an SSR payload. The case, order
+  and repetition of the names do not count. Before, a change in them went unreported.
+- The runtime keeps only a case's declared headers, without the credential headers above and with lowercase names, also
+  for a response it did not fetch itself: one passed to `decodeResponse` or `createHydrationEnvelope`. Before, it kept
+  the headers of such a response as they were.
+
 ## [0.4.1-alpha] - 2026-10-22
 
 The Nuxt module depends on `@nuxt/kit` 4.6.2. Apart from the version, nothing else in the packages changes, and the format

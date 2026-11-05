@@ -210,6 +210,20 @@ public static class ContractDiff
             {
                 review.Add(new DiffEntry("hydration-changed", opId, $"response case '{r.Id}' hydration changed"));
             }
+
+            // Header names are case-insensitive and their order has no meaning. A removed header can break a caller's
+            // concurrency/retry handling; newly exposed values also enter browser-safe hydration envelopes and need review.
+            var oldHeaders = r.ExposedHeaders.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var newHeaders = nr.ExposedHeaders.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var header in oldHeaders.Except(newHeaders, StringComparer.OrdinalIgnoreCase).Select(h => h.ToLowerInvariant()).Order(StringComparer.Ordinal))
+            {
+                breaking.Add(new DiffEntry("response-header-removed", opId, $"response case '{r.Id}' no longer exposes header '{header}'"));
+            }
+            foreach (var header in newHeaders.Except(oldHeaders, StringComparer.OrdinalIgnoreCase).Select(h => h.ToLowerInvariant()).Order(StringComparer.Ordinal))
+            {
+                review.Add(new DiffEntry("response-header-added", opId, $"response case '{r.Id}' exposes header '{header}'; review its data and browser-safe hydration policy"));
+            }
+
             if (r.Body is SseResponseBody oldSse && nr.Body is SseResponseBody newSse
                 && (oldSse.DataFormat != newSse.DataFormat || oldSse.ProfileId != newSse.ProfileId || !TypeShapeEquals(oldIndex, newIndex, oldSse.Use, newSse.Use, WireDirection.ServerWrite, [])))
             {

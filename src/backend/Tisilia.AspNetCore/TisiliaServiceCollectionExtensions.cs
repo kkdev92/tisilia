@@ -108,6 +108,28 @@ public static class TisiliaEndpointExtensions
     }
 
     /// <summary>
+    /// Declares response headers the client may read on every case. Declarations on route groups, controllers and endpoints
+    /// are additive. Does not write headers or configure CORS; cross-origin browsers also need the application's CORS exposure.
+    /// </summary>
+    public static TBuilder WithTisiliaResponseHeaders<TBuilder>(this TBuilder builder, params string[] names) where TBuilder : IEndpointConventionBuilder
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.WithMetadata(new TisiliaResponseHeadersAttribute(names));
+        return builder;
+    }
+
+    /// <summary>
+    /// Declares response headers the client may read for one status (all media types). The status must already have a declared
+    /// response case; this declaration does not add one. Credential headers cannot be exposed.
+    /// </summary>
+    public static TBuilder WithTisiliaResponseHeaders<TBuilder>(this TBuilder builder, int statusCode, params string[] names) where TBuilder : IEndpointConventionBuilder
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.WithMetadata(new TisiliaResponseHeadersAttribute(statusCode, names));
+        return builder;
+    }
+
+    /// <summary>
     /// Maps <c>GET {ContractRoute}</c> returning the exported contract. Outside Development both
     /// <see cref="TisiliaOptions.AllowProduction"/> and <see cref="TisiliaOptions.AuthorizationPolicy"/> are required.
     /// </summary>

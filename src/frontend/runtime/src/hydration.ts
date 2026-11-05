@@ -2,6 +2,7 @@ import { decodeUtf8Strict, JsonParseError } from "./json/parser.js";
 import type { OperationDescriptor, RawOutcome, RawResponse } from "./http/client.js";
 import type { RuntimeFailure } from "./http/result.js";
 import type { BodylessEnvelope, EnvelopeFailureCode, FailureEnvelope, HydrationEnvelope, JsonEnvelope, TextEnvelope } from "./envelope.js";
+import { exposedResponseHeaders } from "./http/responseHeaders.js";
 
 /**
  * Turning a selected response case into a hydration envelope and back. Only cases declared
@@ -55,7 +56,8 @@ export function createHydrationEnvelope(operation: OperationDescriptor, raw: Raw
   if (declared.hydration !== "browser-safe" || declared.body.kind === "binary" || raw.bodyKind === "binary" || declared.body.kind === "sse" || raw.bodyKind === "sse") {
     return failure(ctx, "server-only", "hydration.server-only");
   }
-  const base = { format: "tisilia.hydration-envelope" as const, version: "0.1" as const, ...ctx, responseCaseId: raw.caseId, status: raw.status, headers: raw.headers.map(([name, value]) => ({ name, value })) };
+  const headers = exposedResponseHeaders(raw.headers, declared.exposedHeaders).map(([name, value]) => ({ name, value }));
+  const base = { format: "tisilia.hydration-envelope" as const, version: "0.1" as const, ...ctx, responseCaseId: raw.caseId, status: raw.status, headers };
   if (raw.bodyKind === "none") {
     return { ...base, kind: "bodyless" };
   }

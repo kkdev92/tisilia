@@ -89,6 +89,23 @@ would be generated and exits with 4 when it is out of date — the CI step. Gene
 `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`, `noUnusedLocals`, `noUnusedParameters`
 and `erasableSyntaxOnly`.
 
+**Type-checking optional members.** Enable `strict` and `exactOptionalPropertyTypes` in the TypeScript configuration that
+checks your application and the generated client (`strict` alone does not enable `exactOptionalPropertyTypes`):
+
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "exactOptionalPropertyTypes": true
+  }
+}
+```
+
+This makes `name?: string | null` reject `{ name: undefined }` during type checking. An optional object member may be absent;
+when present, it must hold a value the contract accepts. The runtime checks this even when the compiler option is off or
+the caller is JavaScript. See [What the types say](#6-what-the-types-say) for omission and null, and
+[Nuxt integration](nuxt.md#optional-members-and-type-checking) for Nuxt's configuration.
+
 **Keeping the contract stable.** The contract's `semanticHash` covers the bytes of the assemblies that implement your own
 codecs or behaviors, so build them reproducibly. Set `<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>`
 and `<EnableSourceLink>false</EnableSourceLink>` for local builds of that assembly and of the projects it references, for
@@ -173,6 +190,48 @@ guard, also expose its header (`policy.WithExposedHeaders("x-tisilia-contract")`
 CORS does not list, and the guard, finding none, lets every response through (the Nuxt module warns about that in
 development).
 
+### Reading response headers
+
+The `headers` of a declared client result contain only the response case's `exposedHeaders`. Declare the headers the
+application writes on an endpoint or its route group:
+
+```csharp
+var items = app.MapGroup("/items").WithTisiliaResponseHeaders("X-Correlation-ID");
+items.MapGet("/{id}", (int id, HttpContext context) =>
+    {
+        context.Response.Headers.ETag = "\"v1\"";
+        return TypedResults.Ok(new { Id = id });
+    })
+    .ProducesProblem(429)
+    .WithTisiliaOperation("items.get")
+    .WithTisiliaResponseHeaders(200, "ETag")
+    .WithTisiliaResponseHeaders(429, "Retry-After");
+```
+
+For controller actions, use `[TisiliaResponseHeaders(200, "ETag")]`; an attribute on the controller class applies to
+its actions. `app.MapControllers().WithTisiliaResponseHeaders("X-Correlation-ID")` applies to all mapped controllers.
+Declarations are additive. Without a status they apply to every response, including errors and bodyless responses; with
+a status they apply to all media types of that status. A status must already have a response case: declaring its headers
+does not add one. On a group or controller, every affected operation must declare that status. File responses keep their
+built-in `content-disposition` (and `content-range` for 206) alongside the additional names. Export normalizes names to
+lowercase, removes duplicates and sorts them, so declaration order does not affect the contract.
+
+These are permission to read a header, not a guarantee that it is present. For example, after narrowing a generated result
+to `kind === "response"`, read `result.headers.find(([name]) => name === "etag")?.[1]`. `tisilia diff` lists a header a
+case starts to expose under `reviewRequired`, because its value can enter an SSR payload, and one it stops exposing under
+`breaking` (exit code 4), because callers may read it.
+
+Tisilia does not write these headers or configure CORS. The application's middleware still writes `X-Correlation-ID` and
+`Retry-After` in the example. For a page on another origin, the API's CORS policy must also expose the names with
+`WithExposedHeaders("ETag", "X-Correlation-ID", "Retry-After")`; both the contract and the browser must allow access.
+`WithTisiliaRequestHeaders` is a separate declaration for headers the caller sends.
+
+Use explicit names, never `*` (SV32). Credential headers (`authorization`, `proxy-authorization`, `cookie`, `cookie2`,
+`set-cookie`, `set-cookie2`) cannot be exposed: export and `tisilia validate` refuse them (SV36), and the runtime leaves them
+out of declared results and hydration envelopes even for a hand-written descriptor. Other declared headers of a
+`browser-safe` case can enter the Nuxt payload. Declare only metadata suitable for the client; a custom header name does not
+tell Tisilia whether its value is secret.
+
 ## 6. What the types say
 
 | C# | TypeScript |
@@ -219,6 +278,25 @@ the rest: the converter reads the member's JSON as `T` with the same options, an
 conformance suite holds the server to it, leaving members out, sending null and sending values in both directions. A
 wrapper is a member's type: inside a collection, a dictionary or a body it is a converter like any other. A modifier
 added with `WithAddedModifier` makes its resolver one the profile names (`TisiliaOptions.Resolvers`, SV16).
+
+**Optional members in client code.** The same distinction applies to ordinary optional object members in generated request
+models: `{}` omits a member, `{ name: null }` sends null, and `{ name: "Ada" }` sends a value. Null is permitted only when the
+member's generated type includes `null`; optional does not mean nullable. A present member set to `undefined` is rejected
+before an HTTP request is sent, with `kind: "transport-failure"`, `reason: "request-encoding"` and `undefined-not-allowed`
+in the message. It is never silently omitted or changed to null.
+
+When a form holds `undefined` for an unspecified value, leave the member out explicitly:
+
+```ts
+type Patch = { readonly name?: string | null };
+
+function fromForm(name: string | null | undefined): Patch {
+  return { ...(name === undefined ? {} : { name }) };
+}
+```
+
+Here `undefined` omits `name`, while null remains null. Use `name ?? null` only when the contract permits null and sending
+null has the intended application meaning; in a PATCH, clearing a value and leaving it unchanged can be different actions.
 
 **Controllers and minimal APIs.** Controllers serialize with MVC's options (`AddJsonOptions`), minimal APIs with
 `ConfigureHttpJsonOptions`. When the two describe types otherwise — another naming policy, other converters — a type both
@@ -950,6 +1028,7 @@ would fail when the endpoint is called — add `[JsonSerializable(typeof(T))]`.
 | `… were compiled from the previous output, and generation changed or removed the .ts next to them` (`generate`, TIS1507) | compile the output again, run `conformance` again when evidence qualifies it, and delete the `.js` of a file generation removed |
 | a browser call returns `transport-failure`, `reason: "network"`, "Failed to fetch (the cause is not exposed to scripts …)", although the API is up | browsers do not tell scripts why a fetch failed; their developer console does. Usually CORS (section 5) or a redirect, which the client never follows: .NET 10 cookie authentication still sends unauthenticated calls of minimal API handlers returning `IResult` (`Results.Ok(…)`), `string` or `void` to its login page (302) — call `.DisableCookieRedirect()` on them or their group to get 401/403. Node's fetch names it: `reason: "redirect"` |
 | a controller call returns `unexpected-response` with status 400 | `[ApiController]` model validation answers 400 with a `ValidationProblemDetails` the action does not declare (responses the pipeline writes before the action runs are not part of its cases); declare `[ProducesResponseType<ValidationProblemDetails>(400)]` to get a typed case |
+| a call returns `transport-failure`, `reason: "request-encoding"`, with `undefined-not-allowed` | a request object has a present member whose value is `undefined`; omit the member, or send null only when its type and the application allow it. Enable `exactOptionalPropertyTypes` with `strict` to catch this during type checking (sections 4 and 6) |
 
 ## Trying a build from source
 

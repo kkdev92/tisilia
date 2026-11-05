@@ -1021,6 +1021,32 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             }
         }
 
+        // Read the resolved endpoint: MVC's ApiExplorer does not include MapControllers conventions. Apply the declarations
+        // after every case has been inferred, including implicit 204s and non-JSON bodies, preserving built-in file headers.
+        var responseHeaders = endpoint.Metadata.OfType<TisiliaResponseHeadersAttribute>().ToArray();
+        foreach (var declaration in responseHeaders)
+        {
+            if (declaration.StatusCode is { } declaredStatus && !responses.Any(r => r.Status == declaredStatus))
+            {
+                bag.Error(TisiliaCodes.AmbiguousResponseCase, "SV28", opPath + "/responses",
+                    $"operation '{opId}': response headers are declared for status {declaredStatus}, but it has no response case", [opId],
+                    "declare the response with Produces / ProducesResponseType, or correct the status in WithTisiliaResponseHeaders / TisiliaResponseHeaders");
+            }
+        }
+        if (responseHeaders.Length > 0)
+        {
+            for (var i = 0; i < responses.Count; i++)
+            {
+                var response = responses[i];
+                responses[i] = response with
+                {
+                    ExposedHeaders = [.. response.ExposedHeaders.Concat(responseHeaders
+                        .Where(h => h.StatusCode is null || h.StatusCode == response.Status).SelectMany(h => h.Names))
+                        .Select(h => h.ToLowerInvariant()).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)],
+                };
+            }
+        }
+
         var pipeline = new List<string>();
         if (problemDetails)
         {
