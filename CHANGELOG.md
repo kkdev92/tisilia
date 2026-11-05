@@ -8,6 +8,13 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+## [0.5.0-alpha] - 2026-11-05
+
+An application can name the response headers its generated client may read, such as an `ETag`, a correlation id or
+`Retry-After`, for every response of an operation or for one status. Validation refuses `*` and credential headers in what
+a contract exposes, `tisilia diff` reports changes to it, and the runtime applies the same limits to a response it did not
+fetch itself. The format versions are unchanged.
+
 ### Added
 
 - **Response headers a client may read.** `WithTisiliaResponseHeaders("X-Correlation-ID")` on an endpoint, a route group
@@ -29,6 +36,18 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 - The runtime keeps only a case's declared headers, without the credential headers above and with lowercase names, also
   for a response it did not fetch itself: one passed to `decodeResponse` or `createHydrationEnvelope`. Before, it kept
   the headers of such a response as they were.
+- `@kkdev92/tisilia-nuxt` depends on `@nuxt/kit` 4.6.3 instead of 4.6.2, the version Nuxt 4.6.3 itself depends on.
+- `@kkdev92/tisilia-explorer` depends on `vite` 8.3.5 instead of 8.3.4.
+
+### Compatibility
+
+- The format versions stay 0.1. An application that declares no response headers exports the same `exposedHeaders` as
+  before.
+- A contract whose response cases expose `*` or a credential header now fails validation; export never wrote either.
+- `tisilia diff` exits with 4 when a response case stops exposing a header, which it did not report before.
+- A result of `decodeResponse` and an envelope of `createHydrationEnvelope` carry only the headers their response case
+  declares, without credential headers; before, they carried every header of the response passed in.
+- Use matching **0.5.0-alpha** NuGet and npm packages when exporting contracts and generating clients.
 
 ## [0.4.1-alpha] - 2026-10-22
 
@@ -432,7 +451,8 @@ The first preview.
 - Custom fetch adapters must expose a Web `ReadableStream` or a native `null` body.
 - The .NET packages and `@kkdev92/tisilia-runtime` have no third-party runtime dependencies.
 
-[Unreleased]: https://github.com/kkdev92/tisilia/compare/v0.4.1-alpha...HEAD
+[Unreleased]: https://github.com/kkdev92/tisilia/compare/v0.5.0-alpha...HEAD
+[0.5.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.5.0-alpha
 [0.4.1-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.4.1-alpha
 [0.4.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.4.0-alpha
 [0.3.1-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.3.1-alpha
