@@ -64,28 +64,27 @@ connections, `nosniff`, `no-referrer` and `no-store`.
 
 ## Nuxt dependency advisories
 
-As of 2026-11-04, Nuxt 4.5 and 4.6 bring three upstream advisories into a consumer installation, and no release that
-the dependency ranges admit fixes them:
+As of 2026-11-12, Nuxt 4.5 and 4.6 bring two upstream advisories into a consumer installation, and no release that the
+dependency ranges admit fixes them:
 
 - [GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4): `deepmerge` 4.2.0 through 4.3.1
   lets a merged source object inject properties into the prototype of the object it returns, and no release fixes it.
   It comes through `@rollup/plugin-node-resolve`, which Nitro uses when it bundles the server, and that plugin merges only
   its own default options with it. Do not use this dependency to merge untrusted objects.
-- [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4): `glob` 9.0.0 through 14.0.1 keeps
-  reading directories after a walk is cancelled through its `signal` option. 14.0.2 fixes it.
 - [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249): `minimatch` before 11.0.1 can spend
   excessive CPU time and memory preprocessing a pattern crafted to multiply its parts. 11.0.1 fixes it.
 
 Nitro uses `glob` and `minimatch` only while it builds the server: `@vercel/nft` traces the server's dependencies with
 them, and an archive package zips the output for the Azure Functions preset. The patterns come from Nitro and from the
-code it traces, and no cancellation signal is passed. Both fixes are new major versions, which the current releases of
-these packages do not accept yet. Do not use these dependencies with patterns or signals from untrusted input.
+code it traces, and no cancellation signal is passed. The `minimatch` fix is a new major version, which the current
+releases of these packages do not accept yet. Do not use these dependencies with patterns or signals from untrusted
+input.
 
-In this repository all three come only through the Nuxt module's development dependency on Nuxt and are not in
-Tisilia's packages, so their Dependabot alerts are dismissed. The dependencies have not been patched or ignored, and a
-Nuxt consumer's own installation still contains them. A workspace audit with `--omit=dev` excludes the workspace's Nuxt
-development dependency and does not describe a Nuxt consumer's full installation. Run `npm audit` in the consuming
-application too.
+In this repository `deepmerge`, `minimatch` and `glob` come only through the Nuxt module's development dependency on
+Nuxt and are not in Tisilia's packages, so their Dependabot alerts are dismissed. `deepmerge` and `minimatch` have not
+been patched or ignored, and a Nuxt consumer's own installation still contains them. A workspace audit with `--omit=dev`
+excludes the workspace's Nuxt development dependency and does not describe a Nuxt consumer's full installation. Run
+`npm audit` in the consuming application too.
 
 A fix that the dependency ranges already admit reaches a fresh install, but an existing `package-lock.json` keeps the
 version it recorded: run `npm update <package>` or `npm audit fix` in the consuming application, then build again.
@@ -93,10 +92,21 @@ version it recorded: run `npm update <package>` or `npm audit fix` in the consum
 handlers ([GHSA-rhhp-7488-3qwf](https://github.com/nitrojs/nitro/security/advisories/GHSA-rhhp-7488-3qwf),
 [GHSA-39r7-wfcx-99xg](https://github.com/nitrojs/nitro/security/advisories/GHSA-39r7-wfcx-99xg) and
 [GHSA-pqxc-r4h5-jc95](https://github.com/nitrojs/nitro/security/advisories/GHSA-pqxc-r4h5-jc95)), and every Nuxt 4.5
-and 4.6 release admits it. `node-forge` 1.4.1 is another. Through 1.4.0 it accepts malformed RSA signature encodings
-([GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv)), and 1.4.1 also fixes the other advisories
-its maintainers published for those versions on 2026-10-27. It comes through `listhen`, which uses it for local
-certificate handling and which Nitro depends on (Nuxt 4.5's CLI does too), and every `listhen` 1.x release admits 1.4.1.
+and 4.6 release admits it. `glob` 13.0.7 is another. `glob` 9.0.0 through 14.0.1 keeps reading directories after a walk
+is cancelled through its `signal` option ([GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4)),
+and 13.0.7 carries the 14.0.2 fix to the 13.x line that `@vercel/nft` depends on. `nitropack` 2.13.5 also brings `glob`
+10 through the Azure Functions preset's archive packages, and no `glob` 10.x release has the fix; 2.13.6 no longer
+brings it. The advisory still lists only 14.0.2 as patched, so `npm audit` and Dependabot keep reporting 13.0.7: take
+it with `npm update glob`. `node-forge` 1.4.3 is another. Through 1.4.0 it accepts malformed RSA signature encodings
+([GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv)), and 1.4.1 fixed the other advisories its
+maintainers published for those versions on 2026-10-27. Through 1.4.2 its Ed25519 verification accepts small-order
+public keys, a server can block a `forge.http` client with one large response header, and a malicious server can crash
+a `forge.tls` client in two ways ([GHSA-6889-vf6x-f3g5](https://github.com/advisories/GHSA-6889-vf6x-f3g5),
+[GHSA-6cv4-p8m7-4r25](https://github.com/advisories/GHSA-6cv4-p8m7-4r25),
+[GHSA-j8rw-jp99-435v](https://github.com/advisories/GHSA-j8rw-jp99-435v) and
+[GHSA-w4xr-hqv8-ch44](https://github.com/advisories/GHSA-w4xr-hqv8-ch44), published on 2026-11-10); 1.4.3 fixes them.
+It comes through `listhen`, which uses it for local certificate handling and which Nitro depends on (Nuxt 4.5's CLI
+does too), and every `listhen` 1.x release admits 1.4.3.
 Nuxt DevTools 3.4.3 and later are another: every Nuxt 4.5 and 4.6 release admits them, and they no longer depend on
 `simple-git`, which carried [GHSA-858h-whjf-mvg5](https://github.com/advisories/GHSA-858h-whjf-mvg5),
 [GHSA-g4wm-2vf7-vfgr](https://github.com/advisories/GHSA-g4wm-2vf7-vfgr),
