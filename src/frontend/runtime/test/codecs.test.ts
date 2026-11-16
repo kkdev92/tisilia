@@ -192,7 +192,7 @@ describe("enum codec", () => {
       { name: "Green", value: 2n },
     ],
   });
-  it("follows JsonStringEnumConverter behaviour observed on .NET 10", () => {
+  it("follows JsonStringEnumConverter behaviour observed on .NET 11", () => {
     expect(color.decodeResponse!(parseJson('"Red"'), ctx)).toBe(1);
     expect(color.decodeResponse!(parseJson('"red"'), ctx)).toBe(1);
     expect(color.decodeResponse!(parseJson('"999"'), ctx)).toBe(999);
@@ -221,7 +221,7 @@ describe("enum codec", () => {
     expect(writeJson(perm.encodeRequest!(0, ctx))).toBe('"None"');
   });
   it("reads a name as written before reading it in another case", () => {
-    // .NET 10, members Ab = 1 and AB = 2 without a naming policy: the server writes "Ab" and "AB", and reads "ab" as Ab
+    // .NET 11, members Ab = 1 and AB = 2 without a naming policy: the server writes "Ab" and "AB", and reads "ab" as Ab
     const clash = enumCodec({
       id: "x",
       typeId: "x",
@@ -250,7 +250,7 @@ describe("enum codec", () => {
 });
 
 describe("enum name codec", () => {
-  // JsonStringEnumConverter(allowIntegerValues: false) on .NET 10 refuses numbers and integer strings, and refuses to write a value no
+  // JsonStringEnumConverter(allowIntegerValues: false) on .NET 11 refuses numbers and integer strings, and refuses to write a value no
   // member defines; it writes each member's serialized name
   const kind = enumNameCodec({ id: "k", typeId: "k", names: ["usage", "stock"] });
   it("holds the names the server writes and writes exactly those names", () => {

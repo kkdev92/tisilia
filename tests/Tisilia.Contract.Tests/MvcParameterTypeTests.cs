@@ -19,7 +19,7 @@ namespace Tisilia.Contract.Tests;
 
 /// <summary>
 /// Oracle: MVC's ApiExplorer describes a parameter whose type MVC reads from one value (a TypeConverter or a TryParse: Int128,
-/// Version, IPAddress, a type with its own TryParse) as a string (aspnetcore v10.0.0), so export reads the parameter's own type. The
+/// Version, IPAddress, a type with its own TryParse) as a string (aspnetcore v11.0.0), so export reads the parameter's own type. The
 /// additional codec types then bind on Kestrel from the text their codec binders write, in the route, query and headers, and from
 /// their JSON codec in a body.
 /// </summary>

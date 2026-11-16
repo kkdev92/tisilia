@@ -1,9 +1,9 @@
 <Project>
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <!-- Pinned, never latest or preview: a language version that moves with the SDK is a build that changes meaning without a
          commit. -->
-    <LangVersion>14.0</LangVersion>
+    <LangVersion>15.0</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>

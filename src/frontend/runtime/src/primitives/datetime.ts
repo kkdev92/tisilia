@@ -2,7 +2,8 @@ import { CodecError } from "../codec/errors.js";
 
 /**
  * Date/time scalars. All values keep 100-nanosecond ticks as bigint; nothing is routed through JS Date.
- * Grammar follows the System.Text.Json ISO 8601-1:2019 extended profile as observed on .NET 10 (tests/oracle/DotnetStjOracle).
+ * Grammar follows the System.Text.Json ISO 8601-1:2019 extended profile as observed on .NET 11 (tests/oracle/DotnetStjOracle),
+ * without the end-of-day hour 24:00:00, which the server reads as the next day's 00:00:00 and never writes.
  */
 
 export const ticksPerSecond = 10_000_000n;

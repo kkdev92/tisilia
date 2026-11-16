@@ -10,9 +10,9 @@ import { runHttpCases } from "../tests/http/adoption-cases.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const out = resolve(root, "artifacts/adoption-compatibility");
-const cli = resolve(root, "src/backend/Tisilia.Tool/bin/Debug/net10.0/Tisilia.Tool.dll");
+const cli = resolve(root, "src/backend/Tisilia.Tool/bin/Debug/net11.0/Tisilia.Tool.dll");
 const project = resolve(root, "tests/fixtures/AdoptionApi");
-const fixture = resolve(project, "bin/Debug/net10.0/AdoptionApi.dll");
+const fixture = resolve(project, "bin/Debug/net11.0/AdoptionApi.dll");
 const api = "http://127.0.0.1:4178";
 const baseUrl = api + "/base";
 const processes = [];

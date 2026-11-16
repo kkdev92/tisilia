@@ -51,7 +51,7 @@ export function validateDecimal(value: unknown, path: string): Decimal {
 
 export interface DecimalParseOptions {
   /**
-   * Accept lexemes with more than 28 fractional digits by rounding half away from zero the way the .NET 10 reader
+   * Accept lexemes with more than 28 fractional digits by rounding half away from zero the way the .NET 11 reader
    * does (observed: 1.000…00025 → …03). Off by default: Tisilia never calls a rounded alias lossless.
    */
   readonly roundOverPrecision?: boolean;

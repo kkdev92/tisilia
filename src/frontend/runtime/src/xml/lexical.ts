@@ -33,7 +33,7 @@ import { isXmlSpace } from "./dom.js";
 
 /**
  * The text grammars of XML wires: the forms MVC's XmlSerializer formatters write for a CLR type (XmlConvert and XmlCustomFormatter,
- * dotnet/runtime v10.0.0). A client writes these forms, which the server reads; it reads what the server writes in them.
+ * dotnet/runtime v11.0.0). A client writes these forms, which the server reads; it reads what the server writes in them.
  */
 export type XmlScalarGrammar =
   | "xml-string"

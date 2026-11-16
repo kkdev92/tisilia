@@ -42,7 +42,7 @@ them in mind when proposing or implementing a change.
 1. The .NET packages and `@kkdev92/tisilia-runtime` take **no third-party runtime dependency**. The Nuxt module and the
    Explorer depend on what they extend; nothing else does. `Tisilia.AspNetCore.SourceGenerator`, which
    Kkdev92.Tisilia.AspNetCore carries in `analyzers/dotnet/cs`, compiles against the compiler's own API
-   (Microsoft.CodeAnalysis.CSharp, at the oldest version a .NET 10 SDK runs in), which the compiler provides when it loads
+   (Microsoft.CodeAnalysis.CSharp, at the oldest version a .NET 11 SDK runs in), which the compiler provides when it loads
    it: the package takes no dependency on it.
 2. **Fail closed.** What a contract cannot describe exactly is a diagnostic with a fix — never `any`, never a guess, never a
    silent fallback to the base type.

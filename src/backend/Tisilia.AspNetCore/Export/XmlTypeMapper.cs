@@ -148,7 +148,7 @@ internal sealed class XmlTypeMapper(ContractBuilder builder, TisiliaOptions opti
                 throw new Unsupported($"{path}: a string with an XML Schema data type whose white space XmlSerializer collapses on reading (DataType='token', 'anyURI' …)");
             }
 
-            // XmlSerializer's primitive table (TypeScope, Types.cs v10.0.0) by formatter name
+            // XmlSerializer's primitive table (TypeScope, Types.cs v11.0.0) by formatter name
             return mapping.FormatterName switch
             {
                 "String" => new TextNode("string", "xml-string"),

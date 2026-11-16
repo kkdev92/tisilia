@@ -5,8 +5,8 @@
   "profiles": [
     {
       "id": "sample-api.profile.web",
-      "dotnetVersion": "10.0.12",
-      "stjVersion": "10.0.0",
+      "dotnetVersion": "11.0.0",
+      "stjVersion": "11.0.0",
       "mode": "reflection",
       "options": {
         "propertyNameCaseInsensitive": true,
@@ -39,7 +39,7 @@
       },
       "scopes": [],
       "behaviors": [],
-      "fingerprint": "sha256:60ef432e389f7d17c1525e4e9c9bac810535676b3fb6a1ba6a6d3a042530804c"
+      "fingerprint": "sha256:68dcdecd2293da96ba43a1f940f2d07a91601712fc44cfff0ebe0620bd398ee6"
     }
   ],
   "types": [
@@ -2803,5 +2803,5 @@
       "description": ""
     }
   ],
-  "semanticHash": "sha256:478f3e2d09cde7b30e564d57750d41ba56a4c054eafc797a64da4ea076514af0"
+  "semanticHash": "sha256:0baa20261e40c9415d076fb7643e800bb6f787c41e2f70f83a16d129d9cca2c0"
 }

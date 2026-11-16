@@ -15,7 +15,7 @@ namespace Tisilia.Contract.Tests;
 /// <summary>
 /// Oracle: under ReferenceHandler.Preserve, System.Text.Json reads plain JSON trees — objects, arrays, dictionaries, constructor
 /// parameters and a polymorphic discriminator written first — without $id/$ref metadata, and refuses property names that start
-/// with '$' (observed on 10.0.12). The client writes plain trees, so a structured request body is exported; structured responses,
+/// with '$' (observed on .NET 11). The client writes plain trees, so a structured request body is exported; structured responses,
 /// which the server writes with $id/$values/$ref, stay refused.
 /// </summary>
 public sealed class PreserveRequestTests : IDisposable

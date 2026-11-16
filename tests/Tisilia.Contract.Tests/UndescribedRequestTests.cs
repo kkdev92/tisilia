@@ -124,7 +124,7 @@ public sealed class UndescribedRequestTests
         app.MapPost("/interface", (InterfaceBound value) => TypedResults.Ok(value.Text)).WithTisiliaOperation("bind.interface");
         app.MapPost("/grouped", ([AsParameters] Grouped args) => TypedResults.Ok(args.Value.Text + args.Page)).WithTisiliaOperation("bind.as-parameters");
         app.MapGet("/plain", (Clock clock, HttpContext context, CancellationToken token) => TypedResults.Ok(clock.Now)).WithTisiliaOperation("bind.none");
-        // an explicit source attribute wins over the type's BindAsync (RequestDelegateFactory.CreateArgument, aspnetcore v10.0.0)
+        // an explicit source attribute wins over the type's BindAsync (RequestDelegateFactory.CreateArgument, aspnetcore v11.0.0)
         app.MapPost("/explicit", ([FromBody] StaticBound value) => TypedResults.Ok(value.Text)).WithTisiliaOperation("bind.explicit-body");
         await app.StartAsync();
         var export = app.Services.GetRequiredService<TisiliaContractExporter>().ExportFresh();

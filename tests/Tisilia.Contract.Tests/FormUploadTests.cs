@@ -86,6 +86,96 @@ public sealed class FormUploadTests
 
     public sealed record FormEcho(string Value, long Id, decimal Amount, int[] Tags);
 
+    /// <summary>
+    /// Oracle: RequestDelegateFactory reads a [FromForm] string[] parameter as it reads an array of a type with a TryParse, every value
+    /// of the parameter's name (useSimpleBinding, aspnetcore v11.0.0), and an absent one as an empty array.
+    /// </summary>
+    [Fact]
+    public async Task A_string_array_parameter_binds_every_value_of_its_name()
+    {
+        var builder = WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
+        builder.Services.AddTisilia(o => o.ApiId = "string-arrays");
+        await using var app = builder.Build();
+        app.MapPost("/tags", ([FromForm] string[] tags, [FromForm] string note) => new { tags, note }).DisableAntiforgery().WithTisiliaOperation("tags");
+        await app.StartAsync();
+        var exported = app.Services.GetRequiredService<TisiliaContractExporter>().ExportFresh();
+        Assert.False(exported.Diagnostics.HasErrors, string.Join("\n", exported.Diagnostics.Items));
+        var tags = Assert.IsType<Tisilia.Contract.FormRequestBody>(exported.Index!.Operations["tags"].RequestBody).Fields.Single(f => f.Name == "tags");
+        Assert.Equal(("value", true, false, Tisilia.Contract.Presence.Optional), (tags.Kind, tags.Repeated, tags.Indexed, tags.Presence));
+
+        var directory = Path.Combine(Path.GetTempPath(), "tisilia-string-arrays-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var sent = await InterpreterRequests.SendAsync(directory, exported.Text!, app.Urls.Single(), [
+                ("tags", new { body = new { tags = new[] { "one", "two, three", "" }, note = "n" } }),
+                ("tags", new { body = new { note = "n" } }),
+            ]);
+            Assert.Equal("200 {\"tags\":[\"one\",\"two, three\",\"\"],\"note\":\"n\"}", sent[0]);
+            Assert.Equal("200 {\"tags\":[],\"note\":\"n\"}", sent[1]);
+        }
+        finally
+        {
+            try { Directory.Delete(directory, recursive: true); }
+            catch (IOException) { }
+        }
+    }
+
+    /// <summary>
+    /// Oracle: an application built with WebApplication.CreateBuilder protects a form endpoint without the antiforgery middleware, by
+    /// where the request comes from (CsrfProtectionMiddleware and DefaultCsrfProtection, aspnetcore v11.0.0). A request without
+    /// Sec-Fetch-Site and Origin, as the runtime sends outside a browser, and a same-origin one reach the handler; a request from
+    /// another site or another origin is answered 400, unless the CORS policy names its origin and allows credentials.
+    /// </summary>
+    [Fact]
+    public async Task A_form_endpoint_is_protected_by_the_origin_of_the_request_without_the_antiforgery_middleware()
+    {
+        var builder = WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
+        builder.Services.AddTisilia(o => o.ApiId = "form-origin");
+        builder.Services.AddCors(o => o.AddDefaultPolicy(policy => policy.WithOrigins("https://app.example").AllowCredentials()));
+        await using var app = builder.Build(); app.UseCors();
+        app.MapPost("/form", ([FromForm] string value) => new { value }).WithTisiliaOperation("form");
+        await app.StartAsync();
+        var exported = app.Services.GetRequiredService<TisiliaContractExporter>().ExportFresh();
+        Assert.False(exported.Diagnostics.HasErrors, string.Join("\n", exported.Diagnostics.Items));
+        Assert.Equal("tisilia.csrf.antiforgery@0.1", exported.Index!.Operations["form"].Security.CsrfPolicyId);
+
+        var directory = Path.Combine(Path.GetTempPath(), "tisilia-form-origin-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var sent = await InterpreterRequests.SendAsync(directory, exported.Text!, app.Urls.Single(), [("form", new { body = new { value = "v" } })]);
+            Assert.Equal("200 {\"value\":\"v\"}", sent[0]);
+        }
+        finally
+        {
+            try { Directory.Delete(directory, recursive: true); }
+            catch (IOException) { }
+        }
+
+        using var http = new HttpClient();
+        var address = app.Urls.Single();
+        Assert.Equal(System.Net.HttpStatusCode.OK, await PostAsync("same-origin", address));
+        Assert.Equal(System.Net.HttpStatusCode.OK, await PostAsync(null, address));
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, await PostAsync("cross-site", "https://other.example"));
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, await PostAsync("same-site", "http://127.0.0.1:1"));
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, await PostAsync(null, "https://other.example"));
+        Assert.Equal(System.Net.HttpStatusCode.OK, await PostAsync("cross-site", "https://app.example"));
+
+        async Task<System.Net.HttpStatusCode> PostAsync(string? site, string origin)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(address), "/form")) { Content = new FormUrlEncodedContent([new("value", "v")]) };
+            request.Headers.TryAddWithoutValidation("Origin", origin);
+            if (site is not null)
+            {
+                request.Headers.TryAddWithoutValidation("Sec-Fetch-Site", site);
+            }
+
+            using var response = await http.SendAsync(request);
+            return response.StatusCode;
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

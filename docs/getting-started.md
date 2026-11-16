@@ -4,7 +4,7 @@ From an ASP.NET Core API to a typed TypeScript client: register the operations, 
 call the API. Every command below has been run against fresh `dotnet new webapi`, `dotnet new webapi --use-controllers` and
 `dotnet new webapiaot` applications.
 
-Requirements: .NET 10, Node 24, TypeScript 6. Every release so far is a pre-release: NuGet needs `--prerelease`, and the npm
+Requirements: .NET 11, Node 24, TypeScript 6. Every release so far is a pre-release: NuGet needs `--prerelease`, and the npm
 runtime is installed at the version of the CLI that generated the client (`dotnet tisilia version` prints it).
 
 ## 1. Register the operations (server)
@@ -428,7 +428,7 @@ app.MapGet("/reports/{id?}", (string? id) => Results.File(bytes, "application/pd
 
 `Results.File` may keep its `IResult` return type. The standard marker declares a file's status and concrete media; use
 `FileStreamResult` for a finite stream. A known concrete FileContentHttpResult/FileStreamHttpResult return plus explicit
-status/media also works. Bare File() in .NET 10 does not supply enough ApiExplorer metadata. `byte[]` JSON remains base64 JSON.
+status/media also works. Bare File() in .NET 11 does not supply enough ApiExplorer metadata. `byte[]` JSON remains base64 JSON.
 The client result holds `data.bytes`, `data.contentType`, and an optional sanitized `data.suggestedFileName`; browser CORS must
 expose Content-Disposition for a name to be available. A binary application/json file stays bytes. 206 remains partial.
 
@@ -567,7 +567,7 @@ the action, method or lambda — and export checks that the endpoint runs the ha
 ### Failures every operation shares
 
 An API whose operations share their failures — a ProblemDetails for 400, 404 and 409 everywhere — declares them once, with
-ASP.NET Core's own metadata: `ProducesProblem` on a route group (.NET 9 and later) for minimal APIs, and a global
+ASP.NET Core's own metadata: `ProducesProblem` on a route group for minimal APIs, and a global
 `ProducesResponseTypeAttribute` filter for controllers.
 
 ```csharp
@@ -616,7 +616,7 @@ builder.Services.AddTisilia(o => o.Resolvers.Add(new ResolverRegistration
     ModuleId = "shop.json",
     DotnetExport = nameof(JsonConventions),
     // the assembly that holds the modifier, at its path below the content root (the contract pins it by digest)
-    Artifacts = [new(ArtifactTarget.Dotnet, "bin/Release/net10.0/Shop.Json.dll", Bytes: () => File.ReadAllBytes(typeof(JsonConventions).Assembly.Location))],
+    Artifacts = [new(ArtifactTarget.Dotnet, "bin/Release/net11.0/Shop.Json.dll", Bytes: () => File.ReadAllBytes(typeof(JsonConventions).Assembly.Location))],
     SettingsText = "JsonConventions.Configure: members of Optional<T> are written only when present",
 }));
 ```
@@ -685,8 +685,12 @@ await client.formsCreate({ body: { title: "日本語", id: 9007199254740993n } }
 await client.filesCreate({ body: { file: { fileName: "report.bin", bytes: new Uint8Array([0, 255]) } } });
 ```
 
-Keep the application's antiforgery middleware. Supply its configured token header through `credentialProvider` and the
-matching cookie through Fetch credentials (browser) or the server credential provider. Tisilia never disables antiforgery.
+ASP.NET Core protects a minimal API's form endpoint by where a request comes from. A request from the application's own
+origin, and one without `Sec-Fetch-Site` and `Origin` headers (a client outside a browser), reach the handler; a request from
+another origin is answered 400 unless the endpoint's CORS policy names that origin and allows credentials, so a browser client
+served from another origin needs such a policy. An application that also adds the antiforgery middleware
+(`app.UseAntiforgery()`) validates its token instead: supply the configured token header through `credentialProvider` and the
+matching cookie through Fetch credentials (browser) or the server credential provider. Tisilia never disables either.
 Use `IFormFileCollection` for multiple files. In a minimal API it receives every file part of the request, whatever its
 name — as a parameter and as a model member alike — so it must be the operation's only file field (including files inside
 nested models); in a controller action it receives the files of its own name, ignoring case. Files require a non-empty filename without quotes, control characters or path separators. Optional fields use
@@ -694,10 +698,8 @@ omission, not null; repeated scalar fields use arrays. MVC's blank-to-null strin
 The complete encoded request, including multipart headers/boundaries, is bounded by `maxBodyBytes`; file bytes are copied before
 credentials are awaited. Forms use deterministic encoding so previews and Nuxt identities describe the actual request.
 
-On .NET 10.0.12, ASP.NET Core's reflection-based minimal API binder cannot build an endpoint with a `[FromForm] string[]`
-parameter: it finds a `TryParse` on `string` that does not have the shape it expects. The application starts, but routing
-cannot build its endpoints, so requests fail with 500; `doctor` reports incomplete analysis (exit code 6) because the endpoint
-metadata cannot be enumerated. Arrays of numbers, such as `int[]` or `long[]`, bind normally.
+A `[FromForm]` array parameter of a minimal API, such as `string[]` or `int[]`, receives every value sent under its name, and
+an empty array when none is sent.
 
 Nested Minimal API form models use their actual form names as keys in the generated body:
 
@@ -728,8 +730,7 @@ await client.formsCreate({ body: { Labels: new Map([["color", "blue"], ["size.cm
 
 ASP.NET Core reads a key up to its first `]` and gathers keys ignoring case, merging the values of keys that differ only
 in case, so the client refuses a key with `]` and keys that differ only in case before sending. A dictionary must have at
-least one entry; omit an optional one instead. A form with a dictionary cannot have a field name with a `[` that no `]`
-follows: ASP.NET Core before 10.0.12 does not answer such a request.
+least one entry; omit an optional one instead.
 
 Model collection properties use indexed keys such as `Details.Tags[0]`. This also supports string arrays inside models.
 An indexed collection must contain at least one item: an empty array would vanish from the form and change its meaning;
@@ -742,7 +743,7 @@ separator or calendar the server applies. Tisilia writes MVC numbers and dates i
 value or refuses: digits with a leading `-`, a fraction as an integer mantissa with a negative exponent (`1.5` → `15E-1`,
 `1.50` → `150E-2`), a whole `double` written out in full, ISO date-times, and a `DateOnly` with a time
 (`2026-10-08T00:00:00`, which no non-Gregorian calendar reads as one of its own dates). A culture whose signs carry a
-direction mark (Arabic, Persian, Hebrew and others; 57 cultures on .NET 10) refuses negative numbers and fractions with 400;
+direction mark (Arabic, Persian, Hebrew and others; 57 cultures on .NET 11) refuses negative numbers and fractions with 400;
 no culture binds another value. Minimal APIs read form values with the invariant culture and get the usual canonical text.
 Minimal API form values of the additional codec types (`Int128`, `Uri`, `IPAddress`, …) are written as the same text as
 those types' route and query parameters; see [Additional codecs](additional-codecs.md).
@@ -1026,7 +1027,7 @@ would fail when the endpoint is called — add `[JsonSerializable(typeof(T))]`.
 | `1 difference(s) … run generate` (`check`, exit 4) | regenerate and commit the output |
 | `… check with that evidence before you generate` (`check`, exit 4, after a TIS1604 warning) | the output was generated with conformance evidence: pass `check` the same `--evidence` and `--trusted-issuer` |
 | `… were compiled from the previous output, and generation changed or removed the .ts next to them` (`generate`, TIS1507) | compile the output again, run `conformance` again when evidence qualifies it, and delete the `.js` of a file generation removed |
-| a browser call returns `transport-failure`, `reason: "network"`, "Failed to fetch (the cause is not exposed to scripts …)", although the API is up | browsers do not tell scripts why a fetch failed; their developer console does. Usually CORS (section 5) or a redirect, which the client never follows: .NET 10 cookie authentication still sends unauthenticated calls of minimal API handlers returning `IResult` (`Results.Ok(…)`), `string` or `void` to its login page (302) — call `.DisableCookieRedirect()` on them or their group to get 401/403. Node's fetch names it: `reason: "redirect"` |
+| a browser call returns `transport-failure`, `reason: "network"`, "Failed to fetch (the cause is not exposed to scripts …)", although the API is up | browsers do not tell scripts why a fetch failed; their developer console does. Usually CORS (section 5) or a redirect, which the client never follows: cookie authentication still sends unauthenticated calls of minimal API handlers returning `IResult` (`Results.Ok(…)`), `string` or `void` to its login page (302) — call `.DisableCookieRedirect()` on them or their group to get 401/403. Node's fetch names it: `reason: "redirect"` |
 | a controller call returns `unexpected-response` with status 400 | `[ApiController]` model validation answers 400 with a `ValidationProblemDetails` the action does not declare (responses the pipeline writes before the action runs are not part of its cases); declare `[ProducesResponseType<ValidationProblemDetails>(400)]` to get a typed case |
 | a call returns `transport-failure`, `reason: "request-encoding"`, with `undefined-not-allowed` | a request object has a present member whose value is `undefined`; omit the member, or send null only when its type and the application allow it. Enable `exactOptionalPropertyTypes` with `strict` to catch this during type checking (sections 4 and 6) |
 

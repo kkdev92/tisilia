@@ -148,12 +148,12 @@ public sealed record Undocumented(int Value);
   # the package turns on the XML documentation file for the app (build/Kkdev92.Tisilia.AspNetCore.Documentation.targets): built with
   # warnings as errors, an undocumented public type must not fail the build, and the comments must reach the contract
   Step "build the fresh app (warnings as errors)" { dotnet build $app -nologo -v q -p:TreatWarningsAsErrors=true }
-  if (-not (Test-Path (Join-Path $app "bin/Debug/net10.0/app.xml"))) { throw "the fresh app has no XML documentation file (bin/Debug/net10.0/app.xml)" }
+  if (-not (Test-Path (Join-Path $app "bin/Debug/net11.0/app.xml"))) { throw "the fresh app has no XML documentation file (bin/Debug/net11.0/app.xml)" }
   # the fresh app must run the packages packed above, not another copy of the same version
-  $restored = Join-Path $env:NUGET_PACKAGES "kkdev92.tisilia.aspnetcore/$Version/lib/net10.0/Tisilia.AspNetCore.dll"
+  $restored = Join-Path $env:NUGET_PACKAGES "kkdev92.tisilia.aspnetcore/$Version/lib/net11.0/Tisilia.AspNetCore.dll"
   $package = [System.IO.Compression.ZipFile]::OpenRead((Join-Path $feed "Kkdev92.Tisilia.AspNetCore.$Version.nupkg"))
   try {
-    $stream = $package.GetEntry("lib/net10.0/Tisilia.AspNetCore.dll").Open()
+    $stream = $package.GetEntry("lib/net11.0/Tisilia.AspNetCore.dll").Open()
     try { $packedHash = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($stream)) } finally { $stream.Dispose() }
   } finally {
     $package.Dispose()
@@ -170,7 +170,7 @@ public sealed record Undocumented(int Value);
   $exported = Get-Content -Raw $contract | ConvertFrom-Json
   if (($exported.operations | Where-Object { $_.id -eq "ping.get" } | Measure-Object).Count -ne 1) { throw "the exported contract has no ping.get operation" }
   $inferred = @(($exported.operations | Where-Object { $_.id -eq "pong.inferred" }).responses)
-  if (($inferred | ForEach-Object { "$($_.status) $($_.body.kind)" }) -join ", " -ne "404 none, 200 json") { throw "the responses of pong.inferred were not read from its handler: $($inferred | ConvertTo-Json -Compress -Depth 6)" }
+  if (($inferred | ForEach-Object { "$($_.status) $($_.body.kind)" }) -join ", " -ne "200 json, 404 none") { throw "the responses of pong.inferred were not read from its handler: $($inferred | ConvertTo-Json -Compress -Depth 6)" }
   $pong = $exported.documentation | Where-Object { $_.summary -eq "A pong." }
   if (($pong | Measure-Object).Count -lt 1 -or -not $pong[0].description.Contains('- `revision` — The revision, beyond 2^53.')) { throw "the exported contract lacks the XML comments of Pong: $($exported.documentation | ConvertTo-Json -Compress)" }
   Write-Host ("exported " + $exported.operations.Count + " operation(s), " + $exported.documentation.Count + " documentation entries, semanticHash " + $exported.semanticHash)
@@ -328,7 +328,7 @@ console.log("packed P0 optional/default/catch-all/file passed");
   $probe.Stop()
   $url = "http://127.0.0.1:$port"
   $windowOptions = if ($IsWindows) { @{ WindowStyle = 'Hidden' } } else { @{} }
-  $server = Start-Process -FilePath "dotnet" -ArgumentList @((Join-Path $app "bin/Debug/net10.0/app.dll"), "--urls", $url) -WorkingDirectory $app `
+  $server = Start-Process -FilePath "dotnet" -ArgumentList @((Join-Path $app "bin/Debug/net11.0/app.dll"), "--urls", $url) -WorkingDirectory $app `
     -RedirectStandardOutput (Join-Path $work "app.out.log") -RedirectStandardError (Join-Path $work "app.err.log") @windowOptions -PassThru
   try {
     $deadline = [DateTime]::UtcNow.AddSeconds(60)

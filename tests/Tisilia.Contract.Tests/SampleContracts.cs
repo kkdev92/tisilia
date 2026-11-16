@@ -18,7 +18,7 @@ public static class SampleContracts
         var b = new ContractBuilder(ApiId);
         var nameMatching = StandardProfile.NameMatchingBinding(ProfileId, caseInsensitive: true);
         b.AddBinding(nameMatching);
-        var profile = StandardProfile.Web(ProfileId, "10.0.12", "10.0.0", nameMatching.Id);
+        var profile = StandardProfile.Web(ProfileId, "11.0.0", "11.0.0", nameMatching.Id);
         b.AddProfile(profile);
         var np = StandardProfile.NumberProfileFor(profile.Options);
         var dup = StandardProfile.DuplicatePolicyFor(profile.Options);

@@ -26,7 +26,7 @@ public sealed class PackageBuildFileTests : IDisposable
             <Project Sdk="Microsoft.NET.Sdk">
               <Import Project="{props}" />
               <PropertyGroup>
-                <TargetFramework>net10.0</TargetFramework>
+                <TargetFramework>net11.0</TargetFramework>
                 {projectProperties}
               </PropertyGroup>
             </Project>

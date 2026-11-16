@@ -109,7 +109,7 @@ export function encodeBase64(bytes: Uint8Array): string {
 
 /**
  * Strict decoder: standard alphabet, length multiple of 4, padding required, no whitespace, non-zero trailing bits
- * rejected (observed on .NET 10: "/wA" and "/wB=" rejected, "/w A=" accepted — the whitespace alias is not canonical).
+ * rejected (observed on .NET 11: "/wA" and "/wB=" rejected, "/w A=" accepted — the whitespace alias is not canonical).
  */
 export function decodeBase64(text: string, path: string): Uint8Array {
   if (text.length % 4 !== 0) {

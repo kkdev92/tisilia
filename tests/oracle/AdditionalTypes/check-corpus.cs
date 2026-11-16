@@ -4,7 +4,7 @@
 #:property JsonSerializerIsReflectionEnabledByDefault=true
 #:property NoWarn=$(NoWarn);CS8714;IL2026;IL3050
 #:project ../../../src/backend/Tisilia.AspNetCore/Tisilia.AspNetCore.csproj
-// .NET 10 side of the corpus check for IPNetwork, Index, Range, Complex and JsonScalar (System.Text.Json.Nodes.JsonValue):
+// .NET 11 side of the corpus check for IPNetwork, Index, Range, Complex and JsonScalar (System.Text.Json.Nodes.JsonValue):
 // every value the TypeScript module accepts must be read by the server converter and written back unchanged.
 // Run: dotnet run tests/oracle/AdditionalTypes/check-corpus.cs -- <corpus.json>   (writes complex-out.json beside the corpus)
 using System.Net;

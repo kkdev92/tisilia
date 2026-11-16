@@ -22,8 +22,8 @@ namespace Tisilia.AspNetCore.Export;
 /// <remarks>
 /// Each inferred response is the response type ApiExplorer would list had the endpoint declared it the typed way. A minimal API
 /// path names the TypedResults type it creates, and the metadata comes from that type's own PopulateMetadata, as for a handler
-/// that returns it; the results that publish none (Unauthorized, StatusCode, Problem, Text, Json, Empty) carry the status code,
-/// body and media type aspnetcore v10.0.0 writes. An MVC path is what [ProducesResponseType(typeof(T), status)] declares, with the
+/// that returns it; the results that publish none (StatusCode, Problem, Text, Json, Empty) carry the status code,
+/// body and media type aspnetcore v11.0.0 writes. An MVC path is what [ProducesResponseType(typeof(T), status)] declares, with the
 /// media types ApiExplorer gives it (ApiResponseTypeProvider.CalculateResponseFormatForType: the [Produces] content types, else each
 /// output formatter's).
 /// </remarks>
@@ -239,8 +239,9 @@ internal static class ResponseInference
     }
 
     /// <summary>
-    /// One response per status code, in the order of the return paths (the order a Results&lt;…&gt; union of them would list): two
-    /// paths may write one status code only with one body and one media type.
+    /// One response per status code, in the order ApiExplorer lists a Results&lt;…&gt; union of the return paths: by status code
+    /// (EndpointMetadataApiDescriptionProvider and ApiResponseTypeProvider, aspnetcore v11.0.0). Two paths may write one status code
+    /// only with one body and one media type.
     /// </summary>
     private static Outcome Distinct(List<ApiResponseType> responses)
     {
@@ -259,7 +260,8 @@ internal static class ResponseInference
             }
         }
 
-        return new(distinct, null);
+        // a stable sort: one response per status code is left, so the status code alone orders them
+        return new(distinct.OrderBy(r => r.StatusCode).ToList(), null);
 
         static string Describe(ApiResponseType response) => response.Type is null || response.Type == typeof(void) ? "no body" : response.Type.Name;
     }

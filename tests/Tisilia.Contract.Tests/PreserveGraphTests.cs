@@ -15,7 +15,7 @@ namespace Tisilia.Contract.Tests;
 /// <summary>
 /// Under ReferenceHandler.Preserve the server writes a value it wrote before as <c>{"$ref": id}</c>, an ancestor included, and reads a
 /// request the same way where its converter registers the value before reading the members (ObjectDefaultConverter, JsonCollectionConverter,
-/// JsonDictionaryConverter, v10.0.0); a type built through its constructor refuses metadata read while it waits for its arguments
+/// JsonDictionaryConverter, v11.0.0); a type built through its constructor refuses metadata read while it waits for its arguments
 /// (ObjectWithParameterizedConstructorConverter). Oracle: through Kestrel, the runtime decodes shared and cyclic responses as one value,
 /// and the server receives a request's shared and cyclic values as the same instances.
 /// </summary>

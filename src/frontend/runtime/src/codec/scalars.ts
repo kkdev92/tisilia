@@ -166,7 +166,7 @@ export function scalarCodec<T = unknown>(name: ScalarName, options: ScalarOption
           }
           return w.value;
         },
-        // Dictionary<bool,…> keys are written "True"/"False" by System.Text.Json (observed on .NET 10)
+        // Dictionary<bool,…> keys are written "True"/"False" by System.Text.Json (observed on .NET 11)
         encodeKey: (v) => (v ? "True" : "False"),
         decodeKey: (v, ctx) => {
           if (v === "True" || v === "true") {

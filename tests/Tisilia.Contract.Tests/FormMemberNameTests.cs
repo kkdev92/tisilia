@@ -14,9 +14,8 @@ using Xunit;
 namespace Tisilia.Contract.Tests;
 
 /// <summary>
-/// Oracle: the minimal API form mapper (aspnetcore v10.0.0) reads a member named with '.', '[' or ']' from exactly that key,
-/// nested or in collection items, through Kestrel. Two members that come out as one key both receive its value. (An unmatched '['
-/// matters only to dictionary members, whose key scan looped on it before 10.0.12; forms with dictionaries are diagnosed.)
+/// Oracle: the minimal API form mapper (aspnetcore v11.0.0) reads a member named with '.', '[' or ']' from exactly that key,
+/// nested or in collection items, through Kestrel. Two members that come out as one key both receive its value.
 /// </summary>
 public sealed class FormMemberNameTests
 {

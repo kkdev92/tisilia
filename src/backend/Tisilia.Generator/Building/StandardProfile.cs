@@ -6,7 +6,7 @@ namespace Tisilia.Generator.Building;
 /// <summary>Effective System.Text.Json profile records for the common presets, with every field written out.</summary>
 public static class StandardProfile
 {
-    /// <summary>ASP.NET Core web defaults (observed on .NET 10: camelCase, case-insensitive, AllowReadingFromString, MaxDepth 0→64).</summary>
+    /// <summary>ASP.NET Core web defaults (observed on .NET 11: camelCase, case-insensitive, AllowReadingFromString, MaxDepth 0→64).</summary>
     public static Profile Web(string id, string dotnetVersion, string stjVersion, string nameMatchingBindingId)
         => Create(id, dotnetVersion, stjVersion, new StjOptions
         {

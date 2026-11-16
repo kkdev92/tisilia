@@ -6,7 +6,7 @@ namespace Tisilia.AspNetCore.SourceGenerator;
 
 /// <summary>
 /// Reads every return path of a handler that returns <c>IResult</c> (a minimal API) or <c>IActionResult</c>/<c>ActionResult</c>
-/// (an MVC action) and maps each to the response the helper it calls produces, as aspnetcore v10.0.0 implements them. One path it
+/// (an MVC action) and maps each to the response the helper it calls produces, as aspnetcore v11.0.0 implements them. One path it
 /// cannot read makes the operation unreadable: the exporter reports that path rather than describe the others.
 /// </summary>
 /// <remarks>
@@ -262,8 +262,8 @@ internal sealed class HandlerReader
 
                 return;
             case "Unauthorized":
-                // UnauthorizedHttpResult sets 401 and writes nothing; it publishes no response metadata
-                Add(new ResponseModel(401, "none", null, null, null));
+                // UnauthorizedHttpResult sets 401, writes nothing and publishes that as its own response metadata
+                AddResult(call, typed ? method.ReturnType : HttpResultsType("UnauthorizedHttpResult"));
                 return;
             case "StatusCode":
                 if (Status(call, "statusCode", null) is { } status)
@@ -299,7 +299,7 @@ internal sealed class HandlerReader
     /// <summary>
     /// Ok, Created, Accepted, NotFound, BadRequest, … with or without a value. TypedResults.X&lt;TValue&gt; creates X&lt;TValue&gt;;
     /// Results.X&lt;TValue&gt;(value) creates X when the value is null and X&lt;TValue&gt; otherwise, and Results.X(object? value) passes the
-    /// value as an object (Results.cs, aspnetcore v10.0.0).
+    /// value as an object (Results.cs, aspnetcore v11.0.0).
     /// </summary>
     private void ValueResult(IInvocationOperation call, bool typed)
     {

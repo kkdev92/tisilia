@@ -281,17 +281,6 @@ public sealed partial class SemanticValidator
                     Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "form fields have overlapping wire names", [op.Id]);
                 }
             }
-            // ASP.NET Core 10.0.0 to 10.0.11 loops forever reading a form with a dictionary and a key with a '[' that no ']' follows
-            // (FormDataReader.ProcessFormKeys, dotnet/aspnetcore#66674). Map keys are always closed; field names are checked here.
-            if (mapPrefixes.Count > 0 && flatNames.Any(f => HasUnclosedBracket(f.Name)))
-            {
-                Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "a form with a dictionary cannot have a field name with a '[' that no ']' follows: ASP.NET Core before 10.0.12 does not answer such a request", [op.Id]);
-            }
-            static bool HasUnclosedBracket(string name)
-            {
-                var open = name.LastIndexOf('[');
-                return open >= 0 && name.IndexOf(']', open) < 0;
-            }
             void CheckFormFields(IReadOnlyList<FormField> fields, int depth, string prefix)
             {
                 if (depth > 16) { Error(TisiliaCodes.ParameterRouteMismatch, "SV30", bp + "/fields", "form fields exceed maximum nesting", [op.Id]); return; }

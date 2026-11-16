@@ -58,10 +58,10 @@ public sealed class ResponseInferenceTests : IDisposable
             Assert.Equal(Responses(contract, "declared." + name), Responses(contract, "inferred." + name).Replace("inferred." + name, "declared." + name, StringComparison.Ordinal));
         }
 
-        // what no typed result declares: status codes without a body, read from Unauthorized(), StatusCode(202) and NoContent(); the arm
-        // that throws writes no response of its own
+        // status codes without a body, read from Unauthorized(), StatusCode(202) and NoContent() and listed by status code as ApiExplorer
+        // lists declared ones; the arm that throws writes no response of its own
         var status = contract["operations"]!.AsArray().Single(o => (string?)o!["id"] == "inferred.status")!["responses"]!.AsArray();
-        Assert.Equal([401, 202, 204], status.Select(r => (int)r!["status"]!));
+        Assert.Equal([202, 204, 401], status.Select(r => (int)r!["status"]!));
         Assert.All(status, r => Assert.Equal("none", (string?)r!["body"]!["kind"]));
     }
 

@@ -1,8 +1,8 @@
 # AdditionalTypes
 
-Programs that hold the additional codecs (`tisilia-additional`) to .NET 10 itself: what System.Text.Json and the server-side
+Programs that hold the additional codecs (`tisilia-additional`) to .NET 11 itself: what System.Text.Json and the server-side
 converters do with IPNetwork, Index, Range, Complex, JsonValue, TimeZoneInfo and CultureInfo, and whether the module judges
-every text the way the converters do. They are .NET 10 file-based apps run from the repository root; the root
+every text the way the converters do. They are .NET 11 file-based apps run from the repository root; the root
 `Directory.Build.props` applies to them, so each file overrides what it needs with `#:property`.
 
 ```text

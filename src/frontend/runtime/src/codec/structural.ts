@@ -692,7 +692,7 @@ const enumRanges: Record<EnumCodecDescriptor["underlying"], readonly [bigint, bi
 
 /**
  * Enum codec. Public value is the underlying integer (number, or bigint for 64-bit bases);
- * undefined integers are preserved when allowed. String form follows JsonStringEnumConverter as observed on .NET 10:
+ * undefined integers are preserved when allowed. String form follows JsonStringEnumConverter as observed on .NET 11:
  * names (case-insensitive on read), integer strings, integers; Flags written as "A, B"; undefined values as numbers.
  */
 export function enumCodec(d: EnumCodecDescriptor): Codec<number | bigint> {
@@ -801,7 +801,7 @@ export function enumCodec(d: EnumCodecDescriptor): Codec<number | bigint> {
       }
       throw new CodecError("type-mismatch", ctx.path, `enum requires a JSON ${d.stringForm ? "string or number" : "number"} but found ${w.kind}`, d.id);
     },
-    // Dictionary<TEnum,…> keys are always written as names by System.Text.Json (observed on .NET 10)
+    // Dictionary<TEnum,…> keys are always written as names by System.Text.Json (observed on .NET 11)
     encodeKey: (v, ctx) => {
       const value = validate(v, ctx);
       return formatName(value) ?? value.toString();

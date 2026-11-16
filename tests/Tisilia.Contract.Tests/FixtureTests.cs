@@ -115,7 +115,7 @@ public class FixtureTests
         Assert.Contains(SampleContracts.MoneyModuleId, closure.ModuleIds);
         Assert.Contains(SampleContracts.ProfileId, closure.ProfileIds);
         var record = closure.ToRecord(loaded.Document.SemanticHash, closure.DeclaredModuleArtifacts(), [new Artifact { Target = ArtifactTarget.Browser, Path = "dist/client.js", Digest = "sha256:" + new string('b', 64) }],
-            new RuntimeMatrix { Dotnet = "10.0.12", Aspnetcore = "10.0.12", Stj = "10.0.0", Typescript = "6.0.3", Node = "24.13.1", Os = "windows", Architecture = "arm64" }, [new NameValue { Name = "culture", Value = "invariant" }], Limits.Default);
+            new RuntimeMatrix { Dotnet = "11.0.0", Aspnetcore = "11.0.0", Stj = "11.0.0", Typescript = "6.0.3", Node = "24.13.1", Os = "windows", Architecture = "arm64" }, [new NameValue { Name = "culture", Value = "invariant" }], Limits.Default);
         Assert.Equal(record.RegistryRefs.Select(r => r.Registry + "|" + r.Id).ToList(), record.RegistryRefs.Select(r => r.Registry + "|" + r.Id).OrderBy(x => x, StringComparer.Ordinal).ToList());
         var node = System.Text.Json.JsonSerializer.SerializeToNode(record, TisiliaJson.Options)!.AsObject();
         Assert.True(TisiliaSchemas.Instance.ValidateStructure(DocumentKind.ClosureRecord, node, bag), string.Join("\n", bag.Items));

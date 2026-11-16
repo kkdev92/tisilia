@@ -59,7 +59,7 @@ public static class Builtins
 
     /// <summary>
     /// The text grammars of XML wires: the forms MVC's XmlSerializer formatters write and read for a CLR type (XmlCustomFormatter and
-    /// XmlConvert, dotnet/runtime v10.0.0). <c>xml-enum</c> and <c>xml-flags</c> name the constants their wire lists.
+    /// XmlConvert, dotnet/runtime v11.0.0). <c>xml-enum</c> and <c>xml-flags</c> name the constants their wire lists.
     /// </summary>
     public static readonly string[] XmlGrammarNames =
     [

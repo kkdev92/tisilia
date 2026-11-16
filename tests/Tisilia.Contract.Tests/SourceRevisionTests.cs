@@ -99,7 +99,7 @@ public sealed class SourceRevisionTests : IDisposable
                   "Direct/1.0.0": { "dependencies": { "Transitive": "1.0.0" }, "runtime": { "Direct.dll": {} } },
                   "Transitive/1.0.0": { "runtime": { "Transitive.dll": {} } },
                   "Clean/1.0.0": { "runtime": { "Clean.dll": {} } },
-                  "Package/2.0.0": { "runtime": { "lib/net10.0/Package.dll": {} } },
+                  "Package/2.0.0": { "runtime": { "lib/net11.0/Package.dll": {} } },
                   "Unrelated/1.0.0": { "runtime": { "Unrelated.dll": {} } }
                 }
               },

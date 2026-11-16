@@ -16,7 +16,7 @@ using Xunit;
 
 namespace Tisilia.Contract.Tests;
 
-/// <summary>Oracle: ServerSentEventsResult.cs (aspnetcore v10.0.0), exercised through Kestrel.</summary>
+/// <summary>Oracle: ServerSentEventsResult.cs (aspnetcore v11.0.0), exercised through Kestrel.</summary>
 public sealed class SseTests
 {
     [Fact]

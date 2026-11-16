@@ -16,7 +16,7 @@ namespace Tisilia.Contract.Tests;
 /// <summary>
 /// A minimal API fills an IFormFileCollection — a parameter (RequestDelegateFactory: form.Files) or a model member (the form mapper's
 /// converter) — with every file of the request, whatever its name; MVC's FormFileModelBinder picks the files of its own name, ignoring
-/// case (aspnetcore v10.0.0). Oracle: through Kestrel, the files the runtime's encoder sends arrive where the contract says.
+/// case (aspnetcore v11.0.0). Oracle: through Kestrel, the files the runtime's encoder sends arrive where the contract says.
 /// </summary>
 public sealed class FormFileCollectionTests : IDisposable
 {

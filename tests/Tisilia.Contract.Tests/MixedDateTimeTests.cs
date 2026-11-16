@@ -18,7 +18,7 @@ namespace Tisilia.Contract.Tests;
 
 public sealed class MixedDateTimeTests
 {
-    // .NET oracle: JsonHelpers.Date.TryParseAsISO in dotnet/runtime v10.0.0, recorded in tests/datetime-sources.txt.
+    // .NET oracle: JsonHelpers.Date.TryParseAsISO in dotnet/runtime v11.0.0, recorded in tests/datetime-sources.txt.
     [Fact]
     public async Task Mixed_JSON_Kinds_and_dictionary_keys_export_without_a_declaration_and_match_Kestrel()
     {

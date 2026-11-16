@@ -11,7 +11,7 @@ namespace Tisilia.Generator.Canonical;
 /// gives a lambda or method group with an optional or params parameter, converted to <see cref="Delegate"/> (a minimal API route
 /// handler, say), a delegate type of its own, <c>&lt;&gt;f__AnonymousDelegate{N}</c>, and numbers these types by the earliest source
 /// location it recorded for each. For a generic one, the usual case, it records only the location of the first lambda it binds
-/// (AnonymousTypeManager.ConstructAnonymousDelegateImplementationSymbol, through the .NET 10 SDK's compiler), and it binds method
+/// (AnonymousTypeManager.ConstructAnonymousDelegateImplementationSymbol, through the .NET 11 SDK's compiler), and it binds method
 /// bodies in parallel, so which lambda that is depends on the threads. The numbers, and with them the assembly's bytes, can then
 /// differ from one build to the next. That takes two numbered types, and a generic one created in more than one place: with one
 /// type its number is always 0, and a type created in one place has one location.

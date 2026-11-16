@@ -19,7 +19,7 @@ namespace Tisilia.Contract.Tests;
 
 /// <summary>
 /// System.Text.Json reads a DateTime written with an offset as <c>DateTimeOffset.LocalDateTime</c>, the server's own time
-/// (JsonHelpers.Date.cs and DateTime.ToLocalTime, v10.0.0), and DateTime dictionary keys are equal by their ticks, so keys a client writes
+/// (JsonHelpers.Date.cs and DateTime.ToLocalTime, v11.0.0), and DateTime dictionary keys are equal by their ticks, so keys a client writes
 /// differently can be one key on the server. Oracles: the declared zone's table against TimeZoneInfo itself, and keys sent through the
 /// runtime's interpreter to Kestrel.
 /// </summary>

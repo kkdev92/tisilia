@@ -36,6 +36,7 @@ public sealed class ShouldSerializeTests
     [InlineData("note", JsonIgnoreCondition.Never, "[JsonIgnore(Condition = WhenWritingNull)] on the member")]
     [InlineData("title", JsonIgnoreCondition.Never, "[JsonIgnore(Condition = Never)] on the member")]
     [InlineData("tag", JsonIgnoreCondition.WhenWritingNull, "the options' WhenWritingNull")]
+    [InlineData("label", JsonIgnoreCondition.Never, "[JsonIgnore(Condition = WhenWritingNull)] on its type")]
     public async Task A_predicate_a_modifier_sets_decides_over_any_ignore_condition_and_is_undescribed(string member, JsonIgnoreCondition options, string replaced)
     {
         // before: the member's or the options' condition was taken to explain the predicate, which the export then let through
@@ -104,14 +105,16 @@ public sealed class ShouldSerializeTests
             o.SerializerOptions.DefaultIgnoreCondition = options;
             resolver = (o.SerializerOptions.TypeInfoResolver ?? new DefaultJsonTypeInfoResolver()).WithAddedModifier(info =>
             {
-                if (info.Type != typeof(Item) || modifier == Modifier.None)
+                if ((info.Type != typeof(Item) && info.Type != typeof(Card)) || modifier == Modifier.None)
                 {
                     return;
                 }
 
                 // what the modifier does to the one member: a predicate that writes non-null values, or none at all
-                var property = info.Properties.Single(p => p.Name == member);
-                property.ShouldSerialize = modifier == Modifier.Set ? static (_, value) => value is not null : null;
+                if (info.Properties.SingleOrDefault(p => p.Name == member) is { } property)
+                {
+                    property.ShouldSerialize = modifier == Modifier.Set ? static (_, value) => value is not null : null;
+                }
             });
             o.SerializerOptions.TypeInfoResolver = resolver;
         });
@@ -141,6 +144,7 @@ public sealed class ShouldSerializeTests
         });
         var app = builder.Build();
         app.MapGet("/items", () => TypedResults.Ok(new Item())).WithTisiliaOperation("items.get");
+        app.MapGet("/cards", () => TypedResults.Ok(new Card())).WithTisiliaOperation("cards.get");
         await app.StartAsync();
         return app;
     }
@@ -156,5 +160,12 @@ public sealed class ShouldSerializeTests
         public string? Title { get; set; }
 
         public string? Tag { get; set; }
+    }
+
+    /// <summary>The condition is on the type, which System.Text.Json applies to each member that declares none.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public sealed class Card
+    {
+        public string? Label { get; set; }
     }
 }

@@ -16,7 +16,7 @@ namespace Tisilia.Contract.Tests;
 /// <summary>
 /// Oracle: the minimal API form mapper reads a dictionary from name[key] and a root dictionary from [key]; the key is the text up to
 /// the first ']', parsed with the invariant culture, and keys are gathered ignoring case (DictionaryConverter, FormDataReader.GetKeys,
-/// aspnetcore v10.0.0). The runtime's encoder, from the exported contract, writes those keys on Kestrel and refuses ']' and keys
+/// aspnetcore v11.0.0). The runtime's encoder, from the exported contract, writes those keys on Kestrel and refuses ']' and keys
 /// that differ only in case before sending.
 /// </summary>
 public sealed class FormDictionaryTests : IDisposable
@@ -75,10 +75,33 @@ public sealed class FormDictionaryTests : IDisposable
         Assert.Matches("^\"[kK]=[^|]*\"$", await cased.Content.ReadAsStringAsync());
     }
 
+    /// <summary>
+    /// Oracle: gathering a dictionary's keys skips a form key whose '[' no ']' follows (FormDataReader.GetKeys, aspnetcore v11.0.0), so
+    /// a member with such a name is read from its own key next to a dictionary, and a dictionary key may hold a '['.
+    /// </summary>
+    [Fact]
+    public async Task A_field_name_with_an_unclosed_bracket_binds_next_to_a_dictionary()
+    {
+        var builder = WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
+        builder.Services.AddTisilia(o => o.ApiId = "form-map-brackets");
+        await using var app = builder.Build();
+        app.MapPost("/maps", ([FromForm] UnclosedNamed model) => TypedResults.Ok(Echo(model.Values) + ";" + model.Opening))
+            .DisableAntiforgery().WithTisiliaOperation("maps");
+        await app.StartAsync();
+        var export = app.Services.GetRequiredService<TisiliaContractExporter>().ExportFresh();
+        Assert.False(export.Diagnostics.HasErrors, string.Join("\n", export.Diagnostics.Items));
+
+        var sent = await InterpreterRequests.SendAsync(_dir, export.Text!, app.Urls.Single(), [
+            ("maps", Body(new Dictionary<string, object> { ["Values"] = Map(("a", "1"), ("b[", "2")), ["q["] = "open" })),
+            ("maps", Body(new Dictionary<string, object> { ["q["] = "open" })),
+        ]);
+        Assert.Equal("200 \"a=1|b[=2;open\"", sent[0]);
+        Assert.Equal("200 \"none;open\"", sent[1]);
+    }
+
     [Theory]
     [InlineData("enum key", "form dictionary keys must be strings, integers or Guids")]
     [InlineData("model values", "form dictionary values must be builtin scalars")]
-    [InlineData("unclosed bracket", "cannot have a field name with a '[' that no ']' follows")]
     public async Task Dictionaries_the_contract_cannot_describe_exactly_are_diagnosed(string shape, string message)
     {
         var builder = WebApplication.CreateBuilder(); builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
@@ -87,8 +110,7 @@ public sealed class FormDictionaryTests : IDisposable
         var endpoint = shape switch
         {
             "enum key" => app.MapPost("/maps", ([FromForm] EnumKeyed model) => TypedResults.NoContent()),
-            "model values" => app.MapPost("/maps", ([FromForm] ModelValued model) => TypedResults.NoContent()),
-            _ => app.MapPost("/maps", ([FromForm] UnclosedNamed model) => TypedResults.NoContent()),
+            _ => app.MapPost("/maps", ([FromForm] ModelValued model) => TypedResults.NoContent()),
         };
         endpoint.DisableAntiforgery().WithTisiliaOperation("maps");
         await app.StartAsync();
