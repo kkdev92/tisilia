@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Numerics;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Tisilia.AspNetCore.Codecs;
@@ -37,6 +38,23 @@ public class AdditionalCodecTests : IDisposable
         var source = Path.Combine(FixtureTests.RepoRoot(), "src", "backend", "Tisilia.Generator", "Additional");
         Assert.Equal(File.ReadAllBytes(Path.Combine(source, AdditionalModule.ScriptFile)), AdditionalModule.Script());
         Assert.Equal(File.ReadAllBytes(Path.Combine(source, AdditionalModule.TypesFile)), AdditionalModule.Types());
+    }
+
+    [Fact]
+    public void The_module_changes_its_bytes_only_with_its_version()
+    {
+        // Applications commit the copy that `tisilia codec install-additional` writes, and their contracts record the digest of the
+        // script. The command refuses to overwrite a copy with other bytes until --force replaces it (SV38), so a change to either
+        // file, a comment as much as a codec, has every application reinstall the module and export its contract again. Such a
+        // change comes with a new AdditionalModule.Version, named in both headers, and with the digests recorded here.
+        var script = AdditionalModule.Script();
+        var types = AdditionalModule.Types();
+        var recorded = ("0.1.0-alpha", "b4a1c1397b4e230493243e0f657e35c91ad3cc16727b2994cf71797a8b8026cb", "3fbe244569c3b7bf1ac2c39d4bfc63402b2d4f6bf5aa679c297e36400a8b7f80");
+        var built = (AdditionalModule.Version, Convert.ToHexStringLower(SHA256.HashData(script)), Convert.ToHexStringLower(SHA256.HashData(types)));
+        Assert.True(built == recorded, $"recorded (version, SHA-256 of {AdditionalModule.ScriptFile}, of {AdditionalModule.TypesFile}): {recorded}; built: {built}");
+        var header = $"// {AdditionalModule.ModuleId} {AdditionalModule.Version} ";
+        Assert.StartsWith(header, Encoding.UTF8.GetString(script), StringComparison.Ordinal);
+        Assert.StartsWith(header, Encoding.UTF8.GetString(types), StringComparison.Ordinal);
     }
 
     [Fact]
