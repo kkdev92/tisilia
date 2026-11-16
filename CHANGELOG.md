@@ -8,6 +8,8 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+## [0.6.0-alpha] - 2026-11-16
+
 Tisilia moves to .NET 11. The packages target `net11.0` and describe what ASP.NET Core 11 and System.Text.Json 11 do;
 they no longer run on .NET 10. The format versions are unchanged.
 
@@ -52,6 +54,8 @@ they no longer run on .NET 10. The format versions are unchanged.
   middleware; [getting started](docs/getting-started.md) describes what that means for a client on another origin.
 - The table the runtime compares names with, as `StringComparer.OrdinalIgnoreCase` does, was generated again on
   .NET 11.0.0 and is the same.
+- `@kkdev92/tisilia-nuxt` depends on `@nuxt/kit` 4.6.4 instead of 4.6.3, the version Nuxt 4.6.4 itself depends on.
+- `@kkdev92/tisilia-explorer` depends on `vue` 3.5.45 instead of 3.5.44 and `vite` 8.3.6 instead of 8.3.5.
 
 ### Compatibility
 
@@ -67,6 +71,7 @@ they no longer run on .NET 10. The format versions are unchanged.
   response instead: where a `ProducesProblem(400)` of a route group stands next to a `ProducesValidationProblem()` of an
   endpoint, the response is a `ProblemDetails`, and the client reads `errors` from its extension data.
 - An operation that reads a polymorphic type with a type classifier from a request now fails the export (SV03).
+- Use matching **0.6.0-alpha** NuGet and npm packages when exporting contracts and generating clients.
 
 ## [0.5.0-alpha] - 2026-11-05
 
@@ -511,7 +516,8 @@ The first preview.
 - Custom fetch adapters must expose a Web `ReadableStream` or a native `null` body.
 - The .NET packages and `@kkdev92/tisilia-runtime` have no third-party runtime dependencies.
 
-[Unreleased]: https://github.com/kkdev92/tisilia/compare/v0.5.0-alpha...HEAD
+[Unreleased]: https://github.com/kkdev92/tisilia/compare/v0.6.0-alpha...HEAD
+[0.6.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.6.0-alpha
 [0.5.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.5.0-alpha
 [0.4.1-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.4.1-alpha
 [0.4.0-alpha]: https://github.com/kkdev92/tisilia/releases/tag/v0.4.0-alpha
