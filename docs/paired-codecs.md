@@ -40,7 +40,7 @@ builder.Services.AddTisilia(o =>
         Artifacts =
         [
             // the assembly holding the converter, and the module, at their paths below the content root (the contract pins both by digest)
-            new(ArtifactTarget.Dotnet, "bin/Release/net10.0/Shop.Api.dll", Bytes: () => File.ReadAllBytes(typeof(OrderIdJsonConverter).Assembly.Location)),
+            new(ArtifactTarget.Dotnet, "bin/Release/net11.0/Shop.Api.dll", Bytes: () => File.ReadAllBytes(typeof(OrderIdJsonConverter).Assembly.Location)),
             new(ArtifactTarget.Browser, "modules/shop.ids/ids.js", Bytes: () => File.ReadAllBytes(Path.Combine(contentRoot, "modules/shop.ids/ids.js"))),
             new(ArtifactTarget.Node, "modules/shop.ids/ids.js", Bytes: () => File.ReadAllBytes(Path.Combine(contentRoot, "modules/shop.ids/ids.js"))),
         ],

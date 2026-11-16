@@ -22,7 +22,7 @@ namespace Tisilia.Contract.Tests;
 
 /// <summary>
 /// Oracle: MVC reads form values with the request culture (FormValueProviderFactory → CultureInfo.CurrentCulture, aspnetcore
-/// v10.0.0), and the runtime writes the builtin scalars of such fields so that every culture reads the same value or refuses it.
+/// v11.0.0), and the runtime writes the builtin scalars of such fields so that every culture reads the same value or refuses it.
 /// Tisilia.CultureOracle, which keeps ICU (this project builds with InvariantGlobalization), posts one body — encoded by the
 /// runtime from the exported contract — to a controller under every culture it knows: no field may bind to another value.
 /// </summary>
@@ -62,7 +62,7 @@ public sealed class MvcFormCultureTests : IDisposable
         {
             Assert.True(exact.GetProperty(field).GetInt32() == cultures, $"{field}: {exact.GetProperty(field)} of {cultures}; refused in {root.GetProperty("refusedExamples")}");
         }
-        // a sign — of the number or of its exponent — is refused where the culture's signs carry a direction mark (57 cultures on .NET 10)
+        // a sign — of the number or of its exponent — is refused where the culture's signs carry a direction mark (57 cultures on .NET 11)
         foreach (var field in new[] { "i8", "negative", "i64", "dec", "decTiny", "dbl", "dblTiny", "dblNegativeZero", "f32Fraction" })
         {
             Assert.True(exact.GetProperty(field).GetInt32() >= cultures - 60, $"{field}: {exact.GetProperty(field)} of {cultures}; refused in {root.GetProperty("refusedExamples")}");

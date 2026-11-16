@@ -388,7 +388,7 @@ public static partial class HttpRules
 
     /// <summary>
     /// A media type MVC's XmlSerializer formatters read and write: application/xml, text/xml or a concrete <c>application/…+xml</c> type
-    /// (their supported media types, aspnetcore v10.0.0), with UTF-8 or no charset.
+    /// (their supported media types, aspnetcore v11.0.0), with UTF-8 or no charset.
     /// </summary>
     public static bool IsXmlMediaType(string value) => ParseMediaType(value) is { } media
         && !media.Type.Contains('*') && !media.Subtype.Contains('*') && (media.Charset is null || media.Charset == "utf-8")

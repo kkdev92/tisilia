@@ -235,7 +235,7 @@ public sealed class PortableCSharpGenerator
         w.Line();
         w.Line("private static JsonException Unexpected(string expected, JsonTokenType actual) => new($\"expected {expected} but found {actual}\");");
         w.Line();
-        w.Line("// Utf8JsonReader.GetSingle/GetDouble return ±Infinity for lexemes beyond the binary range (verified against the .NET 10 source); portable readers reject them");
+        w.Line("// Utf8JsonReader.GetSingle/GetDouble return ±Infinity for lexemes beyond the binary range (verified against the .NET 11 source); portable readers reject them");
         w.Line("private static float FiniteSingle(float value) => float.IsFinite(value) ? value : throw new JsonException(\"float32 lexeme is outside the binary32 range\");");
         w.Line("private static double FiniteDouble(double value) => double.IsFinite(value) ? value : throw new JsonException(\"float64 lexeme is outside the binary64 range\");");
         w.Line();

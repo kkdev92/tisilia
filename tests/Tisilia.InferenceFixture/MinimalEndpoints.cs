@@ -76,7 +76,7 @@ public static class MinimalEndpoints
         app.MapGet("/inferred/events", () => Results.ServerSentEvents(Events())).WithTisiliaOperation("inferred.events");
         app.MapGet("/declared/events", () => TypedResults.ServerSentEvents(Events())).WithTisiliaOperation("declared.events");
 
-        // status codes without a body, which typed results cannot declare: a switch expression whose arm throws
+        // status codes without a body, StatusCode(202) being one no typed result declares: a switch expression whose arm throws
         app.MapGet("/inferred/status/{code}", (int code) => code switch
         {
             1 => Results.Unauthorized(),

@@ -156,7 +156,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             ProfileContext ResponseProfile(int status) => responseDeclaration is null || status != responseDeclaration.StatusCode ? Profile() : ProfileFor(responseDeclaration.Options, "endpoint." + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(opId)))[..24]);
             ClrTypeMapper ResponseMapper(int status) => mappers[ResponseProfile(status).Profile.Id];
             // ServerSentEventsResult<T> serializes event data with the minimal API JsonOptions from DI, also when an MVC action
-            // returns it, and whatever an endpoint declares for TypedResults.Json (aspnetcore v10.0.0)
+            // returns it, and whatever an endpoint declares for TypedResults.Json (aspnetcore v11.0.0)
             ProfileContext EventProfile() => ProfileFor(minimalJson, "minimal");
             ClrTypeMapper EventMapper() => mappers[EventProfile().Profile.Id];
             var conflicts = builder.ProfileConflicts.Count;
@@ -236,11 +236,11 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             return null;
         }
 
-        // MVC's ApiExplorer writes every route parameter as "{name}" (DefaultApiDescriptionProvider.GetRelativePath drops constraints,
-        // '?', defaults and the catch-all '*'), which hid catch-all and optional parameters from SV30; the attribute route template
-        // keeps them, as a minimal API's RoutePattern.RawText (its RelativePath) does
-        var template = isMvc ? description.ActionDescriptor.AttributeRouteInfo?.Template : null;
-        var route = "/" + (template ?? description.RelativePath ?? "").TrimStart('/');
+        // the route as the application wrote it: ApiDescription.RoutePattern is the attribute route template of an MVC action and the
+        // route pattern of a minimal API (aspnetcore v11.0.0). MVC's RelativePath writes every route parameter as "{name}"
+        // (DefaultApiDescriptionProvider.GetRelativePath drops constraints, '?', defaults and the catch-all '*'), which would hide
+        // catch-all and optional parameters from SV30
+        var route = "/" + (description.RoutePattern?.RawText ?? description.RelativePath ?? "").TrimStart('/');
         var parameters = new List<Parameter>();
         var formFields = new List<FormField>();
         var everyFile = new List<FormField>();
@@ -280,7 +280,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
                 // formatter reads within the declared ones ([Consumes]); for a minimal API, the declared ones (Accepts<T>, application/json
                 // when inferred), of which the request delegate reads application/json and +json types only (HasJsonContentType answers
                 // text/json with 415). Routing answers a content type outside the declared ones with 415 (AcceptsMatcherPolicy), so a
-                // wildcard declared with Accepts<T> admits application/json; [Consumes] refuses wildcards (aspnetcore v10.0.0).
+                // wildcard declared with Accepts<T> admits application/json; [Consumes] refuses wildcards (aspnetcore v11.0.0).
                 static bool IsJson(string media) => HttpRules.ParseMediaType(media) is { } parsed && HttpRules.JsonMediaEssences.Contains(parsed.Essence);
                 static string? MinimalApiJson(string declared) => HttpRules.ParseMediaType(declared) switch
                 {
@@ -345,7 +345,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
                 if (source == BindingSource.FormFile || source == BindingSource.Form)
                 {
                     // MVC's ApiExplorer spreads a complex form model into one description per leaf property (DefaultApiDescriptionProvider,
-                    // aspnetcore v10.0.0): the model is described once, from the first of them
+                    // aspnetcore v11.0.0): the model is described once, from the first of them
                     var spread = isMvc && p.ModelMetadata?.MetadataKind == Microsoft.AspNetCore.Mvc.ModelBinding.Metadata.ModelMetadataKind.Property && p.ParameterDescriptor is not null;
                     if (!spread || mvcFormModels.Add(p.ParameterDescriptor!))
                     {
@@ -389,9 +389,9 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             var declaredDefault = p.DefaultValue is DBNull or System.Reflection.Missing ? null : p.DefaultValue;
             var (elementType, repeated) = UnwrapCollection(type);
             // MVC's ApiExplorer sets IsRequired only for [BindRequired] and route values (DefaultApiDescriptionProvider.ProcessIsRequired,
-            // v10.0.0); under [ApiController] a validation-required parameter ([Required], or the implicit one of a non-nullable reference
+            // v11.0.0); under [ApiController] a validation-required parameter ([Required], or the implicit one of a non-nullable reference
             // type) that is missing is an automatic 400 (ModelStateInvalidFilter), so the client must always send it. A missing repeated
-            // parameter binds as an empty collection, which satisfies [Required] (observed on .NET 10: no ids → [] and 200)
+            // parameter binds as an empty collection, which satisfies [Required] (observed on .NET 11: no ids → [] and 200)
             var isRequired = p.IsRequired || (apiController && !repeated && p.ModelMetadata?.IsRequired == true);
             // A path value cannot be null; undefined omission depends on its resolved route and binder. A query/header is nullable when not
             // required (its nullable annotation / default value); items of a repeated parameter are never null
@@ -412,7 +412,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             { Bindings.DateTimeWire.Utc => "datetime-utc", Bindings.DateTimeWire.Unspecified => "datetime-unspecified", Bindings.DateTimeWire.Local => "datetime-local-wire", _ => "datetime" } : ClrTypeMapper.ScalarNameOf(scalarType);
             if (scalarType == typeof(DateTime) && scalar == "datetime-local-wire")
             {
-                // minimal APIs and MVC parse DateTime parameters with DateTimeStyles.AdjustToUniversal (aspnetcore v10.0.0
+                // minimal APIs and MVC parse DateTime parameters with DateTimeStyles.AdjustToUniversal (aspnetcore v11.0.0
                 // ParameterBindingMethodCache, DateTimeModelBinderProvider): "Z" stays Utc and a zone-less value stays Unspecified,
                 // but an offset is converted to UTC — a Local wire cannot travel in a route, query or header value
                 bag.Error(TisiliaCodes.ParameterRouteMismatch, "SV30", pPath,
@@ -526,7 +526,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
 
             var scalarUse = builder.Scalar(scalar, np, nullable);
             var binderId = builder.StandardBinder(scalar, location, repeated ? Cardinality.Repeated : Cardinality.Single, nullable ? NullPolicy.Omit : NullPolicy.Reject);
-            // a repeated parameter that is absent binds as an empty collection (observed on .NET 10: GET /http/query?q=x → tags [] and 200)
+            // a repeated parameter that is absent binds as an empty collection (observed on .NET 11: GET /http/query?q=x → tags [] and 200)
             var required = location == ParameterLocation.Path ? pathRequired : (isRequired && !nullable && !repeated && declaredDefault is null);
             parameters.Add(new Parameter
             {
@@ -544,11 +544,11 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
         }
 
         var responses = new List<Response>();
-        var responseTypes = ResponseMetadata(description, bag, opPath);
+        var responseTypes = ResponseMetadata(description, bag, opPath, opId);
         var endpointMetadata = description.ActionDescriptor.EndpointMetadata;
         var handler = HandlerMethod(description);
         // EndpointMetadataApiDescriptionProvider files a BindAsync parameter under Services and leaves it out of the description
-        // (aspnetcore v10.0.0). The request delegate records how it binds each parameter and [AsParameters] member, so an explicit
+        // (aspnetcore v11.0.0). The request delegate records how it binds each parameter and [AsParameters] member, so an explicit
         // [FromBody], [FromQuery] … still wins over the type's BindAsync here as it does at run time. BindAsync code may read the body,
         // query or headers: nothing the contract can say.
         foreach (var bound in endpoint.Metadata.GetOrderedMetadata<IParameterBindingMetadata>().Where(p => p.HasBindAsync))
@@ -635,7 +635,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
         }
         var declaresResponses = endpointMetadata.OfType<IProducesResponseTypeMetadata>().Any() || endpointMetadata.OfType<IApiResponseMetadataProvider>().Any();
         // EndpointMetadataApiDescriptionProvider treats an IResult return type without response metadata as void and still lists a
-        // 200 response (aspnetcore v10.0.0): the result decides at run time what it writes, so that 200 describes nothing
+        // 200 response (aspnetcore v11.0.0): the result decides at run time what it writes, so that 200 describes nothing
         var inferred = false;
         if (responseTypes.Count == 0 || (!isMvc && handlerResult is not null && typeof(IResult).IsAssignableFrom(handlerResult) && !declaresResponses))
         {
@@ -685,7 +685,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
         var returnedValueMayBeNull = returnedValue is not null && ReturnValueMayBeNull(handler!);
 
         // MVC's ApiExplorer lists the 200 of an action's return type only when no status is declared at all (ApiResponseTypeProvider,
-        // aspnetcore v10.0.0): declaring only an error ([ProducesResponseType<ValidationProblemDetails>(400)]) dropped the 200 the action
+        // aspnetcore v11.0.0): declaring only an error ([ProducesResponseType<ValidationProblemDetails>(400)]) dropped the 200 the action
         // still writes. It is restored unless a success status is declared, with the media type ApiExplorer would have given it. (Minimal
         // APIs keep it: RequestDelegateFactory adds 200 metadata for a value-returning handler.)
         if (returnedValue is not null && !responseTypes.Any(r => r.StatusCode is 0 or (>= 200 and < 300)))
@@ -727,7 +727,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             if (isMvc && apiController && mapClientErrors && status >= 400 && (bodyType is null || bodyType == typeof(void)) && !HttpRules.IsBodylessStatus(status))
             {
                 // under [ApiController] ClientErrorResultFilter turns every status code result of 400 and above (NotFound(), StatusCode(500))
-                // into a ProblemDetails (ProblemDetailsClientErrorFactory, aspnetcore v10.0.0); ApiExplorer types a bare
+                // into a ProblemDetails (ProblemDetailsClientErrorFactory, aspnetcore v11.0.0); ApiExplorer types a bare
                 // [ProducesResponseType(404)] that way already, but not an explicit typeof(void) or a 5xx status
                 bodyType = typeof(ProblemDetails);
             }
@@ -761,7 +761,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
                 }
                 var dataType = eventType.GetGenericArguments()[0];
                 // byte[] data goes out as its bytes, and object data as JSON unless the value is a byte[] (FormatSseItem, aspnetcore
-                // v10.0.0): the client receives either as the event's text, which the contract does not describe
+                // v11.0.0): the client receives either as the event's text, which the contract does not describe
                 var opaqueEvents = dataType == typeof(byte[]) || dataType == typeof(object);
                 if (opaqueEvents)
                 {
@@ -873,10 +873,10 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             }
 
             // MVC writes every ProblemDetails value as application/problem+json, whatever the Accept header or the declared formats say
-            // (ObjectResultExecutor.InferContentTypes adds application/problem+json and application/problem+xml, aspnetcore v10.0.0)
+            // (ObjectResultExecutor.InferContentTypes puts application/problem+json and application/problem+xml first, aspnetcore v11.0.0)
             var mvcProblem = isMvc && jsonDeclaration?.StatusCode != status && typeof(ProblemDetails).IsAssignableFrom(bodyType);
             // a null return value: minimal APIs write the JSON null (RequestDelegateFactory → WriteAsJsonAsync), MVC writes 204 while
-            // HttpNoContentOutputFormatter (TreatNullValueAsNoContent) comes before the JSON formatter, else the JSON null (aspnetcore v10.0.0)
+            // HttpNoContentOutputFormatter (TreatNullValueAsNoContent) comes before the JSON formatter, else the JSON null (aspnetcore v11.0.0)
             var returnsValue = status == 200 && returnedValue is not null && (Nullable.GetUnderlyingType(returnedValue) ?? returnedValue) == (Nullable.GetUnderlyingType(bodyType!) ?? bodyType);
             var nullIsNoContent = isMvc && jsonDeclaration?.StatusCode != status && nullAsNoContent && !responseTypes.Any(x => x.StatusCode == 204) && (returnsValue ? returnedValueMayBeNull : status == 200 && !bodyType!.IsValueType);
             // An MVC output formatter writes the body in a declared media type that is not JSON (XmlSerializerOutputFormatter, a custom
@@ -971,7 +971,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             }
 
             // MVC writes a value passed to Ok(value), Created…(value), StatusCode(status, value) … with the value's own type, whatever the
-            // action declares (ObjectResult has no DeclaredType: ObjectResultExecutor, aspnetcore v10.0.0): a derived value of a polymorphic
+            // action declares (ObjectResult has no DeclaredType: ObjectResultExecutor, aspnetcore v11.0.0): a derived value of a polymorphic
             // type goes out without the discriminator its union requires, where returning the value itself from ActionResult<T> keeps it.
             // The source shows which statuses such helpers write.
             if (isMvc && PolymorphicJson(responseProfile(status).Options, bodyType!)
@@ -990,9 +990,16 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
                 continue;
             }
 
-            // Only declared formats are trusted. Observed on ASP.NET Core 10: TypedResults.NotFound(problemDetails) writes
-            // application/json, not application/problem+json — in minimal APIs the CLR type never decides the media type.
-            var media = mvcProblem ? "application/problem+json" : jsonFormats.FirstOrDefault()?.Essence ?? "application/json";
+            // A minimal API writes a ProblemDetails value as application/problem+json when a Results or TypedResults helper writes it,
+            // whatever the endpoint declares (HttpResultsHelper.WriteResultAsJsonAsync, aspnetcore v11.0.0: Produces<ProblemDetails>(404)
+            // declares application/json), and as application/json when the handler returns the value itself, which
+            // RequestDelegateFactory writes like any other value although its metadata names application/problem+json
+            // (ProducesResponseTypeMetadata.CreateUnvalidated). Both observed on ASP.NET Core 11. For every other body only the declared
+            // formats are trusted.
+            var minimalProblem = !isMvc && typeof(ProblemDetails).IsAssignableFrom(bodyType);
+            var media = mvcProblem || (minimalProblem && !returnsValue) ? "application/problem+json"
+                : minimalProblem ? "application/json"
+                : jsonFormats.FirstOrDefault()?.Essence ?? "application/json";
             var adapterKind = isMvc ? ResultAdapterKind.MvcObject : (inferred || description.ActionDescriptor.EndpointMetadata.OfType<IProducesResponseTypeMetadata>().Any() ? ResultAdapterKind.MinimalResult : ResultAdapterKind.MinimalJson);
             responses.Add(new Response
             {
@@ -1221,8 +1228,8 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
             || (output && f.GetType() == typeof(Microsoft.AspNetCore.Mvc.Formatters.Xml.EnumerableWrapperProviderFactory)));
 
     /// <summary>
-    /// Members of a <c>Results&lt;…&gt;</c> return type that describe no response: UnauthorizedHttpResult implements no
-    /// IEndpointMetadataProvider, and ProblemHttpResult's only adds DisableCookieRedirectMetadata (aspnetcore v10.0.0). ApiExplorer
+    /// Members of a <c>Results&lt;…&gt;</c> return type that describe no response: a result type that implements no
+    /// IEndpointMetadataProvider, and ProblemHttpResult, whose own only adds DisableCookieRedirectMetadata (aspnetcore v11.0.0). ApiExplorer
     /// cannot know what they write. They are reported unless the endpoint declares a status that none of the describing members
     /// produces (then the application has declared them, e.g. with ProducesProblem).
     /// </summary>
@@ -1367,7 +1374,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
 
     /// <summary>
     /// Whether MVC writes a null object result as 204: the first output formatter that accepts a null value is HttpNoContentOutputFormatter
-    /// with TreatNullValueAsNoContent (its default, first in MvcCoreMvcOptionsSetup) rather than the JSON formatter (aspnetcore v10.0.0).
+    /// with TreatNullValueAsNoContent (its default, first in MvcCoreMvcOptionsSetup) rather than the JSON formatter (aspnetcore v11.0.0).
     /// </summary>
     private static bool NullResultIsNoContent(MvcOptions? mvc)
     {
@@ -1401,7 +1408,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
     /// <summary>
     /// Whether a handler's returned value may be null: a Nullable&lt;T&gt;, or a reference whose nullable annotation is nullable or oblivious
     /// (#nullable disable) — the awaited value of Task&lt;T&gt;/ValueTask&lt;T&gt;, the value of ActionResult&lt;T&gt;. A lambda whose return type
-    /// is inferred carries no annotation at all (the C# compiler emits none, observed with the .NET 10 SDK): its value counts as not null,
+    /// is inferred carries no annotation at all (the C# compiler emits none, observed with the .NET 11 SDK): its value counts as not null,
     /// and a lambda that returns null declares it (<c>Item? (…) =&gt; …</c>).
     /// </summary>
     private static bool ReturnValueMayBeNull(System.Reflection.MethodInfo handler)
@@ -1496,7 +1503,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
     /// <summary>
     /// The CLR type a parameter binds to. MVC's ApiExplorer reports string for a parseable or convertible type other than a primitive,
     /// an enum, decimal, the date and time types, Guid and Uri — Int128, Version, IPAddress, a type with its own TryParse
-    /// (DefaultApiDescriptionProvider.GetModelType → EndpointModelMetadata.GetDisplayType, aspnetcore v10.0.0) — and keeps the type in
+    /// (DefaultApiDescriptionProvider.GetModelType → EndpointModelMetadata.GetDisplayType, aspnetcore v11.0.0) — and keeps the type in
     /// the model metadata. A minimal API reports the parameter's own type, and the display type in its model metadata.
     /// </summary>
     private static Type ParameterClrType(ApiParameterDescription p, bool mvc) => mvc && p.ModelMetadata is { } metadata ? metadata.ModelType : p.Type;
@@ -1504,7 +1511,7 @@ public sealed partial class TisiliaContractExporter(IServiceProvider services, I
     /// <summary>
     /// Whether the server reads a value of this type from one text with the type's own parser: a minimal API when the type has a TryParse
     /// (IParsable&lt;T&gt;, TryParse(string, IFormatProvider, out T) or TryParse(string, out T), as ParameterBindingMethodCache finds them),
-    /// MVC when its model metadata is not complex (a TypeConverter from string or a TryParse; aspnetcore v10.0.0).
+    /// MVC when its model metadata is not complex (a TypeConverter from string or a TryParse; aspnetcore v11.0.0).
     /// </summary>
     private static bool ReadsOwnText(Type type, bool mvc, Microsoft.AspNetCore.Mvc.ModelBinding.ModelMetadata? metadata) => mvc
         ? metadata is { IsComplexType: false }

@@ -8,7 +8,7 @@ import type { JsonValue } from "../src/json/ast.js";
 
 /**
  * The additional codec module that Tisilia.Generator embeds and `tisilia codec install-additional` installs. The values
- * below come from the .NET 10 oracle (Half.ToString / Half.Parse over every binary16 value, IPAddress.ToString, System.Text.Json's
+ * below come from the .NET 11 oracle (Half.ToString / Half.Parse over every binary16 value, IPAddress.ToString, System.Text.Json's
  * converters); the programs in tests/oracle/AdditionalTypes run the full sweeps, these fixtures pin the edges.
  */
 const ctx = createCodecContext();
@@ -121,7 +121,7 @@ describe("Uri", () => {
     for (const text of ["https://example.com/a/b?q=1#f", "relative/path?x=y", "", "/abs/%20", "../up", "urn:isbn:0451450523", "http://[::1]:8080/", "mailto:someone@example.com", "file:///C:/data/x.txt", "http://user@host:65535/p;a=b?q#f"]) {
       expect(additional.uriRequestEncode.encodeRequest(text, ctx), text).toEqual(str(text));
     }
-    // refused by .NET 10 (probed): one-letter schemes, hosts outside DNS names, file paths with ':' after a bare drive, '/' in a mailto local part
+    // refused by .NET 11 (probed): one-letter schemes, hosts outside DNS names, file paths with ':' after a bare drive, '/' in a mailto local part
     for (const text of ["C:/x", "http://a..b/", "http://exa~mple.com/", "http://exa%41mple.com/", "http://_a/", "file:///C:", "file://host:80/x", "mailto:a/b@c.com", "net.tcp://host/x", "http://a:65536/", "a b"]) {
       expect(codeOf(() => additional.uriRequestEncode.encodeRequest(text, ctx)), text).toBe("grammar");
     }

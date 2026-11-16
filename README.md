@@ -23,6 +23,9 @@ _Built for teams that need consistent value semantics across .NET and TypeScript
 >
 > The contract format, Codec ABI, portable codec DSL and conformance protocol all use version 0.1. Format versions
 > are separate from the package version and may still change incompatibly before 1.0.0.
+>
+> This README follows the `main` branch, which is ahead of `0.5.0-alpha`: the changes the changelog lists under
+> [Unreleased](CHANGELOG.md#unreleased) are not in the published packages yet.
 
 ---
 
@@ -156,7 +159,7 @@ or options change. The contract supports the following checks:
 - Code runs only when you allow it: exporting and conformance start the application, so they need
   `--allow-execute-project` / `--allow-execute-adapters`, and generating never executes anything
 
-Tisilia targets applications on .NET 10 with a TypeScript front end — a browser app, Nuxt or Node — that need these checks
+Tisilia targets applications on .NET 11 with a TypeScript front end — a browser app, Nuxt or Node — that need these checks
 as part of development and CI. It generates clients for ASP.NET Core APIs and requires the application to run during export.
 
 ---
@@ -263,7 +266,7 @@ as part of development and CI. It generates clients for ASP.NET Core APIs and re
   authentication or another host. Binary-only operations with no codec cases are codec-not-applicable and HTTP-unobserved.
   The runner does not observe XML bodies: their codecs get domain validation only, and the suite lists their round trips
   as not applicable (`xml-not-observed`).
-- **One target.** .NET 10, TypeScript 6, Node 24, the current browsers; no polyfills for older ones.
+- **One target.** .NET 11, TypeScript 6, Node 24, the current browsers; no polyfills for older ones.
 
 Run `tisilia doctor --project ./MyApi --allow-execute-project --format json` for aggregated adoption diagnostics.
 The flag permits application startup, including its side effects; it is not a sandbox. No API handler is probed.
@@ -294,7 +297,7 @@ API is a `tisilia diff` away, per direction (what a client may send, what it may
 
 |  |  |
 | --- | --- |
-| .NET | `net10.0`; ASP.NET Core 10, minimal APIs and controllers |
+| .NET | `net11.0`; ASP.NET Core 11, minimal APIs and controllers |
 | TypeScript | 6 or later; generated code compiles under `strict`, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`, `verbatimModuleSyntax` and `isolatedDeclarations` |
 | JavaScript | ES2022 modules; Node 24; the current versions of Chrome, Edge, Firefox and Safari |
 | Nuxt | 4.5 or later, for `@kkdev92/tisilia-nuxt` |

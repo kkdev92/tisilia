@@ -18,7 +18,7 @@ namespace Tisilia.Contract.Tests;
 
 /// <summary>
 /// An API whose operations share their failures — ProblemDetails for 400 and 404 everywhere — declares them once: ASP.NET Core's
-/// <c>ProducesProblem</c> on a route group (.NET 9 and later) for minimal APIs, a global <c>ProducesResponseTypeAttribute</c> filter for
+/// <c>ProducesProblem</c> on a route group for minimal APIs, a global <c>ProducesResponseTypeAttribute</c> filter for
 /// controllers. Every operation under the declaration then has those cases, and the client reads them as typed responses.
 /// </summary>
 public sealed class CommonProblemResponsesTests : IDisposable

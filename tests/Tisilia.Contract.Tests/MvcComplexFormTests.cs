@@ -18,7 +18,7 @@ namespace Tisilia.Contract.Tests;
 
 /// <summary>
 /// Oracle: MVC reads a complex form model under its BinderModelName, else under the parameter's name when a key starts with it,
-/// else at the root (ParameterBinder, aspnetcore v10.0.0), and ApiExplorer describes the model's leaves without that prefix. The
+/// else at the root (ParameterBinder, aspnetcore v11.0.0), and ApiExplorer describes the model's leaves without that prefix. The
 /// client writes the prefix: through Kestrel, a model with nested models, collections of models and of values and a file, a record
 /// under an explicit [FromForm(Name)], and a collection of models bind from the runtime's encoder.
 /// </summary>

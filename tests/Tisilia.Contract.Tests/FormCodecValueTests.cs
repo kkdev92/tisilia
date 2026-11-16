@@ -27,7 +27,7 @@ namespace Tisilia.Contract.Tests;
 /// Oracle: form values of the additional codec types, written by the runtime's form encoder from the contract (the interpreter's
 /// descriptors, which Explorer uses) as the request codec's canonical text, bind on Kestrel to the same values. A root value or
 /// array binds through the type's TryParse, members and other collections through the form mapper's IParsable&lt;T&gt; or Uri
-/// converter (aspnetcore v10.0.0).
+/// converter (aspnetcore v11.0.0).
 /// </summary>
 public sealed class FormCodecValueTests : IDisposable
 {

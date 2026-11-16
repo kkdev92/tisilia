@@ -317,7 +317,7 @@ public sealed class ProfileContext
             bag.Error(TisiliaCodes.ProfileResolution, "SV16", path + "/options/readCommentHandling", $"profile '{id}': JsonCommentHandling.Allow is not valid for the serializer", [id]);
         }
 
-        var version = typeof(JsonSerializer).Assembly.GetName().Version ?? new Version(10, 0, 0);
+        var version = typeof(JsonSerializer).Assembly.GetName().Version ?? new Version(11, 0, 0);
         var profile = StandardProfile.Create(id, Environment.Version.ToString(3), version.ToString(3), stjOptions, nameMatching.Id);
         builder.AddProfile(profile);
         var ctx = new ProfileContext(builder, profile, copy)
@@ -449,7 +449,7 @@ public sealed class ProfileContext
     }
 
     /// <summary>
-    /// Source-generated contexts ASP.NET Core inserts at the front of the HTTP JSON options' resolver chain (aspnetcore v10.0.0:
+    /// Source-generated contexts ASP.NET Core inserts at the front of the HTTP JSON options' resolver chain (aspnetcore v11.0.0:
     /// ProblemDetailsJsonOptionsSetup, OpenApiSchemaJsonOptions, IdentityEndpointsJsonOptionsSetup, BearerTokenConfigureJsonOptions).
     /// </summary>
     private static readonly Dictionary<string, string> FrameworkResolvers = new(StringComparer.Ordinal)

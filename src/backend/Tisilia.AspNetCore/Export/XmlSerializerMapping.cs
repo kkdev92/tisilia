@@ -7,13 +7,13 @@ namespace Tisilia.AspNetCore.Export;
 /// <summary>
 /// The mapping XmlSerializer itself makes for a type — the one MVC's XmlSerializer formatters serialize with (<c>new XmlSerializer(type)</c>
 /// imports it with <c>XmlReflectionImporter.ImportTypeMapping</c>) — read from System.Private.Xml's internal model (Mappings.cs,
-/// dotnet/runtime v10.0.0), which the reader and the writer interpret. Nothing here derives a name: the names, namespaces, order and
+/// dotnet/runtime v11.0.0), which the reader and the writer interpret. Nothing here derives a name: the names, namespaces, order and
 /// flags are XmlSerializer's own. A member this .NET does not have makes the read fail, and the body stays opaque.
 /// </summary>
 internal static class XmlSerializerMapping
 {
     /// <summary>The System.Private.Xml major version whose internal model was read and verified.</summary>
-    public const int VerifiedMajorVersion = 10;
+    public const int VerifiedMajorVersion = 11;
 
     private static readonly Assembly SerializationAssembly = typeof(XmlSerializer).Assembly;
 

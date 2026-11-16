@@ -5,8 +5,8 @@
     project registers with Tisilia and records the responses they return, which the exporter uses for an endpoint that declares
     none (Results.Ok(value), an IActionResult action returning Ok(value)).
 
-    The compiler loads it, so it targets netstandard2.0 and compiles against the compiler's API at the oldest version a .NET 10
-    SDK runs in: Microsoft.CodeAnalysis 4.14.0, Visual Studio 17.14 (learn.microsoft.com, ".NET SDK, MSBuild, and Visual Studio
+    The compiler loads it, so it targets netstandard2.0 and compiles against the compiler's API at the oldest version a .NET 11
+    SDK runs in: Microsoft.CodeAnalysis 5.12.0, Visual Studio 18.12 (learn.microsoft.com, ".NET SDK, MSBuild, and Visual Studio
     versioning"). A newer reference would not load in an older compiler (CS9057). The reference is compile-only: the compiler
     provides that API, and the package takes no dependency on it.
   -->

@@ -16,14 +16,14 @@ namespace Tisilia.AspNetCore.Export;
 
 public sealed partial class TisiliaContractExporter
 {
-    // FormValueProviderFactory reads form values with CultureInfo.CurrentCulture (aspnetcore v10.0.0)
+    // FormValueProviderFactory reads form values with CultureInfo.CurrentCulture (aspnetcore v11.0.0)
     private const string MvcValueBinder = "MVC binds this form value through the type's TypeConverter or TryParse with the request culture";
 
     private static bool IsDictionary(Type type) => type.IsGenericType && type.GetGenericTypeDefinition() is var definition
         && (definition == typeof(Dictionary<,>) || definition == typeof(IDictionary<,>) || definition == typeof(IReadOnlyDictionary<,>))
         || type.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDictionary<,>));
 
-    /// <summary>ComplexObjectModelBinder.CanUpdateReadOnlyProperty (aspnetcore v10.0.0): a read-only member of a mutable reference type is updated in place.</summary>
+    /// <summary>ComplexObjectModelBinder.CanUpdateReadOnlyProperty (aspnetcore v11.0.0): a read-only member of a mutable reference type is updated in place.</summary>
     private static bool CanUpdateReadOnly(Type type) => !type.IsValueType && !type.IsArray && type != typeof(string);
 
     // everyFile receives the fields the server fills with every file of the request (a minimal API's IFormFileCollection)
@@ -49,7 +49,8 @@ public sealed partial class TisiliaContractExporter
         }
         var rootIndexed = !mvc && repeated && parameterType != typeof(IFormFileCollection) && !parameterType.IsArray;
         // RequestDelegateFactory binds a parameter whose type, or array element type, has a TryParse (IParsable<T> included) through it,
-        // as it binds a query value, not through the form mapper, and records that as HasTryParse (useSimpleBinding, aspnetcore v10.0.0).
+        // and a string or a string array as it is, as it binds a query value, not through the form mapper, and records that as HasTryParse
+        // (useSimpleBinding, aspnetcore v11.0.0).
         // ApiExplorer describes the parameter from that record, so it is always there for a minimal API.
         var binding = mvc ? null : bindings.FirstOrDefault(b => ReferenceEquals(b.ParameterInfo, info));
         if (TryLeaf(element, parameter.Name, repeated, indexed: rootIndexed, required, fields,
@@ -58,7 +59,7 @@ public sealed partial class TisiliaContractExporter
             ownParser: mvc && (repeated ? parameter.ModelMetadata?.ElementMetadata : parameter.ModelMetadata)?.IsComplexType == false))
         {
             // RequestDelegateFactory binds an IFormFileCollection parameter to form.Files, every file whatever its name; MVC's
-            // FormFileModelBinder picks the files of its own name, ignoring case (aspnetcore v10.0.0)
+            // FormFileModelBinder picks the files of its own name, ignoring case (aspnetcore v11.0.0)
             if (!mvc && parameterType == typeof(IFormFileCollection)) { everyFile.Add(fields[^1]); }
             return;
         }
@@ -112,7 +113,7 @@ public sealed partial class TisiliaContractExporter
             {
                 // RequestDelegateFactory reads a root value or array through the type's TryParse, as it reads a query value. The form mapper
                 // reads members and other collections through IParsable<T>.TryParse (ParsableConverter) or Uri.TryCreate(RelativeOrAbsolute)
-                // (UriFormDataConverter), with the invariant culture either way (aspnetcore v10.0.0); for these types that is the method a
+                // (UriFormDataConverter), with the invariant culture either way (aspnetcore v11.0.0); for these types that is the method a
                 // query parameter of the type uses. A type without IParsable<T> is a model to the form mapper (Version).
                 if (simpleBinding is null) { Unsupported("the endpoint does not record how it binds this parameter"); return true; }
                 if (simpleBinding == false && type != typeof(Uri) && !type.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IParsable<>) && i.GetGenericArguments()[0] == type))
@@ -146,7 +147,7 @@ public sealed partial class TisiliaContractExporter
         }
 
         // FormDataMapper reads a dictionary from name[key], a root one from [key]: the key is the text up to the first ']', parsed with the
-        // invariant culture, and keys are gathered ignoring case (DictionaryConverter, FormDataReader.GetKeys, aspnetcore v10.0.0). The
+        // invariant culture, and keys are gathered ignoring case (DictionaryConverter, FormDataReader.GetKeys, aspnetcore v11.0.0). The
         // client writes each key's canonical text and refuses ']' and keys that are equal ignoring case.
         bool TryMap(Type type, string name, bool needed, List<FormField> target, string? wireName = null)
         {
@@ -197,7 +198,7 @@ public sealed partial class TisiliaContractExporter
             if (type == typeof(IFormFileCollection))
             {
                 // the form mapper fills a member IFormFileCollection with every file of the request too (FormDataMapper's IFormFileCollection
-                // converter, aspnetcore v10.0.0): exact as the operation's only file field, which the operation checks; in a model
+                // converter, aspnetcore v11.0.0): exact as the operation's only file field, which the operation checks; in a model
                 // collection each item would take them all
                 if (collectionElement) { Unsupported("an IFormFileCollection in a model collection receives every file of the request for each item; use single IFormFile members"); return; }
                 if (TryLeaf(typeof(IFormFile), name, true, indexed: false, needed, target)) { everyFile.Add(target[^1]); }
@@ -258,7 +259,7 @@ public sealed partial class TisiliaContractExporter
             if (target.Count == before) { Unsupported("form model has no supported writable fields"); }
         }
 
-        // MVC (aspnetcore v10.0.0): ParameterBinder reads a complex model under its BinderModelName when one is set, else under the
+        // MVC (aspnetcore v11.0.0): ParameterBinder reads a complex model under its BinderModelName when one is set, else under the
         // parameter's name when a key starts with it, else at the root, and ApiExplorer describes the model's leaves without that prefix.
         // The client always writes the prefix, so the model never reads a sibling's keys: the model is one object field named by it,
         // walked through the metadata ComplexObjectModelBinder binds by — the bound constructor's parameters, then the other bindable

@@ -22,7 +22,7 @@ import {
 } from "../src/primitives/datetime.js";
 import { CodecError } from "../src/codec/errors.js";
 
-// Expected values are what .NET 10's System.Text.Json produces (tests/oracle/DotnetStjOracle prints them).
+// Expected values are what .NET 11's System.Text.Json produces (tests/oracle/DotnetStjOracle prints them).
 
 describe("decimal", () => {
   it("keeps scale like System.Text.Json (1.00 stays 1.00, 1.2300 stays 1.2300)", () => {

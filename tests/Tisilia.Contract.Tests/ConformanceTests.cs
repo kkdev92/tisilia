@@ -156,7 +156,7 @@ public class ConformanceTests
         var built = EvidenceBuilder.Build(index, closure, suite, results, new EvidenceInputs
         {
             IssuerId = issuer,
-            Matrix = new RuntimeMatrix { Dotnet = "10.0.12", Aspnetcore = "10.0.12", Stj = "10.0.0", Typescript = "6.0.3", Node = "24.13.1", Os = "test", Architecture = "x64" },
+            Matrix = new RuntimeMatrix { Dotnet = "11.0.0", Aspnetcore = "11.0.0", Stj = "11.0.0", Typescript = "6.0.3", Node = "24.13.1", Os = "test", Architecture = "x64" },
             Context = [new NameValue { Name = "dotnet.timeZone", Value = "UTC" }],
             ModuleArtifacts = closure.DeclaredModuleArtifacts(),
             ApplicationArtifacts = [new Artifact { Target = ArtifactTarget.Dotnet, Path = "bin/App.dll", Digest = "sha256:" + new string('a', 64) }, .. clientArtifacts ?? []],
@@ -266,7 +266,7 @@ public class ConformanceTests
         var built = EvidenceBuilder.Build(index, closure, suite, results, new EvidenceInputs
         {
             IssuerId = "ci",
-            Matrix = new RuntimeMatrix { Dotnet = "10.0.12", Aspnetcore = "10.0.12", Stj = "10.0.0", Typescript = "6.0.3", Os = "test", Architecture = "x64" },
+            Matrix = new RuntimeMatrix { Dotnet = "11.0.0", Aspnetcore = "11.0.0", Stj = "11.0.0", Typescript = "6.0.3", Os = "test", Architecture = "x64" },
             Context = [],
             ModuleArtifacts = closure.DeclaredModuleArtifacts(),
             ApplicationArtifacts = [new Artifact { Target = ArtifactTarget.Node, Path = "dist/index.js", Digest = "sha256:" + new string('b', 64) }],

@@ -76,7 +76,7 @@ function clampTicks(ticks: bigint): bigint {
 
 /**
  * The DateTime the server reads for a key: its ticks, or — for a key with an offset whose instant the contract's zone does not cover —
- * the range its ticks lie in. DateTime.ToLocalTime clamps to the DateTime range (System.Private.CoreLib v10.0.0).
+ * the range its ticks lie in. DateTime.ToLocalTime clamps to the DateTime range (System.Private.CoreLib v11.0.0).
  */
 type ServerKey =
   | { readonly kind: "exact"; readonly ticks: bigint; readonly instant: bigint | undefined }

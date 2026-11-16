@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- https://learn.microsoft.com/dotnet/fundamentals/package-validation/diagnostic-ids -->
+<!--
+  The break against the baseline that the move to .NET 11 accepts (the changelog's Compatibility): the package has no net10.0
+  assembly any more. Delete this file in the version bump that moves PackageValidationBaselineVersion to a release that
+  targets net11.0: against that baseline the suppression matches nothing, and pack fails until it goes.
+-->
+<Suppressions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <Suppression>
+    <DiagnosticId>PKV006</DiagnosticId>
+    <Target>net10.0</Target>
+  </Suppression>
+</Suppressions>

@@ -6,7 +6,7 @@
     The packages Tisilia publishes take no third-party runtime dependency: nothing here may be referenced by a project under
     src/backend, with one exception that ships no dependency. Tisilia.AspNetCore.SourceGenerator compiles against the compiler's
     own API (Microsoft.CodeAnalysis.CSharp, PrivateAssets="all"): the compiler that loads the generator provides it, so the
-    package carries the generator and nothing it references. Its version is the oldest compiler a .NET 10 SDK runs in, and the
+    package carries the generator and nothing it references. Its version is the oldest compiler a .NET 11 SDK runs in, and the
     test project uses the same one to drive the generator. The rest are the test project's.
   -->
 
@@ -15,9 +15,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.12.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="11.0.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
   </ItemGroup>

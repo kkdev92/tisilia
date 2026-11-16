@@ -20,7 +20,7 @@ using Xunit;
 namespace Tisilia.Contract.Tests;
 
 /// <summary>
-/// An enum the server reads and writes by name alone can be held by name on the client (<c>TisiliaOptions.Enums</c>). On .NET 10, a
+/// An enum the server reads and writes by name alone can be held by name on the client (<c>TisiliaOptions.Enums</c>). On .NET 11, a
 /// JsonStringEnumConverter with <c>allowIntegerValues: false</c> refuses a JSON number and an integer string, and refuses to write a
 /// value no member defines; it writes each member's serialized name and reads it as written, and reads a member's C# name in any
 /// case, except a member that <c>[JsonStringEnumMemberName]</c> names. Oracle: <c>tests/oracle/EnumNames/observe.cs</c>.

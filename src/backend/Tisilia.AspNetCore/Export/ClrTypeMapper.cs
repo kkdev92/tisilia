@@ -77,30 +77,6 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         builder.TagCodecProfile(use.CodecId, profile.Profile.Id);
     }
 
-    /// <summary>
-    /// Whether this System.Text.Json writes <c>[JsonExtensionData] JsonObject</c> entries as members (dotnet/runtime#97225: up to
-    /// .NET 10 the object is written as a nested value without a name, which is invalid JSON). Observed, not inferred from a version.
-    /// </summary>
-    private static readonly Lazy<bool> JsonObjectExtensionDataWritesValidJson = new(() =>
-    {
-        try
-        {
-            var written = JsonSerializer.Serialize(new ExtensionDataProbe { Extra = new JsonObject { ["x"] = 1 } }, TisiliaJson.Plain);
-            using var document = JsonDocument.Parse(written);
-            return document.RootElement.TryGetProperty("x", out var x) && x.ValueKind == JsonValueKind.Number;
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
-    });
-
-    private sealed class ExtensionDataProbe
-    {
-        [JsonExtensionData]
-        public JsonObject? Extra { get; set; }
-    }
-
     public static string? ScalarNameOf(Type type)
     {
         if (type == typeof(string))
@@ -249,7 +225,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         else if (!type.IsValueType && member is not null)
         {
             // Responses: without RespectNullableAnnotations the server may write null for any reference member
-            // (observed on .NET 10), so the null branch stays unless the profile enforces annotations.
+            // (observed on .NET 11), so the null branch stays unless the profile enforces annotations.
             // Requests: the client only sends null where the setter is annotated nullable.
             nullable = direction == WireDirection.ServerWrite ? member.IsGetNullable || !profile.Options.RespectNullableAnnotations : member.IsSetNullable;
         }
@@ -272,7 +248,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
     }
 
     /// <summary>
-    /// The converter type System.Text.Json uses for a type at type level, in its own precedence (dotnet/runtime v10.0.0,
+    /// The converter type System.Text.Json uses for a type at type level, in its own precedence (dotnet/runtime v11.0.0,
     /// <c>DefaultJsonTypeInfoResolver.GetConverterForType</c>): the first options converter that can convert the type, else the
     /// type's <c>[JsonConverter]</c>, else the resolved built-in converter. A factory is reported as the factory type — what a
     /// registration names — whereas <see cref="JsonTypeInfo.Converter"/> holds the converter the factory created.
@@ -671,14 +647,14 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         _ => "datetime",
     };
 
-    // JsonConverter.CanHaveMetadata (internal, System.Text.Json v10.0.0): true for the object converters and the mutable collection and
+    // JsonConverter.CanHaveMetadata (internal, System.Text.Json v11.0.0): true for the object converters and the mutable collection and
     // dictionary converters, false for arrays, immutable collections, Memory<T>, the JSON node converters and custom converters
     private static readonly PropertyInfo? CanHaveMetadata = typeof(JsonConverter).GetProperty("CanHaveMetadata", BindingFlags.Instance | BindingFlags.NonPublic);
 
     /// <summary>
     /// Whether the server writes reference metadata for a value at this position: under ReferenceHandler.Preserve, System.Text.Json writes
     /// <c>$id</c> (and <c>$ref</c> for a value it wrote before) for a value that is not a value type when its converter can have metadata
-    /// (JsonConverter.TryHandleSerializedObjectReference and WriteMetadataForObject, v10.0.0).
+    /// (JsonConverter.TryHandleSerializedObjectReference and WriteMetadataForObject, v11.0.0).
     /// </summary>
     private bool WritesReferenceMetadata(Type type, JsonConverter converter, WireDirection direction, string path)
     {
@@ -701,7 +677,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
     /// Whether a request may carry reference metadata for a value at this position, also inside the value: under ReferenceHandler.Preserve,
     /// System.Text.Json reads <c>$id</c> and <c>{"$ref"}</c> where the converter can have metadata on a value that is not a value type, and
     /// registers an object, collection or dictionary before it reads the members or items (ObjectDefaultConverter, JsonCollectionConverter,
-    /// JsonDictionaryConverter, v10.0.0). An object built through a constructor with parameters is registered only after its members are
+    /// JsonDictionaryConverter, v11.0.0). An object built through a constructor with parameters is registered only after its members are
     /// read, and refuses metadata read while it waits for its constructor (ObjectWithParameterizedConstructorConverter), so the request writes
     /// it without any; <paramref name="referenceOnly"/> asks only whether <c>{"$ref"}</c> can stand at the position (a polymorphic base,
     /// which builds nothing itself). Without the internal flag the request writes trees, which the server always reads.
@@ -901,7 +877,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
             return Unsupported(type, path, $"dictionary '{type}' has no key/value types");
         }
 
-        // System.Text.Json's NullableConverter<T> has no property-name support (v10.0.0): a Nullable<T> key throws NotSupportedException
+        // System.Text.Json's NullableConverter<T> has no property-name support (v11.0.0): a Nullable<T> key throws NotSupportedException
         // on read and on write
         if (Nullable.GetUnderlyingType(keyType) is not null)
         {
@@ -957,7 +933,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         var mapId = ModelId(type, direction);
         var mapUse = builder.MapOf(mapId, UniqueTsName(Capitalize(valueName) + "Map", mapId, direction), CleanName(type), key, value, comparerId,
             writeReferenceMetadata: WritesReferenceMetadata(type, info.Converter, direction, path), readReferenceMetadata: ReadsReferenceMetadata(type, info, direction));
-        // DictionaryKeyPolicy is applied when System.Text.Json writes string and enum keys, never when it reads them (observed on .NET 10):
+        // DictionaryKeyPolicy is applied when System.Text.Json writes string and enum keys, never when it reads them (observed on .NET 11):
         // the response does not keep the key names of the value the server holds
         if (profile.Options.DictionaryKeyPolicy is not null && (keyType == typeof(string) || keyType.IsEnum))
         {
@@ -1025,7 +1001,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
     /// <summary>
     /// Whether the converter in effect reads and writes the enum by name alone, observed as the string form is: a JSON number and an
     /// integer string are refused on read, and a value no member defines is refused on write. JsonStringEnumConverter does this with
-    /// <c>allowIntegerValues: false</c> (dotnet/runtime v10.0.0, <c>EnumConverter</c>).
+    /// <c>allowIntegerValues: false</c> (dotnet/runtime v11.0.0, <c>EnumConverter</c>).
     /// </summary>
     private bool EnumNamesOnly(Type type, JsonPropertyInfo? member)
     {
@@ -1235,7 +1211,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         {
             var pPath = path + "/" + prop.Name;
             // under ReferenceHandler.Preserve System.Text.Json reads a property name that starts with '$' as reference metadata and throws
-            // ("Properties that start with '$' are not allowed in types that support metadata", observed on 10.0.12)
+            // ("Properties that start with '$' are not allowed in types that support metadata", observed on .NET 11)
             if (direction == WireDirection.ServerRead && ReferenceEquals(profile.Options.ReferenceHandler, ReferenceHandler.Preserve) && prop.Name.StartsWith('$'))
             {
                 bag.Error(TisiliaCodes.ReferencePreserve, "SV20", pPath, $"'{type.Name}.{prop.Name}': under ReferenceHandler.Preserve, System.Text.Json reads a property name that starts with '$' as reference metadata and refuses the request", [id],
@@ -1246,14 +1222,8 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
 
             if (prop.IsExtensionData)
             {
-                if (direction == WireDirection.ServerWrite && prop.PropertyType == typeof(JsonObject) && !JsonObjectExtensionDataWritesValidJson.Value)
-                {
-                    bag.Error(TisiliaCodes.UnresolvedReference, "SV03", pPath, $"extension data '{type.Name}.{prop.Name}' is a JsonObject: this System.Text.Json ({typeof(JsonSerializer).Assembly.GetName().Version}) writes its entries as invalid JSON ({{\"a\":1,{{\"x\":1}}}}, dotnet/runtime#97225, fixed in .NET 11); a response cannot carry it", [id],
-                        "declare the extension data as Dictionary<string, JsonElement> or Dictionary<string, object>");
-                    failed = true;
-                    continue;
-                }
-
+                // a JsonObject's entries are written as members of the object, like a dictionary's (JsonObjectConverter.WriteExtensionDataValue,
+                // dotnet/runtime v11.0.0)
                 var valueType = prop.PropertyType.IsGenericType ? prop.PropertyType.GetGenericArguments().Last() : typeof(object);
                 var valueUse = Map(valueType, direction, pPath, isRoot: false);
                 if (valueUse is null)
@@ -1278,11 +1248,11 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
             var populate = (prop.ObjectCreationHandling ?? (typePopulate ? JsonObjectCreationHandling.Populate : JsonObjectCreationHandling.Replace)) == JsonObjectCreationHandling.Populate && CanPopulate(prop.PropertyType);
             var canRead = prop.Set is not null || prop.AssociatedParameter is not null || (populate && prop.Get is not null);
             var canWrite = prop.Get is not null;
-            // System.Text.Json (JsonPropertyInfo.DetermineSerializationCapabilities, v10.0.0): without a member-level [JsonIgnore], a
-            // collection member that only has a setter is never read, and a read-only member of another type is not written under
-            // IgnoreReadOnlyProperties (properties) / IgnoreReadOnlyFields (fields) unless a ShouldSerialize predicate was set
+            // System.Text.Json (JsonPropertyInfo.DetermineSerializationCapabilities, v11.0.0): without a [JsonIgnore] of its own or of
+            // its type, a collection member that only has a setter is never read, and a read-only member of another type is not written
+            // under IgnoreReadOnlyProperties (properties) / IgnoreReadOnlyFields (fields) unless a ShouldSerialize predicate was set
             var memberInfo = prop.AttributeProvider as MemberInfo;
-            if (memberInfo?.GetCustomAttribute<JsonIgnoreAttribute>(inherit: true) is null)
+            if (DeclaredIgnoreCondition(prop, type, out _) is null)
             {
                 var collectionMember = IsCollectionType(prop.PropertyType);
                 if (collectionMember && prop.Get is null && prop.Set is not null && prop.AssociatedParameter is null)
@@ -1296,7 +1266,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
                     canWrite = false;
                 }
             }
-            var (ignore, ownPredicate, replaced) = WriteCondition(prop);
+            var (ignore, ownPredicate, replaced) = WriteCondition(prop, type);
             if (ignore == IgnoreCondition.Always || (direction == WireDirection.ServerRead && !canRead) || (direction == WireDirection.ServerWrite && !canWrite))
             {
                 continue;
@@ -1476,7 +1446,7 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
     /// <summary>
     /// Whether System.Text.Json leaves a presence wrapper's absent state out of what it writes. A ShouldSerialize predicate decides when
     /// the member has one — [JsonIgnore(Condition = WhenWritingDefault)] on the member is one, and one a type info modifier sets replaces
-    /// any ignore condition (dotnet/runtime v10.0.0, <c>JsonPropertyInfo.ShouldSerialize</c>) — asked with an instance of the type that no
+    /// any ignore condition (dotnet/runtime v11.0.0, <c>JsonPropertyInfo.ShouldSerialize</c>) — asked with an instance of the type that no
     /// constructor ran for. Without one, the options' WhenWritingDefault leaves the default out, which the absent state is, and a member
     /// whose [JsonIgnore] predicate a modifier removed is always written (<paramref name="ignore"/> is then Never).
     /// </summary>
@@ -1544,6 +1514,16 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
         if (poly.UnknownDerivedTypeHandling != JsonUnknownDerivedTypeHandling.FailSerialization)
         {
             bag.Error(TisiliaCodes.UnresolvedReference, "SV03", path, $"polymorphic type '{type}' uses UnknownDerivedTypeHandling.{poly.UnknownDerivedTypeHandling}; falling back to the base type loses information and needs an explicit projection", [NeutralModelId(type)]);
+            return null;
+        }
+
+        // A type classifier takes the place of the discriminator when System.Text.Json reads the type: the derived type is the one the
+        // application's code names for the payload, whatever $type says (JsonSerializer.TryReadMetadata, dotnet/runtime v11.0.0). It
+        // has no part in writing.
+        if (direction == WireDirection.ServerRead && profile.Options.GetTypeInfo(type).TypeClassifier is not null)
+        {
+            bag.Error(TisiliaCodes.UnresolvedReference, "SV03", path, $"polymorphic type '{type}' is read through a type classifier; the derived type the server reads is decided by the application's code, which the contract cannot describe", [NeutralModelId(type)],
+                "read the type by its discriminator alone: remove the type classifier, or receive the request as a type without one");
             return null;
         }
 
@@ -1707,45 +1687,71 @@ public sealed class ClrTypeMapper(ContractBuilder builder, ProfileContext profil
 
     /// <summary>
     /// What decides whether System.Text.Json writes the member: the ignore condition that applies, or a ShouldSerialize predicate of the
-    /// application's own, with the condition that predicate takes the place of. System.Text.Json expresses a member's
-    /// <c>[JsonIgnore(Condition = …)]</c> as a predicate of its own, in reflection and source-generated metadata alike; a type info
-    /// modifier that sets ShouldSerialize replaces it, and one that sets null removes it, so the member is always written. The options'
-    /// DefaultIgnoreCondition applies only to a member without a predicate (dotnet/runtime v10.0.0, <c>JsonPropertyInfo.ShouldSerialize</c>
-    /// and <c>DetermineIgnoreCondition</c>). Oracle: <c>tests/oracle/ShouldSerialize/observe.cs</c>.
+    /// application's own, with the condition that predicate takes the place of. System.Text.Json expresses a declared
+    /// <c>[JsonIgnore(Condition = …)]</c>, the member's or its type's, as a predicate of its own, in reflection and source-generated
+    /// metadata alike; a type info modifier that sets ShouldSerialize replaces it, and one that sets null removes it, so the member is
+    /// always written. The options' DefaultIgnoreCondition applies only to a member without a declared condition (dotnet/runtime
+    /// v11.0.0, <c>JsonPropertyInfo.ShouldSerialize</c> and <c>DetermineIgnoreCondition</c>). Oracle:
+    /// <c>tests/oracle/ShouldSerialize/observe.cs</c>.
     /// </summary>
-    private static (IgnoreCondition Ignore, bool OwnPredicate, string? Replaced) WriteCondition(JsonPropertyInfo prop)
+    private static (IgnoreCondition Ignore, bool OwnPredicate, string? Replaced) WriteCondition(JsonPropertyInfo prop, Type owner)
     {
-        var condition = EffectiveIgnoreCondition(prop);
-        var attribute = prop.AttributeProvider?.GetCustomAttributes(typeof(JsonIgnoreAttribute), inherit: true).OfType<JsonIgnoreAttribute>().FirstOrDefault();
+        var declared = DeclaredIgnoreCondition(prop, owner, out var onType);
+        var condition = EffectiveIgnoreCondition(prop, declared);
         var own = prop.ShouldSerialize is { } predicate && predicate.Method.Module.Assembly != typeof(JsonPropertyInfo).Assembly;
-        if (attribute is null)
+        if (declared is null)
         {
             return own ? (IgnoreCondition.Never, true, condition == IgnoreCondition.Never ? null : $"the options' {condition}") : (condition, false, null);
         }
 
         // Always leaves the member without accessors, and WhenReading is no predicate: neither is a condition on writing
-        if (attribute.Condition is JsonIgnoreCondition.Always or JsonIgnoreCondition.WhenReading)
+        if (declared is JsonIgnoreCondition.Always or JsonIgnoreCondition.WhenReading)
         {
             return (condition, own, null);
         }
 
         if (own)
         {
-            return (IgnoreCondition.Never, true, $"[JsonIgnore(Condition = {attribute.Condition})] on the member");
+            return (IgnoreCondition.Never, true, onType is { } written ? $"[JsonIgnore(Condition = {written})] on its type" : $"[JsonIgnore(Condition = {declared})] on the member");
         }
 
         return (prop.ShouldSerialize is null ? IgnoreCondition.Never : condition, false, null);
     }
 
-    private static IgnoreCondition EffectiveIgnoreCondition(JsonPropertyInfo prop)
+    /// <summary>
+    /// The ignore condition a member declares: its own <c>[JsonIgnore]</c>, else the one on the type whose metadata holds the member —
+    /// that type itself, not its base types — which is Never where it says WhenWritingNull and the member cannot be null, so it still
+    /// takes the place of the options' condition (DefaultJsonTypeInfoResolver.CreatePropertyInfo, dotnet/runtime v11.0.0). Null when
+    /// neither declares one, and for a member a type info modifier added. <paramref name="onType"/> is the type's condition as it is
+    /// written, when that is the one that applies.
+    /// </summary>
+    private static JsonIgnoreCondition? DeclaredIgnoreCondition(JsonPropertyInfo prop, Type owner, out JsonIgnoreCondition? onType)
     {
-        var attr = prop.AttributeProvider?.GetCustomAttributes(typeof(JsonIgnoreAttribute), inherit: true).OfType<JsonIgnoreAttribute>().FirstOrDefault();
-        if (attr is not null)
+        onType = null;
+        if (prop.AttributeProvider is not { } member)
         {
-            return (IgnoreCondition)Enum.Parse(typeof(IgnoreCondition), attr.Condition.ToString());
+            return null;
         }
 
-        // System.Text.Json (JsonPropertyInfo.DetermineIgnoreCondition, v10.0.0): the obsolete IgnoreNullValues skips null values of every
+        if (member.GetCustomAttributes(typeof(JsonIgnoreAttribute), inherit: true).OfType<JsonIgnoreAttribute>().FirstOrDefault() is { } attribute)
+        {
+            return attribute.Condition;
+        }
+
+        onType = owner.GetCustomAttributes(typeof(JsonIgnoreAttribute), inherit: false).OfType<JsonIgnoreAttribute>().FirstOrDefault()?.Condition;
+        return onType == JsonIgnoreCondition.WhenWritingNull && prop.PropertyType.IsValueType && Nullable.GetUnderlyingType(prop.PropertyType) is null
+            ? JsonIgnoreCondition.Never
+            : onType;
+    }
+
+    private static IgnoreCondition EffectiveIgnoreCondition(JsonPropertyInfo prop, JsonIgnoreCondition? declared)
+    {
+        if (declared is { } condition)
+        {
+            return (IgnoreCondition)Enum.Parse(typeof(IgnoreCondition), condition.ToString());
+        }
+
+        // System.Text.Json (JsonPropertyInfo.DetermineIgnoreCondition, v11.0.0): the obsolete IgnoreNullValues skips null values of every
         // member whose type can be null on write (and ignores null tokens on read), unless the member configures its own condition
 #pragma warning disable SYSLIB0020 // the obsolete option is still honoured by System.Text.Json and must be described
         if (prop.Options.IgnoreNullValues && (!prop.PropertyType.IsValueType || Nullable.GetUnderlyingType(prop.PropertyType) is not null))

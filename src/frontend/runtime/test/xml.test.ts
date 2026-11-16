@@ -33,7 +33,7 @@ describe("XML parser", () => {
   });
 
   it("normalizes line ends and attribute white space, but keeps character references", () => {
-    // XML 1.0 §2.11 and §3.3.3, as MVC's XmlSerializer formatters read the same document on .NET 10
+    // XML 1.0 §2.11 and §3.3.3, as MVC's XmlSerializer formatters read the same document on .NET 11
     const root = parseXml("<a b=\"x\ty\nz&#x9;&#xA;&#xD;\">1\r\n2\r3&#xD;</a>");
     expect(root.attributes[0]!.value).toBe("x y z\t\n\r");
     expect(root.children).toEqual([{ kind: "text", value: "1\n2\n3\r" }]);
@@ -104,7 +104,7 @@ describe("XML writer", () => {
 
 describe("XML lexical forms", () => {
   it("writes and reads xs:duration as XmlConvert does", () => {
-    // what XmlConvert.ToString(TimeSpan) writes on .NET 10
+    // what XmlConvert.ToString(TimeSpan) writes on .NET 11
     const cases: [bigint, string][] = [
       [0n, "PT0S"],
       [1n, "PT0.0000001S"],

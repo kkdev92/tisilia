@@ -19,7 +19,7 @@ namespace Tisilia.Contract.Tests;
 
 /// <summary>
 /// Under ReferenceHandler.Preserve the server writes reference metadata where System.Text.Json's converter can have it and the value
-/// is not a value type (JsonConverter.TryHandleSerializedObjectReference, v10.0.0): <c>$id</c> first on objects and mutable dictionaries,
+/// is not a value type (JsonConverter.TryHandleSerializedObjectReference, v11.0.0): <c>$id</c> first on objects and mutable dictionaries,
 /// mutable collections inside <c>{"$id","$values"}</c>, and <c>{"$ref"}</c> for a value it wrote before; arrays, immutable collections,
 /// structs and the JSON node types carry none. The contract marks each such server-write wire. Oracle: through Kestrel, the runtime
 /// decodes what the server wrote, data that looks like metadata included, and a value written twice as one value.

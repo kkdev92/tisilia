@@ -8,6 +8,66 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+Tisilia moves to .NET 11. The packages target `net11.0` and describe what ASP.NET Core 11 and System.Text.Json 11 do;
+they no longer run on .NET 10. The format versions are unchanged.
+
+### Added
+
+- **A type's `[JsonIgnore(Condition = …)]`.** System.Text.Json 11 applies an ignore condition written on a type to each
+  of its members that declares none. The contract records it for those members: a member the server leaves out when it
+  is null is optional, and the diagnostic for a ShouldSerialize predicate that takes its place (SV19) names the type's
+  condition.
+- `[JsonExtensionData]` of type `JsonObject` is exported for responses. System.Text.Json 11 writes its entries as the
+  members they are, so the refusal (SV03) is gone.
+- A form with a dictionary may have a field whose name has a `[` that no `]` follows. ASP.NET Core 11 reads such a
+  form, so the refusal (SV30) is gone.
+- Tests hold the JSON shapes System.Text.Json 11 adds to what the server does: polymorphism inferred from a closed
+  hierarchy, `[JsonNamingPolicy]`, `IReadOnlySet<T>`, read-only extension data and an enum member with an empty name are
+  exported and read by the client as they are; a C# union, `Decimal64` and `BFloat16` are refused (SV03), as every type
+  without a codec is.
+
+### Changed
+
+- The packages target `net11.0` and ASP.NET Core 11, and are built with C# 15. The source generator of
+  `Tisilia.AspNetCore` compiles against Microsoft.CodeAnalysis 5.12.0, the compiler of the .NET SDK 11.0.100.
+- **A problem details response of a minimal API** has the media type ASP.NET Core 11 writes it with. A `ProblemDetails`
+  written by a result — `Results.NotFound(problem)`, `TypedResults.Json(problem, statusCode: 409)` — is
+  `application/problem+json`, also where the endpoint declares it with `Produces<ProblemDetails>(…)`; a `ProblemDetails`
+  the handler returns as a value is `application/json`. Before, the contract took the media type from the declaration,
+  and the client reported the response the server wrote as unexpected.
+- **Two response types for one status code** are refused with SV28, which names the types. ASP.NET Core 11 lists every
+  type declared for a status code — `Results<Ok<A>, Ok<B>>`, `.Produces<A>().Produces<B>()`, two `[ProducesResponseType]`
+  attributes — and the client selects a response case by status code and media type, so it could not tell them apart.
+  File responses of one status code are still compared by media type. `ProblemDetails`, `HttpValidationProblemDetails`
+  and `ValidationProblemDetails` declared for one status code are one response, the least derived of them: a route
+  group's `ProducesProblem(400)` next to an endpoint's `ProducesValidationProblem()` is a `ProblemDetails`, which
+  carries `errors` in its extension data.
+- **A polymorphic type read through a type classifier** is refused for requests (SV03). With
+  `[JsonPolymorphic(TypeClassifier = …)]` or `JsonSerializerOptions.TypeClassifiers`, the application's code decides which
+  derived type the server reads, whatever the discriminator says, and a contract cannot describe that. Responses of such
+  a type are exported as before: a classifier has no part in writing.
+- The responses a handler's return paths imply are listed by status code, the order ASP.NET Core 11 lists them in.
+- The explorer labels an operation whose endpoint validates requests "CSRF protection" instead of "antiforgery token".
+  ASP.NET Core 11 checks where a request to a minimal API's form endpoint comes from, with or without the antiforgery
+  middleware; [getting started](docs/getting-started.md) describes what that means for a client on another origin.
+- The table the runtime compares names with, as `StringComparer.OrdinalIgnoreCase` does, was generated again on
+  .NET 11.0.0 and is the same.
+
+### Compatibility
+
+- **.NET 10 is no longer supported.** An application has to target `net11.0` to reference the packages, and the
+  `tisilia` tool needs the .NET 11 runtime. Building an application that references `Tisilia.AspNetCore` needs the .NET
+  SDK 11.0.100 or later, or Visual Studio 18.12 or later.
+- The format versions stay 0.1. A contract records the version of .NET and of System.Text.Json it was exported on in
+  its profiles, so its hash differs from the same application's contract exported on .NET 10.
+- An application whose minimal API answers with `ProblemDetails` may export another media type for that response than
+  before; regenerate the client from the new contract.
+- An operation that declares two response types for one status code now fails the export (SV28). On .NET 10, ASP.NET
+  Core kept one of them and the export went through. The problem details types of ASP.NET Core are exported as one
+  response instead: where a `ProducesProblem(400)` of a route group stands next to a `ProducesValidationProblem()` of an
+  endpoint, the response is a `ProblemDetails`, and the client reads `errors` from its extension data.
+- An operation that reads a polymorphic type with a type classifier from a request now fails the export (SV03).
+
 ## [0.5.0-alpha] - 2026-11-05
 
 An application can name the response headers its generated client may read, such as an `ETag`, a correlation id or

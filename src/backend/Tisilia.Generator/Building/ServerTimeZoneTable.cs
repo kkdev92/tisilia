@@ -14,7 +14,7 @@ public readonly record struct ServerTimeZoneOffset(long StartTicks, int OffsetMi
 /// <summary>
 /// The UTC offset of the server's time zone at every instant from <see cref="FromTicks"/> to <see cref="UntilTicks"/>, as .NET computes it.
 /// System.Text.Json reads a DateTime written with an offset as <c>DateTimeOffset.LocalDateTime</c>: the UTC ticks plus the offset the
-/// server's local zone has at that instant (DateTime.ToLocalTime and TimeZoneInfo.GetUtcOffsetFromUtc, System.Private.CoreLib v10.0.0),
+/// server's local zone has at that instant (DateTime.ToLocalTime and TimeZoneInfo.GetUtcOffsetFromUtc, System.Private.CoreLib v11.0.0),
 /// and DateTime dictionary keys are equal when their ticks are. Keys a client writes with different offsets can therefore be one key on
 /// the server, and the client finds which ones with this table.
 /// </summary>
@@ -222,7 +222,7 @@ public sealed class ServerTimeZoneTable
         ? (int)(offsetTicks / TimeSpan.TicksPerMinute)
         : throw new InvalidOperationException($"time zone '{zone.Id}' has an offset that is not a whole number of minutes ({TimeSpan.FromTicks(offsetTicks)}), which DateTimeOffset cannot carry");
 
-    // TimeZoneInfo.TransitionTimeToDateTime (internal, System.Private.CoreLib v10.0.0); null for the empty transition of a rule without one
+    // TimeZoneInfo.TransitionTimeToDateTime (internal, System.Private.CoreLib v11.0.0); null for the empty transition of a rule without one
     private static long? TransitionLocalTicks(int year, TimeZoneInfo.TransitionTime transition)
     {
         if (transition.Month is < 1 or > 12)

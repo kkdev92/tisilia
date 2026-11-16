@@ -183,7 +183,7 @@ public sealed class TisiliaRunnerHostedService(IHostApplicationLifetime lifetime
 
     private static string RuntimeVersion()
     {
-        var description = RuntimeInformation.FrameworkDescription; // ".NET 10.0.12"
+        var description = RuntimeInformation.FrameworkDescription; // ".NET 11.0.0"
         var digits = new string(description.SkipWhile(c => !char.IsAsciiDigit(c)).TakeWhile(c => char.IsAsciiDigit(c) || c is '.' or '-' or '+').ToArray());
         return IsSemver(digits) ? digits : Environment.Version.ToString(3);
     }

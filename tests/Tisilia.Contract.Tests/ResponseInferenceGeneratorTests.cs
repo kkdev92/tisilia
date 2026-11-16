@@ -123,7 +123,21 @@ public sealed class ResponseInferenceGeneratorTests
     }
 
     [Theory]
-    [InlineData("Results.Unauthorized()", """{"kind":"none","status":401,"result":null,"body":null,"media":null}""")]
+    [InlineData("Results.Unauthorized()")]
+    [InlineData("TypedResults.Unauthorized()")]
+    public void Unauthorized_is_recorded_as_the_result_that_declares_its_own_401(string call)
+    {
+        // UnauthorizedHttpResult publishes (401, no body) as endpoint metadata: the exporter reads it from the type, as for Ok or NotFound
+        var run = Run($$"""
+            public static class Endpoints
+            {
+                public static void Map(IEndpointRouteBuilder app) => app.MapGet("/", IResult () => {{call}}).WithTisiliaOperation("op");
+            }
+            """);
+        Assert.Equal(["global::Microsoft.AspNetCore.Http.HttpResults.UnauthorizedHttpResult"], Assert.Single(run.Operations).Results);
+    }
+
+    [Theory]
     [InlineData("Results.StatusCode(StatusCodes.Status418ImATeapot)", """{"kind":"none","status":418,"result":null,"body":null,"media":null}""")]
     [InlineData("Results.Problem()", """{"kind":"json","status":500,"result":null,"body":0,"media":"application/problem+json"}""")]
     [InlineData("Results.Problem(statusCode: 409)", """{"kind":"json","status":409,"result":null,"body":0,"media":"application/problem+json"}""")]

@@ -1497,7 +1497,7 @@ public sealed class SuiteBuilder
                     yield return (DomainAst.String("25:00:00"), "time-hour");
                     if (wire.Direction == WireDirection.ServerWrite)
                     {
-                        // the .NET 10 TimeOnly reader accepts the short "h:m" aliases of the TimeSpan 'c' parser (TimeOnlyConverter: minimum length 3),
+                        // the .NET 11 TimeOnly reader accepts the short "h:m" aliases of the TimeSpan 'c' parser (TimeOnlyConverter: minimum length 3),
                         // so a short time is only invalid as a server write (the canonical form is HH:mm:ss[.fffffff])
                         yield return (DomainAst.String("12:00"), "time-short");
                     }
@@ -1507,7 +1507,7 @@ public sealed class SuiteBuilder
                     yield return (DomainAst.String("2026-13-01T00:00:00Z"), "datetime-month");
                     if (wire.Direction == WireDirection.ServerWrite)
                     {
-                        // observed on .NET 10: the DateTimeOffset reader accepts a date-only ISO string (local midnight), so it is only invalid as a server write
+                        // observed on .NET 11: the DateTimeOffset reader accepts a date-only ISO string (local midnight), so it is only invalid as a server write
                         yield return (DomainAst.String("2026-09-30"), "datetime-no-time");
                     }
 

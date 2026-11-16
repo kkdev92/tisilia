@@ -39,7 +39,7 @@ export function parseIntegerLexeme(name: IntegerScalarName, text: string, path: 
 
 /**
  * Parses the string form accepted by JsonNumberHandling.AllowReadingFromString / dictionary keys: an optional sign
- * and digits, leading zeros allowed (observed on .NET 10: "012" and "+12" accepted, " 1" and "1e1" rejected).
+ * and digits, leading zeros allowed (observed on .NET 11: "012" and "+12" accepted, " 1" and "1e1" rejected).
  */
 export function parseIntegerString(name: IntegerScalarName, text: string, path: string): bigint {
   if (!/^[+-]?[0-9]+$/.test(text)) {

@@ -131,7 +131,7 @@ puts the zone's offsets in the contract, and the client refuses exactly those ke
 
 ## How it is checked
 
-The module is held to .NET 10 itself rather than to a description of it. The programs in `tests/oracle/AdditionalTypes`
+The module is held to .NET 11 itself rather than to a description of it. The programs in `tests/oracle/AdditionalTypes`
 observe what System.Text.Json and the converters do, build a corpus from the module's own verdicts and read and write it
 back through the real converters, so any text the module and the server judge differently shows up as a mismatch
 (`tests/oracle/AdditionalTypes/README.md` says how to run them). The runtime tests pin the edges
