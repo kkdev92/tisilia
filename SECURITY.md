@@ -76,9 +76,9 @@ Nitro and from the code it traces. `@vercel/nft` 1.11.2 and later depend on a `g
 version, but the current release of the archive package does not accept it yet. Do not use these dependencies with
 patterns from untrusted input.
 
-In this repository `minimatch` and `glob` come only through the Nuxt module's development dependency on Nuxt and are
-not in Tisilia's packages, so their Dependabot alerts are dismissed. `minimatch` has not been patched or ignored, and a
-Nuxt consumer's own installation still contains an affected release. A workspace audit with `--omit=dev` excludes the
+In this repository `minimatch` comes only through the Nuxt module's development dependency on Nuxt and is not in
+Tisilia's packages, so its Dependabot alert is dismissed. `minimatch` has not been patched or ignored, and a Nuxt
+consumer's own installation still contains an affected release. A workspace audit with `--omit=dev` excludes the
 workspace's Nuxt development dependency and does not describe a Nuxt consumer's full installation. Run `npm audit` in
 the consuming application too.
 
