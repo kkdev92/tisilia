@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
-import { createCodecContext, decimalFromString, parseDateOnly, parseJson, prepareRequest, TisiliaMap, writeJson, type JsonValue, type ContractModel, type ContractOperation, type ContractTypeUse } from "@kkdev92/tisilia-runtime";
+import { createCodecContext, decimalFromString, parseDateOnly, parseJson, prepareRequest, TisiliaMap, writeJson, type JsonValue, type ContractFormField, type ContractModel, type ContractOperation, type ContractTypeUse } from "@kkdev92/tisilia-runtime";
 import { credentialHeaders, credentialProblem, parseAuthHints, tokenField } from "../src/auth.js";
-import { buildArgs, documentationOf, filterOperations, loadExplorer, mapEntryKey, summarize, type ExplorerModel } from "../src/explorer.js";
+import { buildArgs, documentationOf, filterOperations, formUploadNote, loadExplorer, mapEntryKey, summarize, type ExplorerModel } from "../src/explorer.js";
 import { cyclic, errorsByPath, exampleOf, FormSchema, grammarKind, nowText, prettyJson, sanitize, type InputNode } from "../src/forms.js";
 import { highlightJson } from "../src/highlight.js";
+import { prefs } from "../src/prefs.js";
 import { clientFactoryName, clientSnippet, curlSnippet, fetchSnippet, operationMethodName, tsLiteral } from "../src/snippets.js";
 
 const fixtures = fileURLToPath(new URL("../../../../tests/fixtures/", import.meta.url));
@@ -205,6 +206,39 @@ describe("request forms", () => {
     const codec = model.registry.registry.get("sample-api.System.Collections.Generic.Dictionary_System.String_System.Int64_.response.codec");
     const map = codec.parseRequestInput!(parseJson('{"a":"9007199254740993","b":2}'), createCodecContext()) as TisiliaMap<string, bigint>;
     expect([...map.entries()]).toEqual([["a", 9007199254740993n], ["b", 2n]]);
+  });
+});
+
+describe("upload notes", () => {
+  const value: ContractFormField = { name: "Title", kind: "value", repeated: false, presence: "required" };
+  const file: ContractFormField = { name: "Attachment", kind: "file", repeated: false, presence: "required" };
+  const form = (mediaType: string, fields: readonly ContractFormField[]): ContractOperation["requestBody"] => ({ kind: "form", mediaType, presence: "required", fields });
+
+  it("say that a multipart form sends each file with its filename, which only a raw upload leaves out", () => {
+    const note = formUploadNote(form("multipart/form-data", [value, file]));
+    expect(note).toContain("with its filename");
+    expect(note).not.toContain("The filename is not sent");
+    prefs.locale = "ja";
+    try {
+      const ja = formUploadNote(form("multipart/form-data", [value, file]));
+      expect(ja).toContain("ファイル名");
+      expect(ja).not.toContain("ファイル名は送信しません");
+    } finally {
+      prefs.locale = "en";
+    }
+  });
+
+  it("find a file in an object's fields and in a repeated item's", () => {
+    const sent = formUploadNote(form("multipart/form-data", [value, file]));
+    expect(sent).toBeDefined();
+    expect(formUploadNote(form("multipart/form-data", [{ name: "Details", kind: "object", repeated: false, presence: "required", fields: [value, file] }]))).toBe(sent);
+    expect(formUploadNote(form("multipart/form-data", [{ name: "Items", kind: "object", repeated: true, indexed: true, presence: "required", fields: [file] }]))).toBe(sent);
+  });
+
+  it("are left out under a form that sends no file, and under a raw upload, which has its own", () => {
+    expect(formUploadNote(form("multipart/form-data", [value]))).toBeUndefined();
+    expect(formUploadNote(form("application/x-www-form-urlencoded", [value]))).toBeUndefined();
+    expect(formUploadNote({ kind: "binary", mediaType: "application/octet-stream", presence: "required" })).toBeUndefined();
   });
 });
 

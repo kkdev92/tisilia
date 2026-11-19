@@ -64,6 +64,19 @@ export function documentationOf(document: ContractDocument, targetId: string): D
   return entry === undefined || (entry.summary.length === 0 && entry.description.length === 0) ? undefined : { summary: entry.summary, description: entry.description };
 }
 
+/**
+ * The note under a form's fields about how its files are sent, or undefined when the form sends no file. A multipart form
+ * sends each file as a part of its own, with its filename, so the note of a raw upload — the bytes alone — does not fit it.
+ */
+export function formUploadNote(body: ContractOperation["requestBody"]): string | undefined {
+  return body.kind === "form" && body.mediaType === "multipart/form-data" && sendsFile(body.fields) ? t().formUploadHint : undefined;
+}
+
+/** Whether a form has a file field, an object's fields and a repeated item's included. */
+function sendsFile(fields: readonly ContractFormField[]): boolean {
+  return fields.some((field) => field.kind === "file" || sendsFile(field.fields ?? []));
+}
+
 /** Loads the contract and the browser artifacts of its modules from the authorized Explorer routes. */
 export async function loadExplorer(options: ExplorerLoadOptions): Promise<ExplorerModel> {
   const fetchImpl = options.fetchImpl ?? fetch;

@@ -240,11 +240,13 @@ try {
           assert.equal(download.suggestedFilename(), filename); assert.deepEqual([...await readFile(await download.path())], [0, 255, 1, 195, 40]);
         }
         report.runs.push({ host: name, surface: "Explorer UI PDF/SVG", cases: ["PDF explicit download without preview", "SVG explicit download without preview"] });
+        const notes = (block, text) => block.locator(".field-hint", { hasText: text }).count();
         await page.goto(baseUrl + "/__tisilia/index.html#/op/upload.stream");
         await page.reload();
         const upload = page.locator('[id="operation-upload.stream"]');
         await upload.getByLabel("Upload file", { exact: true }).setInputFiles({ name: "test.bin", mimeType: "application/octet-stream", buffer: Buffer.from([0, 255, 1, 195, 40]) });
         await upload.locator(".request-line.ok").waitFor();
+        assert.equal(await notes(upload, "The filename is not sent."), 1);
         const sent = page.waitForRequest(request => request.method() === "POST" && request.url().endsWith("/v1/upload"));
         await upload.getByRole("button", { name: "Execute", exact: true }).click();
         const request = await sent;
@@ -256,13 +258,14 @@ try {
         assert.equal(await upload.locator('input[type="file"]').evaluate(input => input.files.length), 0);
         await upload.getByRole("button", { name: "Execute", exact: true }).click();
         await upload.locator(".request-line.invalid").waitFor();
-        report.runs.push({ host: name, surface: "Explorer upload", cases: ["file selection sends exact bytes and declared media", "reset clears file and bytes", "required upload cannot be omitted"] });
+        report.runs.push({ host: name, surface: "Explorer upload", cases: ["file selection sends exact bytes and declared media", "reset clears file and bytes", "required upload cannot be omitted", "raw upload note says the filename is not sent"] });
         await page.goto(baseUrl + "/__tisilia/index.html#/op/forms.values"); await page.reload();
         const form = page.locator('[id="operation-forms.values"]');
         for (const [field, value] of [["value", "日本😀"], ["id", "9007199254740993"], ["amount", "1234567890.123456789"], ["tags", "1\n2"]]) {
           await form.locator(`[id="form-forms.values-${field}"]`).fill(value);
         }
         await form.locator(".request-line.ok").waitFor();
+        assert.equal(await notes(form, "Maximum 16 MiB"), 0);
         const formResponse = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/v1/form-values"));
         await form.getByRole("button", { name: "Execute", exact: true }).click();
         const formReceived = await formResponse; assert.equal(formReceived.status(), 200);
@@ -272,13 +275,19 @@ try {
         const files = page.locator('[id="operation-forms.files"]');
         await files.locator('input[data-form-file]').setInputFiles([{ name: "first.bin", mimeType: "application/octet-stream", buffer: Buffer.from([0, 255]) }, { name: "empty.bin", mimeType: "application/octet-stream", buffer: Buffer.alloc(0) }]);
         await files.locator(".request-line.ok").waitFor();
+        assert.equal(await notes(files, "with its filename"), 1);
+        assert.equal(await notes(files, "The filename is not sent."), 0);
         const fileResponse = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith("/v1/form-files"));
         await files.getByRole("button", { name: "Execute", exact: true }).click();
         const filesReceived = await fileResponse; assert.equal(filesReceived.status(), 200);
         assert.deepEqual(await filesReceived.json(), [{ name: "first.bin", bytes: "AP8=" }, { name: "empty.bin", bytes: "" }]);
         await files.getByRole("button", { name: "Reset", exact: true }).click();
         assert.equal(await files.locator('input[data-form-file]').evaluate(input => input.files.length), 0);
-        report.runs.push({ host: name, surface: "Explorer forms", cases: ["exact scalar and repeated input", "multiple file selection including empty file", "reset clears form files"] });
+        await page.goto(baseUrl + "/__tisilia/index.html#/op/forms.multipart"); await page.reload();
+        const plain = page.locator('[id="operation-forms.multipart"]');
+        await plain.locator('[id="form-forms.multipart-value"]').waitFor();
+        assert.equal(await notes(plain, "Maximum 16 MiB"), 0);
+        report.runs.push({ host: name, surface: "Explorer forms", cases: ["exact scalar and repeated input", "multiple file selection including empty file", "reset clears form files", "multipart file note names the filename", "no upload note without a file field"] });
         await page.goto(baseUrl + "/__tisilia/index.html#/op/forms.nested"); await page.reload();
         const nestedForm = page.locator('[id="operation-forms.nested"]');
         for (const [field, value] of [["title_text", "日本😀"], ["Details.Id", "9007199254740993"], ["Details.Tags", "one\ntwo"], ["Mode", "9007199254740993"]]) {

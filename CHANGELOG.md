@@ -8,6 +8,13 @@ Before 1.0, compatibility may change between releases; breaking changes will be 
 
 ## [Unreleased]
 
+### Fixed
+
+- The Explorer showed the note of a raw upload under every multipart form: that the file's bytes go with the declared
+  content type and that its filename is not sent. A multipart form sends each file as a part of its own, with its
+  filename and the content type `application/octet-stream`. The note under such a form now says so, and a form without a
+  file field shows none.
+
 ## [0.6.0-alpha] - 2026-11-16
 
 Tisilia moves to .NET 11. The packages target `net11.0` and describe what ASP.NET Core 11 and System.Text.Json 11 do;
