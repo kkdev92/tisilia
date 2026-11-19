@@ -7,7 +7,7 @@ import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { writeJson, type ContractOperation } from "@kkdev92/tisilia-runtime";
 import { credentialShapes } from "../auth.js";
 import { docOf, isDeprecated } from "../docs.js";
-import { copyToClipboard, documentationOf, redactHeaders } from "../explorer.js";
+import { copyToClipboard, documentationOf, formUploadNote, redactHeaders } from "../explorer.js";
 import { errorsByPath, exampleOf, parseFormJson, prettyJson, sanitize, scalarText, type FormJson } from "../forms.js";
 import { t } from "../i18n.js";
 import { argsOf, authorized, cancel, clearRun, draftOf, notify, previewOf, resetDraft, runs, selectBinaryFile, send, store, switchEditor, toggle } from "../state.js";
@@ -49,6 +49,7 @@ const errors = computed(() =>
   built.value.errors.filter((e) => draft.value.attempted || !missing(e.message) || draft.value.touched[e.path] === true || (e.path.startsWith("/body") && draft.value.touched["/body"] === true)),
 );
 const bodyErrors = computed(() => errorsByPath(errors.value.map((e) => ({ path: e.path, message: t().fieldError(e) }))));
+const uploadNote = computed(() => formUploadNote(props.op.requestBody));
 const paramError = (name: string): string | undefined => {
   const error = errors.value.find((e) => e.path === "/" + name);
   return error === undefined ? undefined : t().fieldError(error);
@@ -310,7 +311,7 @@ watch(() => store.focusId, focusIfLinked);
           <div v-if="op.requestBody.kind === 'form'" class="body">
             <div class="sub-head-row"><h4 class="sub-head">{{ t().form }}</h4><code class="body-type">{{ op.requestBody.mediaType }}</code></div>
             <FormFieldsEditor :fields="op.requestBody.fields" :draft="draft" :dom-key="domKey" />
-            <p v-if="op.requestBody.mediaType === 'multipart/form-data'" class="field-hint">{{ t().uploadHint }}</p>
+            <p v-if="uploadNote !== undefined" class="field-hint">{{ uploadNote }}</p>
             <span v-for="[path, message] in bodyErrors" :key="path" class="field-error">{{ path === "" ? "" : path + ": " }}{{ message }}</span>
           </div>
           <div v-if="op.requestBody.kind === 'binary'" class="body">

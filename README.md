@@ -7,7 +7,7 @@
 [![CI](https://github.com/kkdev92/tisilia/actions/workflows/ci.yml/badge.svg)](https://github.com/kkdev92/tisilia/actions)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15238/badge)](https://www.bestpractices.dev/projects/15238)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![.NET](https://img.shields.io/badge/.NET-10.0-blue.svg)](https://dotnet.microsoft.com/)
+[![.NET](https://img.shields.io/badge/.NET-11.0-blue.svg)](https://dotnet.microsoft.com/)
 
 .NET and TypeScript, connected down to what the types mean. Tisilia reads an ASP.NET Core API from the running
 application — the endpoints it maps and the System.Text.Json options in effect for each — writes that down as a contract,
@@ -23,6 +23,9 @@ _Built for teams that need consistent value semantics across .NET and TypeScript
 >
 > The contract format, Codec ABI, portable codec DSL and conformance protocol all use version 0.1. Format versions
 > are separate from the package version and may still change incompatibly before 1.0.0.
+>
+> This README follows the `main` branch, which is ahead of `0.6.0-alpha`: the changes the changelog lists under
+> [Unreleased](CHANGELOG.md#unreleased) are not in the published packages yet.
 
 ---
 
