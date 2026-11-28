@@ -117,7 +117,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: dotnet list src/backend/Tisilia.slnx package --vulnerable --include-transitive
 
-      # This excludes the workspace's Nuxt dev dependency. Consumer Nuxt advisories are tracked by Dependabot and SECURITY.md.
+      # This excludes the workspace's Nuxt dev dependency. Consumer Nuxt advisories are tracked by Dependabot and PROJECT_GUIDE.md.
       - name: Audit workspace production dependencies
         if: matrix.os == 'ubuntu-latest'
         run: npm audit --omit=dev --audit-level=high

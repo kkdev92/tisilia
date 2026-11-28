@@ -74,7 +74,7 @@ generator reads source in the compiler and executes nothing of the application.
 | [Readme](https://github.com/kkdev92/tisilia/blob/main/README.md) | Features, what is guaranteed, known limitations, how it works |
 | [Getting started](https://github.com/kkdev92/tisilia/blob/main/docs/getting-started.md) | From an API to a typed client, step by step, and the messages you may meet |
 | [Changelog](https://github.com/kkdev92/tisilia/blob/main/CHANGELOG.md) | What changed in each release |
-| [Security](https://github.com/kkdev92/tisilia/blob/main/SECURITY.md) | What is in scope, and how to report a vulnerability |
+| [Security](https://github.com/kkdev92/tisilia/blob/main/PROJECT_GUIDE.md#security-and-private-reports) | What is in scope, and how to report a vulnerability |
 
 Source, issues and discussion: <https://github.com/kkdev92/tisilia>
 
