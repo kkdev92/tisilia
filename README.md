@@ -31,6 +31,8 @@ _Built for teams that need consistent value semantics across .NET and TypeScript
 
 ## Table of Contents
 
+Before reporting a problem or working on this project, read the [project guide](https://github.com/kkdev92/tisilia/blob/HEAD/PROJECT_GUIDE.md).
+
 - [Features](#features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
@@ -345,36 +347,20 @@ For vulnerability reporting, see [SECURITY.md](SECURITY.md).
 | [Conformance](docs/conformance.md) | The runner protocol, the suite, grades and evidence |
 | [Validation rules](docs/validation-rules.md) | SV01–SV55: what each rule checks and where |
 | [Changelog](CHANGELOG.md) | What changed in each release |
-| [Contributing](CONTRIBUTING.md) | Building, testing, and the rules a change has to follow |
-| [Security](SECURITY.md) | What is in scope, and how to report a vulnerability |
+| [Project guide](https://github.com/kkdev92/tisilia/blob/HEAD/PROJECT_GUIDE.md#development-instructions) | Building, testing, and the rules a change has to follow |
+| [Security](https://github.com/kkdev92/tisilia/blob/HEAD/PROJECT_GUIDE.md#security-and-private-reports) | What is in scope, and how to report a vulnerability |
 
 ---
 
 ## Contributing
 
-```bash
-npm ci
-npm run build                          # the runtime, the Nuxt module and the Explorer page (embedded into Tisilia.Explorer)
-dotnet build src/backend/Tisilia.slnx
-dotnet test  src/backend/Tisilia.slnx
-npm run typecheck && npm test
-```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the design constraints, testing requirements and contribution workflow.
-
-Helpful things when reporting bugs:
-
-- `dotnet tisilia version`, `dotnet --version`, `node --version`, and the TypeScript version
-- The diagnostic as printed — its `TIS` code, its `[SV…]` rule, the message and the JSON pointer — or the failure `kind`
-  and its fields for a call
-- The smallest endpoint and type that show it; the contract excerpt helps too
-
-**Never paste credentials, tokens or real data into an issue.** A reproduction with made-up values is always enough, and
-an issue is public and stays that way.
+Start with the [project guide](https://github.com/kkdev92/tisilia/blob/HEAD/PROJECT_GUIDE.md) for development and verification. To submit an issue or pull request, see the [shared contribution guidelines](https://github.com/kkdev92/.github/blob/main/CONTRIBUTING.md).
 
 ---
 
 ## Support & Maintenance Policy
+
+For a bug report, follow the [reporting instructions](https://github.com/kkdev92/tisilia/blob/HEAD/PROJECT_GUIDE.md#reporting-a-problem).
 
 This is a personal project maintained in spare time. It is active, but support is best-effort:
 I'll do my best to review issues and PRs, and releases may be a bit slow sometimes — thank you for
